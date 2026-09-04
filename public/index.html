@@ -47,7 +47,6 @@
     </div>
     <!-- The way out of the editor loop, and the only one. Setup does not get it. -->
     <button type="button" class="chrome-link hidden" id="crumbAllDisplays">‹ All displays</button>
-    <span class="pill chrome-badge" id="chromeBadge" hidden>WEBSERIAL</span>
     <span class="pill pill-asleep" id="devicePill" hidden><span class="dot"></span><span data-role="text">Asleep</span></span>
     <button type="button" class="btn btn-sm btn-ghost" id="btnSettings" style="color:var(--color-chrome-text)">Settings</button>
   </header>
@@ -208,11 +207,11 @@
     </section>
 
     <!-- ══ A5C · Wi-Fi credentials ═════════════════════════════════════════ -->
-    <!-- The one screen in the app that handles a secret it refuses to keep. The
-         promise in the plate below is not reassurance copy — a5c.js holds both fields
-         in a module-level object, hands them over exactly once, and clears them. They
-         are not in SETTINGS_SCOPE, not on the device record, and never leave the
-         browser. If you add persistence here, the plate becomes a lie. -->
+    <!-- Saved on this display's record as `cfg.network` (device/cfg.js) — the board's
+         cfg-marquee.json — so they survive a reload and prefill a re-run. The plate
+         below states exactly where they go: this browser's localStorage and the board
+         over USB. Not in SETTINGS_SCOPE, never on an Adafruit IO feed. If you add a
+         second store, update the plate first. -->
     <section class="screen" id="a5c" data-screen="a5c">
       <div class="screen-split" style="--rail-w:400px">
         <div class="col-main">
@@ -239,8 +238,8 @@
           <div class="promise-plate blueprint">
             <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
             <span class="label">What happens to these</span>
-            <p>The network name and password are used once, in this browser, to write credentials onto the device over USB.</p>
-            <p>They are not sent to Adafruit IO, not stored in your account, and not kept after this step. Leave this screen and you will be asked again.</p>
+            <p>The network name and password are saved with this display in this browser, and written onto the device over USB in the next step as part of its <span class="mono">cfg-marquee.json</span>.</p>
+            <p>They are never sent to Adafruit IO and never stored in your account. Come back to this screen and they are filled in for you.</p>
           </div>
 
           <div class="screen-foot">
@@ -254,7 +253,7 @@
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board is on its own once it is flashed. It wakes, joins your network, reads the picture you pushed from Adafruit IO, draws it and goes back to sleep — none of which it can do without these.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">Changing networks later</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Run this step again over USB. Because nothing is stored, moving a board to a new network means plugging it back in — there is no way to push credentials to a board that cannot reach the network yet.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Open Settings, choose "Start setup over", and change them here — then plug the board back in. Moving a board to a new network always means USB: there is no way to push credentials to a board that cannot reach the network yet.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">What won't work</div>
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Captive portals — hotel, campus and most guest networks — need a browser to accept terms before traffic passes. Your board has no browser, so it will associate and then fail to reach Adafruit IO.</p>
@@ -310,6 +309,10 @@
             <span class="label">Serial log</span>
             <pre class="mono log-body" id="a6aLog"></pre>
           </div>
+
+          <div class="screen-foot">
+            <button type="button" class="btn btn-secondary" id="a6aBack">Back</button>
+          </div>
         </div>
 
         <aside class="col-rail">
@@ -322,7 +325,11 @@
           </div>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">What gets written</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The marquee firmware for your board, your Adafruit IO configuration, the network configuration from the last step, and the panel configuration. <strong>Existing files on the board are erased.</strong></p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The marquee firmware for your board, and its <span class="mono">cfg-marquee.json</span>: your Adafruit IO account, the group key, the network from the last step, and the panel and its pins. <strong>Existing files on the board are erased.</strong></p>
+          <div class="hr" style="margin:6px 0"></div>
+          <div class="eyebrow">Debug</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The configuration file exactly as it will be written, filled in from the previous steps. Includes the Wi-Fi password and the Adafruit IO key in plain text.</p>
+          <button type="button" class="btn btn-ghost btn-sm" id="a6aShowCfg">Show JSON config</button>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">Browser support</div>
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Flashing needs WebSerial: Chrome, Edge or Opera on desktop. Safari and Firefox cannot connect to a serial port at all, and there is no extension that adds it.</p>
@@ -646,6 +653,23 @@
     <p class="hint mono" id="previewMeta"></p>
     <div class="modal-actions">
       <button type="button" class="btn btn-primary" id="previewExport">Export BMP</button>
+    </div>
+  </div>
+</div>
+
+<!-- The board's cfg-marquee.json, as A6-A would write it. A debug view: a plain <pre>
+     with Copy and Download, opened from the rail on A6-A. See device/cfg.js. -->
+<div class="modal-backdrop hidden" id="cfgModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Device configuration JSON">
+    <div class="modal-head">
+      <h4>cfg-marquee.json</h4>
+      <button type="button" class="modal-close" id="cfgClose" aria-label="Close configuration view">✕</button>
+    </div>
+    <pre class="json-view"><code id="cfgJson"></code></pre>
+    <div class="modal-actions">
+      <span class="hint" style="flex:1; text-align:left">Contains the Wi-Fi password and the Adafruit IO key.</span>
+      <button type="button" class="btn btn-sm" id="cfgCopy">Copy</button>
+      <button type="button" class="btn btn-sm btn-primary" id="cfgDownload">Download cfg-marquee.json</button>
     </div>
   </div>
 </div>

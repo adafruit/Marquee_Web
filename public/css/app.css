@@ -58,14 +58,6 @@
 }
 .chrome-link:hover { opacity: 1; }
 
-/* The setup-run badge — WEBSERIAL on A6-A. Outlined, on the dark bar, like the state
-   lamp it sits beside; it is naming a capability the screen depends on, not a state. */
-.chrome .chrome-badge {
-  border: 1px solid var(--color-chrome-hairline);
-  color: var(--color-chrome-text);
-  background: none;
-}
-
 /* The clapperboard at chrome scale: 28px against Showtime's 64. Deliberately the same two
    parts — stripes, then a captioned readout — rather than a simplification of them, because
    shrinking it whole is what makes it read as the sleep bar in miniature instead of as one
@@ -882,6 +874,22 @@
   background: var(--color-bg);
   white-space: pre;
 }
+
+/* A JSON readout inside a modal — the cfg-marquee.json view on A6-A. Same face as the
+   canvas.json panel above, sized to the dialog rather than the editor column. */
+.json-view {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 60vh;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  white-space: pre;
+}
+.json-view:empty::before { content: 'Nothing yet.'; opacity: 0.45; }
 
 /* ---- A8 · showtime ------------------------------------------------------- */
 

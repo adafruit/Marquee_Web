@@ -28,6 +28,7 @@ import { hideDitherPreview } from '../canvas/stage.js';
 import { syncNav } from '../core/router.js';
 import { getState, replaceFlow } from '../core/state.js';
 import * as devices from './devices.js';
+import { syncCfg } from './cfg.js';
 import { syncPushBlock, syncIntervalFromField } from '../screens/a7.js';
 import { resetDrawnCache, capturePanelFromCanvas } from '../screens/a8.js';
 
@@ -146,6 +147,10 @@ export async function rehydrateFor(rec) {
   // every element's fill against the CURRENT palette — run it after the artwork lands
   // and the incoming design gets remapped into the outgoing board's colour space.
   loadConfig(rec.displayConfig);
+  // The descriptor and the settings fields are both in place now, so the board's config
+  // file can be rebuilt from them. This is also how a record minted before `cfg` existed
+  // gets one: the first time it is opened, not by a migration pass.
+  syncCfg();
 
   // keepDisplay because the descriptor loaded a line above is the authority, not
   // whatever display block the stored document happens to carry.

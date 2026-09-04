@@ -37,6 +37,7 @@ import { initA7 } from './screens/a7.js';
 import { initA8 } from './screens/a8.js';
 import { $, wireModal, openModal, closeModal, toast } from './core/util.js';
 import { clearIoVerified, hasIoConfig, connectedUser } from './device/credentials.js';
+import { syncCfg } from './device/cfg.js';
 
 // ---------- settings persistence --------------------------------------------
 //
@@ -51,8 +52,9 @@ import { clearIoVerified, hasIoConfig, connectedUser } from './device/credential
 // moved into devices.js#migrate(), which is the last place the old flat blob is ever
 // read — so they now run once instead of on every boot forever.
 //
-// NOTE: the AIO key is stored here in plaintext. Acceptable for a local dev tool on
-// your own machine; it is also written onto the device at A6-A.
+// NOTE: the AIO key is stored here in plaintext, and so — per display, in `rec.cfg` —
+// are the Wi-Fi credentials A5C collects. Acceptable for a local dev tool on your own
+// machine; both are written onto the device at A6-A. See device/cfg.js.
 
 function saveSettings(id) {
   const scope = devices.SETTINGS_SCOPE[id];
@@ -64,6 +66,9 @@ function saveSettings(id) {
     if (id === 'ioUser' || id === 'ioKey' || id === 'ioDev') clearIoVerified();
     devices.saveAccount(devices.snapshotAccountFields());
   } else devices.flushActive();
+  // Account and group key both land in the board's config file, so it follows every
+  // settings write — including A5b's mirror into #ioGroup and A1-C's into #ioUser/#ioKey.
+  syncCfg();
 }
 
 function restoreSettings() {
@@ -198,7 +203,7 @@ async function boot() {
   initA7({ onEnter });
   initA8({ onEnter });
 
-  // Any flow-state change can move the rail, the badge or the device pill — and has to
+  // Any flow-state change can move the rail or the device pill — and has to
   // reach the active device's record.
   //
   // The mirror is not optional bookkeeping. state.js persists to its own single key, so

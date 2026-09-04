@@ -194,6 +194,8 @@ export function createDraft() {
     settings: { pmDevice: '', ioGroup: '', sleepDuration: '300', wakeAlarm: 'timer' },
     flow: {},
     displayConfig: null,
+    /** The board's cfg-marquee.json, filled in by cfg.js as setup advances. */
+    cfg: null,
   };
   env.draftId = id;
   persist();

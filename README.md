@@ -57,7 +57,9 @@ The server reads three environment variables, all optional:
 with the key held server-side, out of the browser. Leave them unset — the normal
 path — and `/publish` answers `501`; the editor then publishes directly from the
 browser with the key you connect in A1-C, which is stored in that browser's
-localStorage and never sent here.
+localStorage and never sent here. The Wi-Fi credentials from A5-C are stored the same
+way, per display, as part of the `cfg-marquee.json` that A6-A shows and will write to
+the board — see [`docs/cfg-marquee.md`](docs/cfg-marquee.md).
 
 Note that the server reads `process.env` directly and does **not** load a `.env`
 file on its own. Export the values in your shell, or:
@@ -147,6 +149,7 @@ The wire formats, each one its own contract:
 - [`docs/marquee-canvas-state.md`](docs/marquee-canvas-state.md) — the `{group}.canvas-state` feed: the editable scene, parked on Adafruit IO
 - [`docs/marquee-sleep.md`](docs/marquee-sleep.md) — the `{group}.sleep` feed: how long to sleep and what to wake on
 - [`docs/marquee-status.md`](docs/marquee-status.md) — the `{group}.status` feed: what the board reports back
+- [`docs/cfg-marquee.md`](docs/cfg-marquee.md) — `cfg-marquee.json`: the file written to the board at flash time, assembled during setup and viewable from A6-A
 
 ## Known gaps
 

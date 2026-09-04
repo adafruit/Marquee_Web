@@ -17,20 +17,19 @@
  *   2. Firmware binaries, which do not exist in this repo. Whatever supplies them —
  *      a manifest URL, a release asset, a checked-in bin — resolves inside
  *      firmwareFor() below, keyed by the board the panel preset implies.
- *   3. The four payloads A6-A's copy promises: the firmware, the Adafruit IO
- *      configuration, the network configuration, and the panel configuration. The
- *      last of these already exists as a builder — buildDisplayBody() in config.js —
- *      and the middle two are held by A5b and A5C respectively.
+ *   3. The two payloads A6-A's copy promises: the firmware, and the board's
+ *      configuration file. The second already exists — `rec.cfg` on the device record,
+ *      built by device/cfg.js in the exact shape of cfg-marquee.json (account, group
+ *      key, panel, pins, network). See docs/cfg-marquee.md.
  *
  * THE CONTRACT
  *
- *   flashDevice({ device, wifi, onLog, onProgress }) -> Promise<{ ok, chip?, error? }>
+ *   flashDevice({ device, cfg, onLog, onProgress }) -> Promise<{ ok, chip?, error? }>
  *
  *   device      the record from devices.js — panel, group key, name
- *   wifi        { ssid, password } from a5c.js#takeWifiCredentials(), or null.
- *               Read-once by the time it arrives here. Do not stash it, do not log it,
- *               and do not put it in an error message: A5C's on-screen promise is that
- *               it goes to the board and nowhere else.
+ *   cfg         the cfg-marquee.json object to write, freshly synced by the caller.
+ *               It carries the Wi-Fi password and the Adafruit IO key: write it to the
+ *               board, do not log it, and do not put it in an error message.
  *   onLog       (line: string) => void, one serial log line
  *   onProgress  ({ phase: 'erase'|'write', pct: number }) => void
  *
@@ -55,7 +54,7 @@ export function firmwareFor(_device) {
 export async function flashDevice({ onLog } = {}) {
   onLog?.('Flashing is not wired up in this build.');
   onLog?.('The connect, erase and write path needs esptool-js and a firmware image; '
-    + 'neither is in this repo yet. See the note at the top of js/flash.js.');
+    + 'neither is in this repo yet. See the note at the top of js/device/flash.js.');
   onLog?.('If your board is already running the marquee firmware, use '
     + '"Skip, my board is already flashed" to carry on.');
   return { ok: false, error: 'not-implemented' };
