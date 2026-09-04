@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adafruit IO — Marquee</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Every screen is present in the DOM at all times and toggled by the router.
+     Two things depend on that: the Konva stage mounts into #stage-holder exactly
+     once and is never torn down, and the display descriptor fields inside A5's
+     advanced disclosure are read by the device pipeline from A7 and A8. -->
+<div id="app">
+
+  <!-- ── app chrome ───────────────────────────────────────────────────────── -->
+  <header class="chrome">
+    <!-- Three levels, and only the last one is variable: the board this editor is
+         pointed at. The trail is here to say WHICH board you are editing, which is the
+         one fact the chrome could not answer while the title sat there alone. Written
+         by router.js, which reads the live name field rather than the stored record so
+         a rename in Settings lands while that dialog is still open. -->
+    <span class="crumb">Adafruit IO</span>
+    <span class="sep">/</span>
+    <span class="crumb">Marquee</span>
+    <span class="sep">/</span>
+    <span class="crumb crumb-current" id="crumbBoard">magtag</span>
+    <span class="spacer"></span>
+    <!-- The sleep clock in miniature. Written by a8.js's setClock(), and now the ONLY
+         clapperboard in the app: the full-size one used to sit in Showtime's dark bar,
+         which left A7 without a countdown and made the two able to drift.
+
+         In the chrome, but not on every screen the chrome is: it counts down ONE board's
+         cycle, so it appears on the editor and Showtime and stays hidden on the display
+         list and through setup. CLOCK_SCREENS in a8.js is where that is decided. -->
+    <div class="chrome-clapper" id="chromeClapper" hidden>
+      <span class="stripes"></span>
+      <span class="readout">
+        <span class="cap" id="chromeClapperCap">Next take in</span>
+        <span class="time" id="chromeClapperTime">--:--</span>
+      </span>
+    </div>
+    <!-- The way out of the editor loop, and the only one. Setup does not get it. -->
+    <button type="button" class="chrome-link hidden" id="crumbAllDisplays">‹ All displays</button>
+    <span class="pill chrome-badge" id="chromeBadge" hidden>WEBSERIAL</span>
+    <span class="pill pill-asleep" id="devicePill" hidden><span class="dot"></span><span data-role="text">Asleep</span></span>
+    <button type="button" class="btn btn-sm btn-ghost" id="btnSettings" style="color:var(--color-chrome-text)">Settings</button>
+  </header>
+
+  <div id="backendBanner">
+    <strong>Render backend unreachable.</strong>
+    <span>ImageMagick is the only render path — every render, push and export action is disabled until it answers <span class="mono">/health</span>.</span>
+  </div>
+
+  <!-- ── editor rail ──────────────────────────────────────────────────────── -->
+  <!-- Two cells, and it belongs to A7/A8 alone — the setup screens show no rail at
+       all. This is the CONTEXT BAR of the shared chrome stack on A7: the band between
+       the app bar and the action bar, tuned to sit tight.
+
+       No numerals and no status lines. Both were describing a first-run progress
+       meter, and setup no longer has one; what is left is a switch between two
+       screens that are always both available. -->
+  <nav id="stepRail" aria-label="Editor" class="hidden">
+    <button type="button" class="step" data-rail="build" data-state="active" data-clickable="false">
+      <span class="step-lines"><span class="step-title">Build the scene</span></span>
+    </button>
+    <button type="button" class="step" data-rail="show" data-state="idle" data-clickable="true">
+      <span class="step-lines"><span class="step-title">Showtime</span></span>
+    </button>
+  </nav>
+
+  <main id="screens">
+
+    <!-- ══ A1 · your displays ══════════════════════════════════════════════ -->
+    <!-- Home. Every tile is a little screen showing what is actually on that panel,
+         so the list reads like a wall of them rather than a table of device names.
+         The dashed tile is the ONLY entry into setup — there is no "+ new" button in
+         the header, because a grid that already contains an add slot does not need
+         the same action stated twice. With no devices this is the empty state: the
+         dashed tile alone, no onboarding cards, no secondary buttons. -->
+    <section class="screen" id="a1" data-screen="a1">
+      <div class="screen-pad">
+        <div class="screen-head">
+          <h3>Your Displays</h3>
+          <p class="device-count" id="a1Count">No displays yet</p>
+        </div>
+        <div class="device-grid" id="a1Grid"></div>
+      </div>
+    </section>
+
+    <!-- ══ A3 · Act I · what's running on your board? ══════════════════════ -->
+    <!-- The single place the two firmware paths diverge. An explicit question,
+         not an inferred one — but pre-answered when IO already knows the device. -->
+    <section class="screen" id="a3" data-screen="a3">
+      <div class="screen-pad">
+        <div class="screen-head">
+          <div class="eyebrow">Act I · step 1 of 3</div>
+          <h3>What's running on your board?</h3>
+          <p>Both paths end in the same editor. The difference is how the display settings reach the board.</p>
+        </div>
+
+        <div class="fork">
+          <!-- Each card states its own step count up front, so CircuitPython's
+               extra step is visible BEFORE the user commits to that path. -->
+          <div class="fork-card blueprint" id="forkWipper">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div class="fork-banner">Coming Soon!</div>
+            <div style="display:flex; align-items:center; gap:10px">
+              <span class="fork-title">WipperSnapper</span>
+              <span class="tag tag-neutral" id="wipperTag" style="margin-left:auto">Checking…</span>
+            </div>
+            <p>No-code firmware from Adafruit IO. Marquee sends the display settings straight to the board over the air.</p>
+            <div class="hr"></div>
+            <div class="fork-path">
+              <div><span class="n">1</span> Pick your display</div>
+              <div><span class="n">2</span> Confirm settings — sent over the air</div>
+              <div><span class="n">3</span> Build and push your dashboard</div>
+            </div>
+            <div class="footnote">Nothing to install. Changes take effect on the next wake.</div>
+            <button type="button" class="btn btn-secondary blueprint" id="useWippersnapper">Use WipperSnapper<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+          </div>
+
+          <div class="fork-card blueprint" id="forkCircuitPython">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="display:flex; align-items:center; gap:10px">
+              <span class="fork-title">CircuitPython</span>
+              <span class="tag tag-outline" style="margin-left:auto">One extra step</span>
+            </div>
+            <p>Your own code on the board. Marquee writes you a code bundle to copy across once — after that, dashboards arrive over the air like any other board.</p>
+            <div class="hr"></div>
+            <div class="fork-path">
+              <div><span class="n">1</span> Pick your display</div>
+              <div><span class="n">2</span> Confirm settings</div>
+              <div class="extra"><span class="n">+</span> Download the code bundle, copy to CIRCUITPY</div>
+              <div><span class="n">3</span> Build and push your dashboard</div>
+            </div>
+            <div class="footnote">Later changes to the display, pins or refresh need a fresh bundle. Dashboard edits don't.</div>
+            <button type="button" class="btn btn-secondary blueprint" id="useCircuitPython">Use CircuitPython<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+          </div>
+        </div>
+
+        <div style="font-size:12.5px; opacity:0.75">
+          Not sure? Check what's on your board — if it shows up as a <span class="mono">CIRCUITPY</span> drive, it's CircuitPython.
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ A4 · pick the device ════════════════════════════════════════════ -->
+    <!-- Product cards, not a dropdown of driver chips — and three of them, not the
+         whole catalog. presets.js still describes nine panels and any of them can be
+         driven; these are the three this flow can walk a first-timer through end to
+         end. The search stays because the field is the natural home for "is mine in
+         here", even when the honest answer is a short list. -->
+    <section class="screen" id="a4" data-screen="a4">
+      <div class="screen-pad">
+        <div style="display:flex; align-items:center; gap:14px">
+          <h3>Which device do you have?</h3>
+          <input type="text" id="panelSearch" class="input" placeholder="Search devices…"
+                 style="margin-left:auto; width:280px" autocomplete="off">
+        </div>
+
+        <div class="panel-grid panel-grid-3" id="panelGrid"></div>
+        <p class="empty-note hidden" id="panelEmpty">No device matches that search.</p>
+
+        <div class="screen-foot ruled">
+          <button type="button" class="btn btn-secondary" id="a4Back">Back</button>
+          <button type="button" class="btn btn-primary blueprint" id="a4Next" style="margin-left:auto">Next<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ A5 · Act I · confirm settings ═══════════════════════════════════ -->
+    <!-- Show what the preset filled in; keep the intimidating fields collapsed. -->
+    <section class="screen" id="a5" data-screen="a5">
+      <div class="screen-split" style="--rail-w:400px">
+        <div class="col-main">
+          <div class="screen-head">
+            <div class="eyebrow">Act I · step 3 of 3</div>
+            <h3 id="a5Heading">We filled this in for you</h3>
+          </div>
+
+          <div class="summary-plate blueprint">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div class="proxy" id="summaryProxy"></div>
+            <div class="lines">
+              <div class="headline" id="summaryRes">—</div>
+              <div class="detail" id="summaryDriver">—</div>
+              <div class="detail" id="summaryPins">—</div>
+            </div>
+          </div>
+
+
+          <div class="screen-foot">
+            <button type="button" class="btn btn-secondary" id="a5Back">Back</button>
+            <span class="mono hint" id="a5Debug" style="flex:1"></span>
+            <button type="button" class="btn btn-primary blueprint" id="a5Next">Send to device &amp; open editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+          </div>
+        </div>
+
+        <aside class="col-rail">
+          <div class="eyebrow">Device check</div>
+          <div style="display:flex; flex-direction:column; gap:10px">
+            <div class="check" data-state="wait" id="chkOnline"><span class="dot"></span><span data-role="text">Checking the broker…</span></div>
+            <div class="check" data-state="wait" id="chkFirmware"><span class="dot"></span><span data-role="text">Firmware support unknown</span></div>
+            <div class="check" data-state="wait" id="chkAck"><span class="dot"></span><span data-role="text">Waiting for config acknowledgement</span></div>
+          </div>
+          <div class="hr" style="margin:6px 0"></div>
+          <div class="eyebrow">Good to know</div>
+          <!-- Load-bearing: this is where the user learns WHY the sleep behavior
+               exists, before they hit it in Act III. -->
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">E-paper takes a few seconds to redraw and keeps the picture with the power off. That's why the display sleeps between updates — and why you can't animate it.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ══ A5b · Act I · CircuitPython only · configure Adafruit IO ═════════ -->
+    <!-- Runs before A6 because the bundle A6 builds bakes in the username, key
+         and feed keys created here. WipperSnapper never sees this screen: that
+         path has no bundle, and its group key is set by hand under Settings. -->
+    <section class="screen" id="a5b" data-screen="a5b">
+      <div class="screen-split" style="--rail-w:400px">
+        <div class="col-main">
+          <div class="screen-head">
+            <h3>Configure Adafruit IO</h3>
+            <p id="a5bSub">Your board reads its picture from Adafruit IO and reports back on the same account. This makes the feeds it needs.</p>
+          </div>
+
+          <div class="grid-3">
+            <label class="field">
+              <span class="label">Adafruit IO username</span>
+              <input type="text" id="a5bUser" autocomplete="off" spellcheck="false">
+            </label>
+            <div class="field">
+              <span class="label">Adafruit IO key</span>
+              <!-- Masked by default. The reveal is here because this is a long
+                   random string being retyped from another tab, and a masked field
+                   with no way to check it is how a 401 becomes a mystery. -->
+              <div class="key-field">
+                <input type="password" id="a5bKey" autocomplete="off" spellcheck="false">
+                <button type="button" class="reveal-toggle" id="a5bKeyReveal" aria-pressed="false" aria-label="Show the key">Show</button>
+              </div>
+            </div>
+            <label class="field">
+              <span class="label">Device name</span>
+              <input type="text" id="a5bDevice" autocomplete="off">
+            </label>
+          </div>
+          <p class="field-error" id="a5bKeyError" hidden></p>
+
+          <!-- The preview of what will be created, and then the progress display
+               for creating it. Deliberately the same box in both states: the rows
+               do not move, they only change colour. -->
+          <div class="feeds-plate blueprint">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <p class="feeds-line" id="a5bGroupLine">Four feeds, under the group <span class="mono" id="a5bGroupKey">—</span></p>
+            <div class="feeds-rows">
+              <div class="check" data-state="wait" id="a5bFeedBitmap"><span class="dot"></span><span data-role="text">bitmap — the picture your board draws</span></div>
+              <div class="check" data-state="wait" id="a5bFeedSleep"><span class="dot"></span><span data-role="text">sleep — how long it waits before waking</span></div>
+              <div class="check" data-state="wait" id="a5bFeedStatus"><span class="dot"></span><span data-role="text">status — what your board reports back</span></div>
+              <div class="check" data-state="wait" id="a5bFeedCanvas"><span class="dot"></span><span data-role="text">canvas-state — the editable scene, so any browser can open it</span></div>
+            </div>
+            <p class="hint" id="a5bOutcome" hidden></p>
+            <p class="hint">Changing the key will change API URLs and MQTT subscription topics…</p>
+          </div>
+
+          <!-- The consequence of the name above, spelled out before it is committed.
+               Written by the same call that updates the group-key line, so the two
+               cannot disagree. -->
+          <div class="endpoints-plate blueprint">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <span class="label">Where this lands</span>
+            <div id="a5bEndpoints"></div>
+          </div>
+
+          <div class="screen-foot">
+            <button type="button" class="btn btn-secondary" id="a5bBack">Back</button>
+            <button type="button" class="btn btn-secondary" id="a5bSkip" style="margin-left:auto">Skip for now</button>
+            <button type="button" class="btn btn-primary blueprint" id="a5bCreate" disabled>Create group and feeds<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+          </div>
+        </div>
+
+        <aside class="col-rail">
+          <div class="eyebrow">What a Group is</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">A Group is a folder for feeds on Adafruit IO. This display gets one, named after it, holding the four feeds it needs: the picture it draws, how long it sleeps, what it reports back, and the editable scene behind the picture.</p>
+          <div class="hr" style="margin:6px 0"></div>
+          <div class="eyebrow">Where to find your key</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Your Adafruit IO key is on <a href="https://io.adafruit.com/api/docs/#authentication" target="_blank" rel="noopener">io.adafruit.com</a>, behind the yellow key icon. It is stored in this browser and written onto the device when you flash it — treat it like a password.</p>
+          <div class="hr" style="margin:6px 0"></div>
+          <div class="eyebrow">If it already exists</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">We'll check to see if you already have a group and feeds configured for this device. If it's already configured, we'll do nothing and we'll let you know!</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Nothing here is destructive. An existing group is reused as it stands, and a feed that is already there is left alone — we only ever add what's missing.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ══ A5C · Wi-Fi credentials ═════════════════════════════════════════ -->
+    <!-- The one screen in the app that handles a secret it refuses to keep. The
+         promise in the plate below is not reassurance copy — a5c.js holds both fields
+         in a module-level object, hands them over exactly once, and clears them. They
+         are not in SETTINGS_SCOPE, not on the device record, and never leave the
+         browser. If you add persistence here, the plate becomes a lie. -->
+    <section class="screen" id="a5c" data-screen="a5c">
+      <div class="screen-split" style="--rail-w:400px">
+        <div class="col-main">
+          <div class="screen-head">
+            <h3>Which Wi-Fi should the device join?</h3>
+            <p>Your board needs its own connection — it fetches its picture over the network long after this browser tab is closed.</p>
+          </div>
+
+          <div class="grid-3">
+            <label class="field">
+              <span class="label">Network name (SSID)</span>
+              <input type="text" id="a5cSsid" autocomplete="off" spellcheck="false">
+            </label>
+            <div class="field">
+              <span class="label">Password</span>
+              <div class="key-field">
+                <input type="password" id="a5cPass" autocomplete="off" spellcheck="false">
+                <button type="button" class="reveal-toggle" id="a5cPassReveal" aria-pressed="false" aria-label="Show the password">Show</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint">Most boards join 2.4 GHz networks only. A dual-band router that broadcasts one name for both works fine — the board picks the band it can see.</p>
+
+          <div class="promise-plate blueprint">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <span class="label">What happens to these</span>
+            <p>The network name and password are used once, in this browser, to write credentials onto the device over USB.</p>
+            <p>They are not sent to Adafruit IO, not stored in your account, and not kept after this step. Leave this screen and you will be asked again.</p>
+          </div>
+
+          <div class="screen-foot">
+            <button type="button" class="btn btn-secondary" id="a5cBack">Back</button>
+            <button type="button" class="btn btn-primary blueprint" id="a5cSave" style="margin-left:auto" disabled>Save network<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+          </div>
+        </div>
+
+        <aside class="col-rail">
+          <div class="eyebrow">Why we ask</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board is on its own once it is flashed. It wakes, joins your network, reads the picture you pushed from Adafruit IO, draws it and goes back to sleep — none of which it can do without these.</p>
+          <div class="hr" style="margin:6px 0"></div>
+          <div class="eyebrow">Changing networks later</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Run this step again over USB. Because nothing is stored, moving a board to a new network means plugging it back in — there is no way to push credentials to a board that cannot reach the network yet.</p>
+          <div class="hr" style="margin:6px 0"></div>
+          <div class="eyebrow">What won't work</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Captive portals — hotel, campus and most guest networks — need a browser to accept terms before traffic passes. Your board has no browser, so it will associate and then fail to reach Adafruit IO.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ══ A6-A · flash the device ═════════════════════════════════════════ -->
+    <!-- Browser-side esptool over WebSerial. No server involvement — which is also
+         why the browser gate below is real rather than advisory: on Safari or Firefox
+         there is no navigator.serial to fall back to.
+
+         THE WRITE PATH IS NOT IMPLEMENTED IN THIS BUILD. flash.js is a documented seam
+         holding the signature and nothing else. The states, the log and the progress
+         rows are built and correct; they simply are not reachable yet, and Connect
+         says so in the log rather than miming a result. -->
+    <section class="screen" id="a6a" data-screen="a6a">
+      <div class="screen-split" style="--rail-w:400px">
+        <div class="col-main">
+          <div class="screen-head">
+            <h3>Flash Device</h3>
+            <p>This writes the marquee firmware onto your board, along with everything it needs to run on its own.</p>
+          </div>
+
+          <div class="flash-status">
+            <div class="check" data-state="wait" id="a6aStatus"><span class="dot"></span><span data-role="text">Not connected</span></div>
+            <p class="hint" id="a6aLead">Connect an ESP32 or ESP8266 to your computer, then click Connect to start managing it.</p>
+            <p class="field-error" id="a6aUnsupported" hidden>This browser cannot talk to a serial port. Use Chrome, Edge or Opera on a desktop computer — Safari and Firefox do not implement WebSerial.</p>
+          </div>
+
+          <div class="flash-actions" id="a6aConnectRow">
+            <button type="button" class="btn btn-primary blueprint" id="a6aConnect">Connect<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+            <button type="button" class="btn btn-secondary" id="a6aSkip">Skip, my board is already flashed</button>
+          </div>
+
+          <!-- Replaces the connect row once a port is open. Two bars, because erase and
+               write are separately slow and separately able to fail. -->
+          <div class="flash-progress hidden" id="a6aProgressRow">
+            <div class="flash-bar">
+              <span class="label">Erase</span>
+              <span class="track"><span class="fill" id="a6aEraseFill"></span></span>
+              <span class="mono pct" id="a6aErasePct">0%</span>
+            </div>
+            <div class="flash-bar">
+              <span class="label">Write</span>
+              <span class="track"><span class="fill" id="a6aWriteFill"></span></span>
+              <span class="mono pct" id="a6aWritePct">0%</span>
+            </div>
+          </div>
+
+          <div class="log-plate blueprint">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <span class="label">Serial log</span>
+            <pre class="mono log-body" id="a6aLog"></pre>
+          </div>
+        </div>
+
+        <aside class="col-rail">
+          <div class="eyebrow">Before you connect</div>
+          <div class="rail-steps">
+            <div><span class="n">1</span> Use a <strong>data</strong> cable. A charge-only USB cable powers the board and carries no serial — it is the single most common reason no port appears.</div>
+            <div><span class="n">2</span> Close anything else holding the port: the Arduino IDE's serial monitor, <span class="mono">screen</span>, Mu, Thonny.</div>
+            <div><span class="n">3</span> Pick your board in the browser's port dialog. On macOS it is usually a <span class="mono">usbmodem</span>; on Windows a COM port.</div>
+            <div><span class="n">4</span> If nothing is listed, put the board in bootloader mode: hold <strong>BOOT</strong>, tap <strong>RESET</strong>, release BOOT.</div>
+          </div>
+          <div class="hr" style="margin:6px 0"></div>
+          <div class="eyebrow">What gets written</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The marquee firmware for your board, your Adafruit IO configuration, the network configuration from the last step, and the panel configuration. <strong>Existing files on the board are erased.</strong></p>
+          <div class="hr" style="margin:6px 0"></div>
+          <div class="eyebrow">Browser support</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Flashing needs WebSerial: Chrome, Edge or Opera on desktop. Safari and Firefox cannot connect to a serial port at all, and there is no extension that adds it.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ══ A6 · Act I · CircuitPython only · the code bundle ═══════════════ -->
+    <section class="screen" id="a6" data-screen="a6">
+      <div class="screen-split" style="--rail-w:420px">
+        <div class="col-main">
+          <div class="stale-banner hidden" id="bundleStale">
+            <strong>This bundle is out of date.</strong>
+            <span>The display settings changed after you downloaded it — the board is running files that no longer match. Download again and re-copy.</span>
+          </div>
+
+          <div class="screen-head">
+            <div class="eyebrow">Act I · one extra step</div>
+            <h3>Copy this bundle to your board</h3>
+            <p id="a6Sub">Built with the settings you just confirmed. You only do this again if those settings change.</p>
+          </div>
+
+          <div style="display:flex; gap:14px; align-items:center">
+            <button type="button" class="btn btn-primary blueprint" id="bundleDownload" style="padding:12px 26px; font-size:16px; letter-spacing:0.1em">Download bundle<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+            <span style="font-size:12.5px; opacity:0.7" id="bundleMeta">—</span>
+          </div>
+
+          <div class="drag-plate blueprint">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div class="boxes">
+              <div class="box">ZIP</div>
+              <div class="arrow">→</div>
+              <div class="box target">CIRCUIT<br>PY</div>
+            </div>
+            <div class="steps">
+              <div><span class="n">1</span> Plug the board in over USB — a CIRCUITPY drive appears.</div>
+              <div><span class="n">2</span> Unzip and drag everything onto that drive, replacing what's there.</div>
+              <div><span class="n">3</span> Press RESET on the board — it connects to Adafruit IO.</div>
+            </div>
+          </div>
+
+          <div class="screen-foot">
+            <a href="https://learn.adafruit.com/adafruit-magtag" target="_blank" rel="noopener" style="font-size:13px">Read the CircuitPython e-paper guide</a>
+            <button type="button" class="btn btn-secondary" id="bundleSkip" style="margin-left:auto">Skip for now</button>
+            <button type="button" class="btn btn-primary blueprint" id="bundleDone">I've copied it — open editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+          </div>
+        </div>
+
+        <aside class="col-rail">
+          <div class="eyebrow">What's in the bundle</div>
+          <div class="file-list" id="bundleFiles"></div>
+          <div class="hr" style="margin:4px 0"></div>
+          <div class="eyebrow">Device check</div>
+          <div style="display:flex; flex-direction:column; gap:9px">
+            <div class="check" data-state="wait" id="chkCpy"><span class="dot"></span><span data-role="text">CircuitPython version unknown</span></div>
+            <div class="check" data-state="wait" id="chkCheckin"><span class="dot"></span><span data-role="text">Waiting for the board to check in</span></div>
+          </div>
+          <!-- The rule that makes the two paths converge. After check-in, Acts II
+               and III are identical for both paths; only a config change re-opens
+               this screen. -->
+          <p style="margin:auto 0 0; font-size:12.5px; opacity:0.75; text-wrap:pretty">Once it checks in, dashboards arrive over the air. Come back here only if you change the display, its pins or the refresh interval.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ══ A7 · Act II · build the scene ═══════════════════════════════════ -->
+    <!-- Structure follows the MVP editor — toolbox / canvas / inspector —
+         restyled, not redesigned. -->
+    <section class="screen" id="a7" data-screen="a7">
+
+      <!-- The action bar: the third band of the shared chrome stack, under the act
+           rail and above the canvas. Cadence and send are the only two actionable
+           controls on this screen and they are one decision, so they leave the
+           settings rail — which is now selection + preview only — and commit
+           together in one row. -->
+      <div class="action-bar">
+        <!-- The sleep setting collapsed to one readable line. Two selects and two
+             headings held the left half of this bar to say a thing that is four words
+             long at rest — and it is a set-once decision, re-opened maybe twice in a
+             session, sitting permanently beside the button you press every minute.
+             The chip states the answer; the popover holds the controls. -->
+        <button type="button" class="btn sleep-chip" id="sleepChip"
+                aria-haspopup="dialog" aria-expanded="false" aria-controls="sleepPop">
+          <span class="cap">Sleep</span>
+          <span class="value" id="sleepChipValue">Timer · every 5 minutes</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+
+        <!-- Hidden at rest, and absent from the tab order with it. Anchored to the
+             bar's left padding rather than to the chip, so it does not walk sideways
+             as the value inside the chip changes length. -->
+        <div class="sleep-pop blueprint elev-md hidden" id="sleepPop" role="dialog"
+             aria-label="Wake and redraw" aria-modal="false">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <span class="label">Wake and redraw</span>
+
+          <!-- CircuitPython only: the alarm the board arms before it sleeps. The
+               WipperSnapper broker path only implements a timer (server.js defers
+               Ext0Config), so this stays hidden there rather than offering a choice
+               nothing downstream would honour. -->
+          <label class="field hidden" id="wakeAlarmField">
+            <span class="pop-label">Wake on</span>
+            <select class="input" id="wakeAlarm">
+              <option value="timer" selected>Timer</option>
+              <option value="pin">Button press</option>
+              <option value="timer+pin">Timer or button</option>
+            </select>
+          </label>
+
+          <!-- A minute at a time up to the deep-sleep line, then coarsening: the four
+               light-sleep options are one minute apart because that is the range where
+               a minute is the whole difference, and past five minutes nobody is
+               choosing between 31 and 32.
+
+               The list is also the sleep-mode boundary drawn in the open. Every option
+               names the mode it produces, and the two halves of the list are exactly
+               the two modes — light below five minutes, deep from five minutes up
+               (DEEP_SLEEP_THRESHOLD_SECS in config.js). There is no mode control any
+               more; the interval derives it, so this is where that fact stays visible.
+               The value attributes are what a7.js matches on; only the labels carry the
+               annotation, and they have to keep agreeing with sleepModeFor(). -->
+          <label class="field">
+            <span class="pop-label">Interval</span>
+            <select class="input" id="wakeInterval">
+              <option value="60">Every minute — light sleep</option>
+              <option value="120">Every 2 minutes — light sleep</option>
+              <option value="180">Every 3 minutes — light sleep</option>
+              <option value="240">Every 4 minutes — light sleep</option>
+              <option value="300" selected>Every 5 minutes — deep sleep</option>
+              <option value="600">Every 10 minutes — deep sleep</option>
+              <option value="900">Every 15 minutes — deep sleep</option>
+              <option value="1800">Every 30 minutes — deep sleep</option>
+              <option value="2700">Every 45 minutes — deep sleep</option>
+              <option value="3600">Every hour — deep sleep</option>
+              <option value="custom">Custom…</option>
+            </select>
+          </label>
+
+          <!-- The path-dependent cue, which is where it belongs: it explains what the
+               push DOES on this firmware, and it is only worth a sentence at the
+               moment someone has opened the sleep setting to think about it. -->
+          <p class="pop-note" id="pushCue">The dashboard is written, then the display sleeps.</p>
+        </div>
+
+        <!-- No note beside the button here: the sentence that explains what the push
+             does is #pushCue, inside the sleep panel above, where it is read at the
+             moment the decision is being made rather than permanently. -->
+        <button type="button" class="btn btn-primary blueprint btn-commit" id="sendBmpSleep">Push to display<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+      </div>
+
+      <div class="editor">
+
+        <aside class="toolbox">
+          <span class="label">Props</span>
+          <button type="button" class="btn prop-btn" id="addLabel"><span class="tile">T</span>Text</button>
+          <!-- The shortcut for "text, already linked to a feed". The same binding is
+               reachable from any Text block's inspector via "Connect to IO Feed";
+               this just skips a step. -->
+          <button type="button" class="btn prop-btn" id="addFeedData"><span class="tile fa-icon">&#xf0c1;</span>Linked text</button>
+          <button type="button" class="btn prop-btn" id="addChart"><span class="tile">∿</span>Chart</button>
+          <button type="button" class="btn prop-btn" id="addGaugeBtn"><span class="tile">◠</span>Gauge</button>
+          <button type="button" class="btn prop-btn" id="addImageBtn"><span class="tile">▣</span>Image</button>
+          <input type="file" id="imgInput" accept="image/png,image/jpeg,image/bmp,.png,.jpg,.jpeg,.bmp" hidden>
+          <button type="button" class="btn prop-btn" id="addIndicatorBtn"><span class="tile">◉</span>Indicator</button>
+          <button type="button" class="btn prop-btn" id="addBatteryBtn"><span class="tile">▰</span>Battery</button>
+          <button type="button" class="btn prop-btn" id="addDivider"><span class="tile">—</span>Divider</button>
+          <button type="button" class="btn prop-btn" id="duplicateBtn"><span class="tile">⧉</span>Duplicate</button>
+
+          <div class="hr" style="margin:8px 0"></div>
+          <span class="label">Templates</span>
+          <button type="button" class="btn prop-btn" data-template="weather">Weather Station</button>
+          <button type="button" class="btn prop-btn" data-template="aqi">AQI Monitor</button>
+          <button type="button" class="btn prop-btn" data-template="quote">Big quote</button>
+
+          <div class="hr" style="margin:8px 0"></div>
+          <!-- Not in the handoff — this is how the prototype is driven against a real
+               board, so they stay. FOLDED AWAY, though: every one of them is a manual
+               step in a pipeline the app already runs on its own ("Push to display"
+               renders, publishes and sleeps), so at the bottom of the toolbox they read
+               as five things the user is expected to do. Collapsed, they are what they
+               are — a bench drawer, open it if you are driving hardware by hand.
+
+               The device-state line that used to sit under them is gone: the pill in the
+               chrome says awake or asleep, and a second readout of one fact is the pair
+               that eventually disagrees. -->
+          <details class="prop-group tools-group">
+            <summary>Advanced tools</summary>
+            <div class="tools">
+              <button type="button" class="btn" id="btnRender">Render preview</button>
+              <button type="button" class="btn" id="btnExport">Export BMP</button>
+              <button type="button" class="btn" id="btnPublish">Publish to IO feed</button>
+              <button type="button" class="btn" id="sendBmp">Send BMP to device</button>
+              <button type="button" class="btn" id="sleepNow">Sleep now (no BMP)</button>
+              <p class="tools-status" id="sleepDebug" style="opacity:.65"></p>
+            </div>
+          </details>
+
+          <!-- Deliberately NOT in the drawer above. It is the one control here that is
+               not a manual step in the normal pipeline but the way out of a bench that
+               has got itself into a state — and a recovery action you have to go looking
+               for is one you reach for too late. -->
+          <button type="button" class="btn btn-danger tools-reset" id="btnResetState" title="Clear the canvas and tear down all editor + broker device state">Reset state</button>
+        </aside>
+
+        <div class="canvas-ground">
+          <div class="device-shell">
+            <div id="stage-holder"></div>
+          </div>
+
+          <!-- The meta strip: what the panel is, and the one render setting that
+               applies to all of it. Dither is a property of the DISPLAY, not of a
+               block — in the selection rail it was unreachable with nothing
+               selected and mis-scoped with something selected, so it sits under
+               the panel it acts on, stated at rest and edited behind a click. -->
+          <div class="canvas-status">
+            <span class="canvas-readout">
+              <span id="dims"></span>
+              <span>·</span>
+              <button type="button" class="btn btn-sm zoom-btn" id="zoomOut" aria-label="Zoom out">−</button>
+              <span id="zoomLabel">100%</span>
+              <button type="button" class="btn btn-sm zoom-btn" id="zoomIn" aria-label="Zoom in">+</button>
+              <button type="button" class="btn btn-sm zoom-btn" id="zoomFit">Fit</button>
+            </span>
+
+            <!-- Anchored to the trigger rather than to the strip: the strip is
+                 centre-aligned under the panel, so a panel hung off its edge would
+                 sit somewhere different for every dither label length. -->
+            <span class="dither-anchor">
+              <button type="button" class="btn dither-chip" id="ditherChip"
+                      aria-haspopup="dialog" aria-expanded="false" aria-controls="ditherPop">
+                <span class="value" id="ditherChipValue">Floyd–Steinberg 85%</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <!-- Dithering lives with the scene, not with the wiring: the device is
+                   handed a BMP that has already been dithered by the render backend,
+                   so this is an authoring decision about how the artwork survives a
+                   1-bit panel — made while looking at the artwork. -->
+              <div class="dither-pop blueprint elev-md hidden" id="ditherPop" role="dialog"
+                   aria-label="Dither" aria-modal="false">
+                <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                <span class="label">Dither</span>
+                <div class="seg seg-tight" id="ditherSeg">
+                  <label class="seg-opt"><input type="radio" name="dmode" value="FloydSteinberg" checked>Floyd–Steinberg</label>
+                  <label class="seg-opt"><input type="radio" name="dmode" value="ordered">Ordered</label>
+                  <label class="seg-opt"><input type="radio" name="dmode" value="none">None</label>
+                </div>
+                <div class="prop-row" id="diffusionRow">
+                  <span class="pop-label">Diffusion</span>
+                  <input type="range" id="diffusion" min="0" max="100" value="85" aria-label="Diffusion amount" style="flex:1">
+                  <span class="mono" id="diffusionLabel" style="font-size:11px; width:34px; text-align:right">85%</span>
+                </div>
+                <div class="prop-row hidden" id="orderedRow">
+                  <span class="pop-label">Map</span>
+                  <select class="input" id="orderedMap" style="flex:1">
+                    <option value="8">o8×8</option>
+                    <option value="4">o4×4</option>
+                    <option value="2">o2×2</option>
+                  </select>
+                </div>
+                <button type="button" class="btn btn-block" id="btnDitherPreview">See it dithered</button>
+                <p class="pop-note" id="ditherHint"></p>
+              </div>
+            </span>
+          </div>
+
+          <section id="canvasJsonPanel" class="blueprint" aria-label="Canvas layout JSON (auto-saved)">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div class="cj-head">
+              <span class="cj-title">canvas.json</span>
+              <div class="cj-actions">
+                <span id="canvasSaveStatus" data-state="saved">saved</span>
+                <button type="button" id="canvasCopyBtn" class="btn btn-sm" title="Copy JSON to clipboard">Copy</button>
+                <button type="button" id="canvasExportBtn" class="btn btn-sm" title="Download canvas.json">Export JSON</button>
+              </div>
+            </div>
+            <pre><code id="canvasJson"></code></pre>
+          </section>
+        </div>
+
+        <aside class="inspector">
+          <div id="propBody"></div>
+
+          <div class="hr"></div>
+          <span class="label">Preview</span>
+          <label class="check-row"><input type="checkbox" id="snapToggle" checked> Snap to grid</label>
+          <label class="check-row"><input type="checkbox" id="gridToggle" checked> Grid lines</label>
+          <div class="prop-row">
+            <span class="label">Every</span>
+            <select id="gridSize" style="flex:1">
+              <option value="4">4 px</option>
+              <option value="8" selected>8 px</option>
+              <option value="10">10 px</option>
+              <option value="16">16 px</option>
+              <option value="20">20 px</option>
+            </select>
+          </div>
+
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ══ A8 · Act III · sent, asleep, changes queued ═════════════════════ -->
+    <!-- The rule: the editor stays fully usable while the device sleeps. Edits do
+         not fail and do not block — they queue and are written on the next wake. -->
+    <section class="screen" id="a8" data-screen="a8">
+      <!-- State, and only state. The countdown that used to fill the left of this bar has
+           moved to the app bar, where A7 can see it too — every figure in it is still the
+           board's own, counting down to a wake it reported arming. Nothing here predicts,
+           and nothing here is a control. -->
+      <div class="sleep-bar">
+        <div class="message">
+          <span class="headline" id="sleepHeadline">Display is sleeping</span>
+          <!-- The board's own record, when there is one: the times IT reported, as
+               opposed to the times the editor inferred. Hidden until a device says
+               something, so it never pads the banner with an empty claim. -->
+          <span class="report" id="sleepReport" hidden></span>
+        </div>
+        <!-- The armed window, opposite the countdown running through it: 04:12 left
+             of fifteen minutes. State, not a control — every button has left this
+             bar for the action bar below. -->
+        <div class="cadence">
+          <span class="cap">Refreshes every</span>
+          <span class="figure" id="refreshEvery">5 minutes</span>
+        </div>
+      </div>
+
+      <!-- The same action bar A7 carries, holding the same rank of decision: the one
+           thing there is to do from here. Sleeping must not read as "come back
+           later" — the whole point of this screen is that you can keep working —
+           so the way back into the editor is a committed row of its own rather
+           than a button tucked into a status bar. -->
+      <div class="action-bar">
+        <!-- Empty and hidden at rest: renderNext() fills it only when there is a
+             count to give, so the sentence beside it stands alone the rest of the time. -->
+        <span class="action-label hidden" id="queueNote"></span>
+        <span class="action-note">Anything you edit will be included on the next take</span>
+        <button type="button" class="btn btn-primary blueprint btn-commit" id="editDashboard">Edit dashboard<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+      </div>
+
+      <!-- The before/after pair is the core idea of this screen: it makes "your
+           edits are real but not yet on the glass" visible without a modal, a
+           lock, or an error. -->
+      <div class="takes">
+        <figure class="take" data-role="written">
+          <div class="take-head">
+            <figcaption class="take-label">On the panel now</figcaption>
+            <span class="tag tag-outline">Intermission</span>
+          </div>
+          <div class="glass" id="takeWritten"><div class="placeholder">Nothing has been written to this panel yet.</div></div>
+          <span class="caption" id="takeWrittenCaption">not yet written</span>
+        </figure>
+        <figure class="take" data-role="next">
+          <div class="take-head">
+            <figcaption class="take-label">The next take</figcaption>
+            <span class="tag tag-accent">Up next</span>
+          </div>
+          <div class="glass blueprint" id="takeNext">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div class="placeholder">—</div>
+          </div>
+          <span class="caption" id="takeNextCaption">up to date</span>
+        </figure>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── modals ─────────────────────────────────────────────────────────────── -->
+
+<div class="modal-backdrop hidden" id="previewModal">
+  <div class="modal" role="dialog" aria-label="Render preview">
+    <div class="modal-head">
+      <h4>Render preview</h4>
+      <button type="button" class="modal-close" id="previewClose" aria-label="Close preview">✕</button>
+    </div>
+    <div style="display:grid; place-items:center; padding:16px; background:var(--color-canvas-ground); border:1px solid var(--color-divider); overflow:auto; max-height:55vh">
+      <img id="previewImg" alt="Dithered render of the current layout"
+           style="image-rendering:pixelated; border:1px solid var(--panel-bezel); background:var(--panel-paper)">
+    </div>
+    <p class="hint mono" id="previewMeta"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" id="previewExport">Export BMP</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="publishModal">
+  <div class="modal" role="dialog" aria-label="Publish to Adafruit IO">
+    <div class="modal-head">
+      <h4>Publish to IO feed</h4>
+      <button type="button" class="modal-close" id="publishClose" aria-label="Close publish dialog">✕</button>
+    </div>
+    <p class="hint">Set your IO username, key and group under <strong>Settings</strong>.</p>
+    <div class="modal-actions">
+      <span class="hint mono" id="publishDebug" style="flex:1; text-align:left"></span>
+      <button type="button" class="btn btn-primary" id="publishSend">Publish</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="settingsModal">
+  <div class="modal" role="dialog" aria-label="Settings">
+    <div class="modal-head">
+      <h4>Settings</h4>
+      <button type="button" class="modal-close" id="settingsClose" aria-label="Close settings">✕</button>
+    </div>
+
+    <span class="label">Adafruit IO</span>
+    <div class="grid-3">
+      <label class="field"><span class="label">IO username</span><input type="text" id="ioUser" autocomplete="off"></label>
+      <label class="field"><span class="label">AIO key</span><input type="password" id="ioKey" autocomplete="off"></label>
+      <label class="field"><span class="label">Group key</span><input type="text" id="ioGroup" placeholder="marquee" autocomplete="off"></label>
+    </div>
+    <!-- One name, four feeds. A5b sets this for you on the CircuitPython path;
+         WipperSnapper boards have no bundle step, so it is typed here instead. -->
+    <p class="hint">The device's Adafruit IO group. Its feeds are <span class="mono">{group}.bitmap</span>, <span class="mono">{group}.sleep</span>, <span class="mono">{group}.status</span> and <span class="mono">{group}.canvas-state</span>.</p>
+
+    <!-- The one host switch for the whole app. It used to be a "Publish to Prod"
+         checkbox in the publish dialog, which read as a per-publish decision and
+         was not one: every read, every write and the generated bundle all resolve
+         through ioHost(), so a box that lived beside a single button was silently
+         retargeting all of them. Off means io.adafruit.com, which is where real
+         accounts are. -->
+    <label class="check-row"><input type="checkbox" id="ioDev"> Developer mode — use <span class="mono">io.adafruit.us</span></label>
+    <p class="hint">Off, everything talks to <span class="mono">io.adafruit.com</span>. On, it all moves to the <span class="mono">.us</span> staging environment — feed reads, publishes, the group A5b creates, and the host written into the code bundle. The two are separate accounts with separate keys, so switching mid-setup will need different credentials.</p>
+
+    <div class="hr"></div>
+    <span class="label">ProtoMQ target</span>
+    <p class="hint">Display publishing uses the topic <span class="mono">{user}/ws-b2d/{device}</span>.</p>
+    <div class="grid-3">
+      <label class="field"><span class="label">User</span><input type="text" id="pmUser" value="test_user" autocomplete="off"></label>
+      <label class="field"><span class="label">Device</span><input type="text" id="pmDevice" value="magtag" autocomplete="off"></label>
+    </div>
+
+    <div class="hr"></div>
+    <span class="label">Sleep behaviour</span>
+    <div class="grid-3">
+      <label class="field"><span class="label">Duration (seconds)</span>
+        <input type="number" id="sleepDuration" value="300" min="0" max="4294967295" autocomplete="off">
+      </label>
+      <label class="field"><span class="label">Write-ack retry (min)</span>
+        <input type="number" id="writeRetryWindow" value="5" min="1" max="60" autocomplete="off">
+      </label>
+    </div>
+    <p class="hint">Duration is the timer the device sleeps on, and is what "Wake and redraw" in the editor sets. It also picks the sleep mode, which is why there is no control for one: under 5 minutes the device light-sleeps, because waking in place beats paying for a boot; from 5 minutes up it deep-sleeps. The retry window is how long "Push to display" keeps resending the image (every 45s) waiting for the device to confirm the write; sleep is only sent once it does.</p>
+
+    <div class="hr"></div>
+    <span class="label">This display's panel</span>
+    <div class="grid-3" style="margin-bottom:10px">
+      <label class="field">
+        <span class="label">Display name</span>
+        <!-- What this board is called on the device list and in the crumb. Written
+             through from A5b's device-name field during setup; editable here after. -->
+        <input type="text" id="marqueeName" placeholder="Kitchen board" autocomplete="off">
+      </label>
+      <div class="field">
+        <span class="label">Orientation</span>
+        <!-- A view onto rotation, which lives in full in the disclosure below.
+             Flipping it rotates by 90°, so a panel with a portrait-native
+             framebuffer still reads correctly here. -->
+        <div class="seg" id="orientSeg">
+          <label class="seg-opt"><input type="radio" name="orient" value="landscape" checked>Landscape</label>
+          <label class="seg-opt"><input type="radio" name="orient" value="portrait">Portrait</label>
+        </div>
+      </div>
+    </div>
+    <!-- These fields used to live inside A5, which the new flow does not visit. They
+         have to stay mounted regardless — config.js reads them from A7 and A8 to build
+         every /display request — so they moved to the one container that is mounted AND
+         reachable from every screen rather than being stranded on a parked one.
+
+         Picking a device on A4 fills all of this in. It is here for a panel someone
+         wired themselves, and for the orientation control, which has no other home. -->
+        <details class="disclosure blueprint" id="advanced">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <summary>Advanced — panel, driver and pins</summary>
+          <div class="disclosure-body">
+            <p class="warn-line">Only change these if you wired the panel yourself. Everything here came from the preset.</p>
+
+            <div>
+              <span class="label">Presets</span>
+              <div class="preset-row" id="presetRow" style="margin-top:6px"></div>
+            </div>
+
+            <div class="grid-3">
+              <label class="field"><span class="label">Driver</span>
+                <select id="pmDriver">
+                  <optgroup label="EPD">
+                    <!-- Values must match a key in EPD_DRIVERS (presets.js) or
+                         cfg-marquee.json cannot name a class to import. -->
+                    <option value="SSD1680" selected>SSD1680</option>
+                    <option value="IL0373">IL0373</option>
+                    <option value="UC8253">UC8253</option>
+                    <option value="UC8179">UC8179</option>
+                    <option value="UC8151D">UC8151D</option>
+                    <option value="SSD1683">SSD1683</option>
+                    <option value="JD79661">JD79661</option>
+                    <!-- No adafruit_epd.uc8279 exists, so this one resolves to
+                         no class and is WipperSnapper-only. It is still listed
+                         because applyDisplayPreset() assigns this select by
+                         value: leave it out and the Xteink X4 Pro preset would
+                         silently fall back to SSD1680. -->
+                    <option value="UC8279">UC8279</option>
+                  </optgroup>
+                  <optgroup label="TFT">
+                    <option value="ST7789">ST7789</option>
+                  </optgroup>
+                </select>
+              </label>
+              <label class="field"><span class="label">Panel</span>
+                <input type="text" id="pmPanel" value="adafruit-magtag" autocomplete="off">
+              </label>
+              <label class="field"><span class="label">Display name</span>
+                <input type="text" id="pmName" value="epd0" autocomplete="off">
+              </label>
+              <label class="field"><span class="label">Resolution</span>
+                <select id="preset">
+                  <option value="200x200">1.54" — 200×200</option>
+                  <option value="250x122">2.13" — 250×122</option>
+                  <option value="122x250">2.13" — 122×250 (portrait native)</option>
+                  <option value="128x296" selected>2.9" — 128×296 (portrait native)</option>
+                  <option value="296x128">2.9" — 296×128</option>
+                  <option value="400x300">4.2" — 400×300</option>
+                  <option value="600x448">5.65" — 600×448</option>
+                  <option value="800x400">Xteink X4 Pro — 800×400</option>
+                  <option value="800x480">7.5" — 800×480</option>
+                  <option value="custom">Custom…</option>
+                </select>
+              </label>
+              <label class="field"><span class="label">Rotation</span>
+                <select id="rotSel">
+                  <option value="0">0° — native</option>
+                  <option value="90">90°</option>
+                  <option value="180">180°</option>
+                  <option value="270" selected>270°</option>
+                </select>
+              </label>
+              <label class="field"><span class="label">Mode</span>
+                <select id="dtype">
+                  <option value="mono" selected>Mono</option>
+                  <option value="gray4">Grayscale 4</option>
+                  <option value="tricolor">Tri-color</option>
+                  <option value="quadcolor">Quad color (BWRY)</option>
+                </select>
+              </label>
+              <!-- Column offset. Blank rather than 0 by default: a preset that
+                   has nothing to say about the offset leaves this empty, and an
+                   empty field is what keeps `colstart` out of the descriptor
+                   entirely for the panels it does not apply to. -->
+              <label class="field"><span class="label">Column offset</span>
+                <input type="number" id="pmColstart" step="8" value="" placeholder="0" autocomplete="off">
+              </label>
+            </div>
+
+            <p class="hint">Column offset shifts the framebuffer against the controller's column RAM, in pixels — leave it blank unless the panel has a dead zone at one edge. The 2.13" Tri-Color FeatherWing needs <span class="mono">8</span>; the SSD1680Z breakout needs <span class="mono">-8</span>. Blank or <span class="mono">0</span> is left out of <span class="mono">cfg-marquee.json</span>, where absent means no shift.</p>
+
+            <div class="prop-row hidden" id="customRes">
+              <span class="label">Custom</span>
+              <input type="number" id="resW" value="128" min="8" max="4096" aria-label="Panel width in pixels">
+              <span class="label">×</span>
+              <input type="number" id="resH" value="296" min="8" max="4096" aria-label="Panel height in pixels">
+            </div>
+
+            <div>
+              <span class="label">Interface — SPI EPD pins</span>
+              <p class="hint" style="margin-top:4px">Panel format: <span class="mono">{size}-{resolution}-{color_mode}</span> for a bare panel, or <span class="mono">{vendor}-{product}</span> for one inside a product. A pin of <span class="mono">-1</span> means "not wired".</p>
+              <div class="grid-4" style="margin-top:8px">
+                <label class="field"><span class="label">Busy</span><input type="text" id="pinBusy" value="D5" autocomplete="off"></label>
+                <label class="field"><span class="label">DC</span><input type="text" id="pinDc" value="D7" autocomplete="off"></label>
+                <label class="field"><span class="label">Reset</span><input type="text" id="pinRst" value="D6" autocomplete="off"></label>
+                <label class="field"><span class="label">CS (EPD)</span><input type="text" id="pinCs" value="D8" autocomplete="off"></label>
+                <label class="field"><span class="label">SRAM CS</span><input type="text" id="pinSramCs" value="" placeholder="if required" autocomplete="off"></label>
+                <label class="field"><span class="label">MOSI</span><input type="text" id="pinMosi" value="D35" autocomplete="off"></label>
+                <label class="field"><span class="label">SCK</span><input type="text" id="pinSck" value="D36" autocomplete="off"></label>
+                <label class="field"><span class="label">SPI bus</span><input type="number" id="spiBus" value="0" min="0"></label>
+              </div>
+            </div>
+
+            <div style="display:flex">
+              <button type="button" class="btn btn-ghost btn-sm" id="resetToPreset" disabled>Reset to preset</button>
+            </div>
+          </div>
+        </details>
+
+    <div class="hr"></div>
+    <span class="label">Setup</span>
+    <p class="hint">"Start setup over" runs this display through the flow again — pick the device, its Adafruit IO group, its Wi-Fi. Its panel settings, credentials and dashboard are kept. "Remove" forgets it in this browser only: nothing on Adafruit IO is touched, and the board keeps running whatever was last flashed onto it.</p>
+    <div style="display:flex; gap:10px">
+      <button type="button" class="btn btn-secondary btn-sm" id="restartSetup">Start setup over</button>
+      <button type="button" class="btn btn-danger btn-sm" id="removeDisplay">Remove this display</button>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" id="settingsDone">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="feedDataModal">
+  <div class="modal" role="dialog" aria-label="Select a feed">
+    <div class="modal-head">
+      <h4>Select a feed</h4>
+      <button type="button" class="modal-close" id="feedDataClose" aria-label="Close feed picker">✕</button>
+    </div>
+    <input type="text" id="feedFilter" placeholder="Filter feeds…" autocomplete="off">
+    <div id="feedList" style="max-height:320px; overflow:auto; display:flex; flex-direction:column; gap:4px; margin-top:8px"></div>
+    <p class="hint mono" id="feedListStatus"></p>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<!-- Konva 10.3.0 — a UMD bundle, loaded classically so it registers on the
+     global before any module runs. js/canvas/konva.js re-exports it. -->
+<script src="js/vendor/konva.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
