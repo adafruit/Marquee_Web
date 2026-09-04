@@ -25,7 +25,7 @@ import { deviceEntry, navigate, currentScreen } from '../core/router.js';
 import { DISPLAY_PRESETS } from '../device/presets.js';
 import { readPanelCache, writePanelCache } from './a8.js';
 import * as devices from '../device/devices.js';
-import { $, val, escapeHtml, escapeAttr, fmtAgo, fmtClock, toast } from '../core/util.js';
+import { $, val, escapeHtml, escapeAttr, fmtAgo, fmtLocalTime, toast } from '../core/util.js';
 
 /**
  * What a tile can say about a device without activating it.
@@ -38,9 +38,10 @@ function tileFacts(rec) {
   const flow = rec.flow || {};
   const preset = flow.selectedPanel ? DISPLAY_PRESETS[flow.selectedPanel] : null;
   const asleep = flow.deviceState === 'asleep';
-  const wakesIn = asleep && flow.wakesAt && flow.wakeSource !== 'pin'
-    ? Math.max(0, Math.round((flow.wakesAt - Date.now()) / 1000))
-    : null;
+  // An absolute wake time, not a countdown: nothing on this screen ticks, so "wakes in
+  // 4:12" would be frozen at whatever it was when the grid last rendered. "wakes at
+  // 9:47 AM" stays true however long the tile sits there.
+  const wakesAt = asleep && flow.wakesAt && flow.wakeSource !== 'pin' ? flow.wakesAt : null;
 
   return {
     label: devices.deviceLabel(rec),
@@ -50,7 +51,7 @@ function tileFacts(rec) {
     // written to is neither — it reads as the neutral pill with no time beside it.
     live: !asleep && !!flow.lastWriteAt,
     asleep,
-    when: wakesIn != null ? `wakes in ${fmtClock(wakesIn)}` : (flow.lastWriteAt ? `refreshed ${fmtAgo(flow.lastWriteAt)}` : ''),
+    when: wakesAt != null ? `wakes at ${fmtLocalTime(new Date(wakesAt))}` : (flow.lastWriteAt ? `refreshed ${fmtAgo(flow.lastWriteAt)}` : ''),
   };
 }
 
