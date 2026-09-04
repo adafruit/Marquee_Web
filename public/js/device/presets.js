@@ -3,18 +3,17 @@
  *
  * One entry per board Marquee knows how to fill in. Each carries both halves of
  * what the flow needs: the marketing side A4 shows on a product card (label,
- * spec line, search terms) and the wiring side A5 writes into the display
- * descriptor (resolution, rotation, color mode, driver, panel id, SPI pins).
+ * spec line, search terms) and the wiring side the Settings modal writes into the
+ * display descriptor (resolution, rotation, color mode, driver, panel id, SPI pins).
  *
  * Rotation and resolution are the UNROTATED framebuffer as the firmware sees it,
  * with `rotation` as the clockwise 90° step the device applies on top. That
  * distinction matters for every panel whose native buffer is portrait — the three
- * 2.13" entries and the MagTag — because adafruit_epd's constructor takes exactly
- * that native pair: Adafruit_SSD1680(122, 250), Adafruit_SSD1680(128, 296),
- * Adafruit_SSD1683(400, 300), Adafruit_UC8179(800, 480). Storing the rotated
- * geometry at rotation 0 instead would build a driver with its width and height
- * transposed, so `preset` here is always the datasheet scan order and `rotation`
- * is what turns it into the orientation the product is used in.
+ * 2.13" entries and the MagTag — because an EPD driver is constructed from exactly
+ * that native pair: (122, 250), (128, 296), (400, 300), (800, 480). Storing the
+ * rotated geometry at rotation 0 instead would build a driver with its width and
+ * height transposed, so `preset` here is always the datasheet scan order and
+ * `rotation` is what turns it into the orientation the product is used in.
  */
 
 export const DISPLAY_PRESETS = {
@@ -32,12 +31,9 @@ export const DISPLAY_PRESETS = {
     terms: 'magtag 2.9 esp32-s2 mono ssd1680',
     preset: '128x296', rotation: '270', mode: 'mono',
     name: 'epd0', driver: 'SSD1680', panel: 'adafruit-magtag',
-    // The panel is soldered to the board, so CircuitPython has already brought it
-    // up as board.DISPLAY by the time code.py runs — see ifaceTypeFor(). The pins
-    // below are still the truth for the WipperSnapper path, which drives the EPD
-    // itself; they are not board attribute names on a MagTag (its EPD is on
-    // board.EPD_CS/EPD_DC/..., not board.D8/board.D7), which is exactly why the
-    // CircuitPython descriptor omits a pinout for this entry.
+    // The panel is soldered to the board, so the firmware already owns it — these
+    // pins describe the wiring, not board attribute names (a MagTag's EPD is on
+    // EPD_CS/EPD_DC/…, not D8/D7). `iface: 'builtin'` is what records that.
     iface: 'builtin',
     pins: { busy: 'D5', dc: 'D7', rst: 'D6', cs: 'D8', sramCs: '', mosi: 'D35', sck: 'D36', bus: 0 },
   },
@@ -78,7 +74,7 @@ export const DISPLAY_PRESETS = {
   //     page calls this out directly: as of 2025-08-14 the breakout ships the
   //     SSD1680Z and "has a different 'offset' than previous panels".
   // `driver` is still SSD1680 because the Z is the same controller programming
-  // model — there is no adafruit_epd.ssd1680z — and the offset is exactly what
+  // model — there is no separate SSD1680Z driver — and the offset is exactly what
   // colstart now carries instead. The panel id uses the adafruit-{product} form so
   // the two 2.13" tri-colors are never confused for one another.
   tricolorBO: {
@@ -170,19 +166,14 @@ export const DISPLAY_PRESETS = {
   //   * the panel id is 'xteink-x4-pro' — the {vendor}-{product} form the
   //     'adafruit-{product_id}' entries use, because like them this names a
   //     product, and unlike the ThinkInk entries there is no part suffix to name.
-  //   * `iface` stays spi_epd, not builtin: the panel is soldered down, but that
-  //     only matters for a board CircuitPython brings up as board.DISPLAY, and
-  //     nothing here does.
+  //   * `iface` stays spi_epd, not builtin: the panel is soldered down, but there
+  //     is no board-owned display object here for the firmware to adopt.
   //
   // 800x400 is already the landscape orientation the device is read in, so
   // rotation is 0 and the framebuffer is the datasheet scan order unchanged.
   //
-  // UC8279 is deliberately absent from EPD_DRIVERS below: there is no
-  // adafruit_epd.uc8279 in the library at main, so this is a WipperSnapper-path
-  // panel. driverFor() returns null, cfg-marquee.json gets `class: null`, and the
-  // bundle's README says so in words rather than emitting an import that ImportErrors
-  // on the board. BUSY is also active-HIGH here, which adafruit_epd assumes anyway
-  // but the descriptor has no field for either way.
+  // BUSY is active-HIGH on this panel, which EPD drivers assume anyway — but the
+  // descriptor has no field for it either way, so it is recorded here.
   x4pro: {
     label: 'Xteink X4 Pro',
     spec: '800×400 · mono · UC8279',
@@ -222,95 +213,6 @@ export function presetCardLabel(key) {
 export function presetCardMeta(key) {
   const p = DISPLAY_PRESETS[key];
   return p?.cardMeta || p?.spec || '';
-}
-
-/**
- * `interface.type` for a panel id — what a CircuitPython consumer has to do to get
- * a drawing surface.
- *
- * `builtin`  the panel is part of the board. CircuitPython constructs it at boot
- *            and hands it over as `board.DISPLAY`; there is no bus to open, and no
- *            pinout to read, because the board's EPD pins are not `board.D<n>`
- *            names at all. A preset opts in with `iface: 'builtin'`.
- * `spi_epd`  the default: the user wired the panel up, so the descriptor carries
- *            the SPI bus and the five EPD pins and the consumer builds the driver.
- *
- * An unknown panel id — the user typed their own into A5 — is `spi_epd`, which is
- * the assumption that fails loudly rather than silently drawing nothing.
- */
-export function ifaceTypeFor(panelId) {
-  const key = PRESET_KEYS.find((k) => DISPLAY_PRESETS[k].panel === panelId);
-  return (key && DISPLAY_PRESETS[key].iface) || 'spi_epd';
-}
-
-/**
- * Driver string -> the CircuitPython class that drives it. This is the whole
- * reason cfg-marquee.json can be executed rather than just read: without it a
- * consumer knows the panel is an SSD1680 but not that the import it wants is
- * `from adafruit_epd.ssd1680 import Adafruit_SSD1680`.
- *
- * Verified against Adafruit_CircuitPython_EPD @ main. Every constructor in the
- * library takes the same shape — `(width, height, spi, *, cs_pin, dc_pin,
- * sramcs_pin, rst_pin, busy_pin)`, keyword-only after `spi` — so the only things
- * that vary per driver are the class name, the grayscale variant, and whether the
- * class accepts `tri_color`. Those three are what this table records.
- *
- * A driver absent from this map is not an error, it is a panel we cannot generate
- * CircuitPython for. The emitter writes `class: null` and lets the consumer refuse
- * cleanly, which is why ST7789 (a TFT, not an EPD) is deliberately not here.
- *
- *   module        the import path
- *   cls           the default class
- *   gray4         the 4-level-grayscale subclass, where the driver has one. A
- *                 gray4 panel driven by the base class silently loses two shades.
- *   tricolor      subclass to use for a red/white panel, where the driver splits
- *                 mono and tricolor into separate classes rather than a kwarg
- *   mono          ditto, for mono
- *   triColorKwarg the class takes `tri_color=True` instead of having subclasses
- */
-export const EPD_DRIVERS = {
-  EK79686:  { module: 'adafruit_epd.ek79686',  cls: 'Adafruit_EK79686' },
-  IL0373:   { module: 'adafruit_epd.il0373',   cls: 'Adafruit_IL0373' },
-  IL0398:   { module: 'adafruit_epd.il0398',   cls: 'Adafruit_IL0398' },
-  IL91874:  { module: 'adafruit_epd.il91874',  cls: 'Adafruit_IL91874' },
-  // Quad-color. Note this class shadows the base colour constants:
-  // BLACK=0, WHITE=1, YELLOW=2, RED=3, where Adafruit_EPD has INVERSE=2, RED=3.
-  // Resolving ink by NAME off the driver class — not by integer — is what keeps
-  // that difference from becoming a red/yellow swap.
-  JD79661:  { module: 'adafruit_epd.jd79661',  cls: 'Adafruit_JD79661' },
-  JD79667:  { module: 'adafruit_epd.jd79667',  cls: 'Adafruit_JD79667' },
-  SSD1608:  { module: 'adafruit_epd.ssd1608',  cls: 'Adafruit_SSD1608' },
-  SSD1675:  { module: 'adafruit_epd.ssd1675',  cls: 'Adafruit_SSD1675' },
-  SSD1675B: { module: 'adafruit_epd.ssd1675b', cls: 'Adafruit_SSD1675B' },
-  SSD1680:  { module: 'adafruit_epd.ssd1680',  cls: 'Adafruit_SSD1680',
-              gray4: 'Adafruit_SSD1680_Grayscale4' },
-  SSD1680B: { module: 'adafruit_epd.ssd1680b', cls: 'Adafruit_SSD1680B' },
-  SSD1681:  { module: 'adafruit_epd.ssd1681',  cls: 'Adafruit_SSD1681' },
-  SSD1683:  { module: 'adafruit_epd.ssd1683',  cls: 'Adafruit_SSD1683',
-              gray4: 'Adafruit_SSD1683_Grayscale4' },
-  UC8151D:  { module: 'adafruit_epd.uc8151d',  cls: 'Adafruit_UC8151D' },
-  UC8179:   { module: 'adafruit_epd.uc8179',   cls: 'Adafruit_UC8179', triColorKwarg: true },
-  UC8253:   { module: 'adafruit_epd.uc8253',   cls: 'Adafruit_UC8253',
-              mono: 'Adafruit_UC8253_Mono', tricolor: 'Adafruit_UC8253_Tricolor' },
-  // The A5 dropdown shipped a typo for a while; keep the alias so a stale
-  // localStorage entry still resolves to a real class.
-  ILI0373:  { module: 'adafruit_epd.il0373',   cls: 'Adafruit_IL0373' },
-};
-
-/**
- * Resolve a driver + colour mode to the class and constructor keywords to use.
- * Returns null when there is no CircuitPython driver for the part.
- */
-export function driverFor(driverId, mode) {
-  const d = EPD_DRIVERS[driverId];
-  if (!d) return null;
-  const cls = d[mode] || (mode === 'gray4' && d.gray4) || d.cls;
-  const kwargs = {};
-  // Only UC8179 is told its colour buffer by keyword; everywhere else the class
-  // itself already knows, and restating a default is how you pin one that later
-  // changes upstream.
-  if (d.triColorKwarg && (mode === 'tricolor' || mode === 'quadcolor')) kwargs.tri_color = true;
-  return { module: d.module, cls, kwargs };
 }
 
 /** Free-text match over the label, spec and the extra search terms. */

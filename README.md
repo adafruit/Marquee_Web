@@ -45,12 +45,11 @@ nothing will render until it is.
 
 ## Configuration
 
-The server reads four environment variables, all optional:
+The server reads three environment variables, all optional:
 
 | Variable | Default | What it does |
 |---|---|---|
 | `PORT` | `3000` | Port the editor and backend listen on. |
-| `PROTOMQ_URL` | `http://localhost:5173` | ProtoMQ broker's HTTP control API. Only the WipperSnapper endpoints use it; without a broker they answer `502` and the rest of the editor is unaffected. |
 | `AIO_USER` | *(unset)* | Adafruit IO username for the optional server-side publish path. |
 | `AIO_KEY` | *(unset)* | Adafruit IO key for the same. |
 
@@ -74,9 +73,8 @@ Treat your Adafruit IO key like a password, and keep `.env` out of git — the
 
 ```
 server/
-  index.js         Express app: render, publish, ProtoMQ bridge, canvas persistence
+  index.js         Express app: render, publish, canvas persistence
   palettes/        the four -remap PNGs ImageMagick quantizes against
-protobufs/         vendored copy of ProtoMQ's protobuf bundle (re-sync if its protos change)
 data/              runtime state — canvas.json lands here, gitignored
 docs/              the feed and file format specs
 public/
@@ -112,10 +110,14 @@ A1 device list -> A4 pick device -> A5b Adafruit IO -> A5c Wi-Fi -> A6a flash
 A7 (build) and A8 (show) are the editor proper and loop between themselves; setup
 is only re-entered by adding a device.
 
-There are also parked `<section>`s for **A3**, **A5** and **A6** in `index.html`.
-They are not routable and have no JavaScript — `router.js` hard-rejects
-navigation to them. A5's markup stays because `core/config.js` reads the display
-descriptor fields inside its advanced disclosure. See **Known gaps** below.
+That list is the whole set: `router.js`'s `SCREENS` map is the single source of
+truth, and `navigate()` hard-rejects anything not in it — which is what keeps a
+`lastScreen` remembered by an older build from routing to a screen that no longer
+exists.
+
+The display descriptor — geometry, rotation, colour mode and the pinout — lives in
+the Settings modal rather than on a setup screen, because `core/config.js` reads
+those fields from A7 and A8 as well.
 
 ## Endpoints
 
@@ -126,16 +128,11 @@ descriptor fields inside its advanced disclosure. See **Known gaps** below.
 | `POST` | `/render` | dither + remap a canvas PNG -> `{ bmp, png, sizes }` |
 | `POST` | `/publish` | render, then push to Adafruit IO with the server's key |
 | `GET` `POST` | `/canvas` | read / persist the canvas layout to `data/canvas.json` |
-| `POST` | `/display/add` | build a `display.Add` descriptor -> ProtoMQ echo |
-| `POST` | `/display/send-bmp` | chunk a BMP into canvas writes -> ProtoMQ echo |
-| `POST` | `/sleep/config` | build a `sleep.SleepConfig` -> ProtoMQ echo |
-| `GET` | `/sleep/status` | poll for device events (write-complete, goodnight, checkin) |
-| `POST` | `/sleep/wake-response` | re-register the broker's wake response |
-| `POST` | `/reset` | clear the watch, the broker's wake response and autoresponders, and the canvas |
+| `POST` | `/reset` | empty `data/canvas.json`, keeping its display descriptor |
 
-The `/display/*` and `/sleep/*` group is the **WipperSnapper** path and needs a
-ProtoMQ broker at `PROTOMQ_URL`. The **CircuitPython** path never touches this
-server: the editor talks to Adafruit IO feeds directly, per the specs in `docs/`.
+That is the whole surface, and none of it talks to a board. This server renders and
+persists; everything that reaches the device goes through Adafruit IO feeds straight
+from the browser, per the specs in `docs/`.
 
 ## Documentation
 
@@ -144,23 +141,19 @@ The wire formats, each one its own contract:
 - [`docs/marquee-canvas-state.md`](docs/marquee-canvas-state.md) — the `{group}.canvas-state` feed: the editable scene, parked on Adafruit IO
 - [`docs/marquee-sleep.md`](docs/marquee-sleep.md) — the `{group}.sleep` feed: how long to sleep and what to wake on
 - [`docs/marquee-status.md`](docs/marquee-status.md) — the `{group}.status` feed: what the board reports back
-- [`docs/cfg-marquee.md`](docs/cfg-marquee.md) — the `cfg-marquee.json` display descriptor format
 
 ## Known gaps
 
-- **No CircuitPython bundle builder.** Screen A6 downloaded a ZIP of `code.py`,
-  `settings.toml` and `cfg-marquee.json`. It was parked before this repo's first
-  commit — never initialised, and importing router exports that no longer
-  existed — so its two modules were unreachable and were removed rather than
-  committed broken. [`docs/cfg-marquee.md`](docs/cfg-marquee.md) is retained as
-  the format spec for whoever rebuilds it.
-- **`code.py` does not read the sleep feed yet.** The publisher side is
-  complete; the round trip is not. See
-  [`docs/marquee-sleep.md`](docs/marquee-sleep.md).
-- **`protobufs/protomq-bundle.json` is a vendored copy** of ProtoMQ's bundle and
-  must be re-synced by hand if those protos change. A missing or malformed
-  bundle degrades the `/display/*` and `/sleep/*` endpoints to `501` instead of
-  crashing the server.
+- **Flashing is not wired up.** A6-A is built and navigable, but `device/flash.js`
+  is a documented seam: it needs `esptool-js` vendored into `js/vendor/` and a
+  firmware image, neither of which is in this repo. "Skip, my board is already
+  flashed" is the way through for now, and Connect says so in the log rather than
+  miming a result.
+- **The firmware does not read the sleep feed yet, and publishes no status.** The
+  editor's publisher side is complete; the round trip is not. Until a board reports
+  on `{group}.status`, Act III models the cycle and says so. See
+  [`docs/marquee-sleep.md`](docs/marquee-sleep.md) and
+  [`docs/marquee-status.md`](docs/marquee-status.md).
 
 ## License
 

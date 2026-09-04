@@ -134,7 +134,7 @@ export async function getGroup(user, key, groupKey) {
  *
  * IO will slugify the name into a key on its own, and its rules are not exactly
  * ours — so an unstated key is a key that might not match the one A5b has already
- * shown the user and is about to write into settings.toml. Stating it makes the
+ * shown the user and is about to write onto the board. Stating it makes the
  * preview line a promise instead of a guess. It is a promise IO can still refuse,
  * which is why the caller re-reads `key` off the response rather than assuming.
  *

@@ -1,15 +1,15 @@
 /* ============================================================================
    Marquee — application layout.
 
-   Screen-by-screen structure for A3–A8. Built on base.css primitives and the
+   Screen-by-screen structure for A1–A8. Built on base.css primitives and the
    tokens in tokens.css; no literal colors below except where a rule describes
    physical hardware (the panel glass, the device shell), and those come from the
    PANEL group of tokens.css.
 
    Every screen lives in the DOM at once and is shown/hidden by the router. That
    is load-bearing, not laziness: the Konva stage mounts into A7 exactly once and
-   must never be torn down, and the display descriptor fields on A5 are read by
-   the device pipeline from every other screen. See js/router.js.
+   must never be torn down, and the display descriptor fields in the Settings
+   modal are read by the device pipeline from every screen. See js/router.js.
    ========================================================================== */
 
 /* ---- app shell ----------------------------------------------------------- */
@@ -170,7 +170,7 @@
 .screen { display: none; height: 100%; min-height: 0; }
 .screen[data-active="true"] { display: flex; flex-direction: column; }
 
-/* A padded, scrollable single column — A3's default shape. */
+/* A padded, scrollable single column — A1's and A4's shape. */
 .screen-pad {
   flex: 1;
   min-height: 0;
@@ -181,7 +181,7 @@
   gap: 22px;
 }
 
-/* Main column + fixed side rail — A5 (400px) and A6 (420px). */
+/* Main column + fixed side rail — A5b, A5C and A6-A (400px). */
 .screen-split {
   flex: 1;
   min-height: 0;
@@ -372,57 +372,6 @@
 }
 .add-tile .sub { font-size: 12px; opacity: 0.75; }
 
-/* ---- A3 · the firmware fork ---------------------------------------------- */
-
-#a3 .fork {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 22px;
-  flex: 1;
-  min-height: 0;
-}
-.fork-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 20px;
-}
-/* The detected path is outlined, not filled — the card stays a line drawing. */
-.fork-card[data-detected="true"] { outline: 2px solid var(--color-accent); }
-.fork-card .fork-title {
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  font-size: 22px;
-  letter-spacing: 0.04em;
-}
-.fork-card p { font-size: 13.5px; opacity: 0.85; text-wrap: pretty; }
-.fork-path { display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
-.fork-path > div { display: flex; gap: 9px; }
-.fork-path .n { color: var(--color-accent); flex: none; }
-/* The extra CircuitPython step is called out in accent body text so the cost of
-   that path is visible before the user commits to it. */
-.fork-path .extra { color: var(--color-accent-800); }
-.fork-card .footnote { margin-top: auto; font-size: 12.5px; opacity: 0.7; }
-/* A path that isn't shipping yet. Full-bleed to the card edges — pulled back out
-   through .fork-card's own padding — so it reads as a banner across the card
-   rather than one more tag inside it. The blueprint corner marks sit outside the
-   border at -6px, so this does not clip them. */
-.fork-card .fork-banner {
-  margin: -20px -20px 0;
-  padding: 7px 20px;
-  /* Darkened off the pass green rather than picking a second green: at this size
-     the token itself is only 3.6:1 against the label, which fails AA. 80% lands
-     at 5.3:1. */
-  background: color-mix(in srgb, var(--color-check-pass) 80%, black);
-  color: var(--color-neutral-100);
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  font-size: 14px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-align: center;
-}
-
 /* ---- A4 · pick the device ------------------------------------------------ */
 
 #a4 .panel-grid {
@@ -467,23 +416,9 @@
 .panel-card .tag { align-self: flex-start; margin-top: 4px; }
 #a4 .empty-note { font-size: 13px; opacity: 0.7; padding: 20px 0; }
 
-/* ---- A5 · confirm settings ----------------------------------------------- */
+/* ---- shared form plumbing (Settings) ------------------------------------- */
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-
-/* The summary plate: a panel proxy beside the resolved config. */
-.summary-plate { display: flex; gap: 18px; align-items: center; padding: 16px; }
-.summary-plate .proxy {
-  width: 150px;
-  height: 66px;
-  flex: none;
-  background: var(--panel-paper);
-  border: 1px solid var(--panel-bezel);
-  box-shadow: var(--shadow-glass);
-}
-.summary-plate .lines { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.summary-plate .headline { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 17px; }
-.summary-plate .detail { font-size: 12.5px; opacity: 0.75; }
 
 /* Advanced disclosure. Collapsed by default — the intimidating fields stay out
    of the way of a user who bought a supported board. */
@@ -600,108 +535,6 @@
 .rail-steps { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; text-wrap: pretty; }
 .rail-steps > div { display: flex; gap: 10px; }
 .rail-steps .n { flex: none; width: 14px; opacity: 0.55; }
-
-/* ---- A6 · the code bundle ------------------------------------------------ */
-
-.drag-plate { display: flex; gap: 22px; align-items: center; padding: 16px 18px; }
-.drag-plate .boxes { display: flex; align-items: center; gap: 14px; flex: none; }
-.drag-plate .box {
-  width: 74px;
-  height: 58px;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  border: 1px solid var(--color-neutral-500);
-  color: var(--color-neutral-700);
-}
-.drag-plate .box.target { border: 1px dashed var(--color-accent); color: var(--color-accent-800); letter-spacing: 0.06em; }
-.drag-plate .arrow { font-size: 22px; color: var(--color-accent); letter-spacing: 0.1em; }
-.drag-plate .steps { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.drag-plate .steps > div { display: flex; gap: 10px; }
-.drag-plate .steps .n { opacity: 0.55; width: 14px; flex: none; }
-
-.file-list { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
-.file-list .row { display: flex; gap: 10px; }
-.file-list .row .glyph { opacity: 0.5; }
-.file-list .row .size { margin-left: auto; opacity: 0.6; }
-.file-list .nested { display: flex; flex-direction: column; gap: 5px; padding-left: 22px; font-size: 12.5px; opacity: 0.75; }
-
-/* Each manifest entry can be opened to show the file it stands for. The panel is
-   laid out in flow BELOW its row rather than floated over the rail: .col-rail
-   scrolls, so anything absolutely positioned outside it would be clipped. Opening
-   downward also means the hovered row itself never moves, which is what keeps
-   hover from flickering as the list reflows beneath it. */
-.file-list .file-item { display: flex; flex-direction: column; gap: 7px; }
-.file-list .file-item .row { align-items: baseline; gap: 8px; }
-
-.file-list .peek-toggle {
-  flex: none;
-  width: 14px;
-  padding: 0;
-  font: inherit;
-  font-family: var(--font-mono);
-  line-height: 1;
-  color: inherit;
-  text-align: center;
-  background: none;
-  border: 0;
-  opacity: 0.55;
-  cursor: pointer;
-}
-.file-list .peek-toggle:hover { opacity: 1; }
-.file-list .file-item[data-open="true"] .peek-toggle { opacity: 1; }
-
-.file-list .peek { display: none; position: relative; }
-.file-list .file-item:hover > .peek,
-.file-list .file-item[data-open="true"] > .peek { display: block; }
-/* Keyboard parity: tabbing to the toggle should reveal the same thing hovering
-   does, or the preview is mouse-only. :focus-visible rather than :focus-within,
-   because a mouse click also focuses the button — and with :focus-within the
-   click that sets data-open="false" would leave the panel open anyway, making
-   the − look broken. */
-.file-list .file-item:has(:focus-visible) > .peek { display: block; }
-
-.file-list .peek-body {
-  max-height: 240px;
-  margin: 0;
-  /* Right padding clears the copy button so a long first line cannot slide
-     underneath it. */
-  padding: 9px 66px 9px 11px;
-  overflow: auto;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.55;
-  white-space: pre;
-  tab-size: 2;
-  /* --color-surface, not --color-bg: the rail is already #f5f5f8 and the two are
-     a shade apart, so the block would not read as recessed. */
-  background: var(--color-surface);
-  border: 1px solid var(--color-divider);
-}
-/* Opaque, because it floats over the code rather than beside it. */
-.file-list .peek-copy {
-  position: absolute;
-  top: 6px;
-  right: 7px;
-  background: var(--color-surface);
-  border-color: var(--color-divider);
-}
-.file-list .peek-copy:hover { background: var(--color-accent-100); }
-
-/* A stale bundle is the one A6 state that must not be quiet — the board is
-   running files that no longer match the config. */
-.stale-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  font-size: 13px;
-  color: var(--color-warn);
-  border: 1px solid color-mix(in srgb, var(--color-warn) 45%, transparent);
-  background: color-mix(in srgb, var(--color-warn) 7%, transparent);
-}
 
 /* ---- A7 · the editor ----------------------------------------------------- */
 
@@ -1179,7 +1012,7 @@
 #backendBanner[data-offline="true"] { display: flex; }
 
 /* ---- panel thumbnails ---------------------------------------------------- */
-/* Small renderings of what a panel is showing, used in A8's captions and the
-   A5 summary proxy. Ground is the warm paper, never the UI ground. */
+/* Small renderings of what a panel is showing, used in A8's captions and A1's
+   device tiles. Ground is the warm paper, never the UI ground. */
 
 .thumb { background: var(--panel-thumb); border: 1px solid var(--color-divider); }

@@ -93,63 +93,6 @@
       </div>
     </section>
 
-    <!-- ══ A3 · Act I · what's running on your board? ══════════════════════ -->
-    <!-- The single place the two firmware paths diverge. An explicit question,
-         not an inferred one — but pre-answered when IO already knows the device. -->
-    <section class="screen" id="a3" data-screen="a3">
-      <div class="screen-pad">
-        <div class="screen-head">
-          <div class="eyebrow">Act I · step 1 of 3</div>
-          <h3>What's running on your board?</h3>
-          <p>Both paths end in the same editor. The difference is how the display settings reach the board.</p>
-        </div>
-
-        <div class="fork">
-          <!-- Each card states its own step count up front, so CircuitPython's
-               extra step is visible BEFORE the user commits to that path. -->
-          <div class="fork-card blueprint" id="forkWipper">
-            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <div class="fork-banner">Coming Soon!</div>
-            <div style="display:flex; align-items:center; gap:10px">
-              <span class="fork-title">WipperSnapper</span>
-              <span class="tag tag-neutral" id="wipperTag" style="margin-left:auto">Checking…</span>
-            </div>
-            <p>No-code firmware from Adafruit IO. Marquee sends the display settings straight to the board over the air.</p>
-            <div class="hr"></div>
-            <div class="fork-path">
-              <div><span class="n">1</span> Pick your display</div>
-              <div><span class="n">2</span> Confirm settings — sent over the air</div>
-              <div><span class="n">3</span> Build and push your dashboard</div>
-            </div>
-            <div class="footnote">Nothing to install. Changes take effect on the next wake.</div>
-            <button type="button" class="btn btn-secondary blueprint" id="useWippersnapper">Use WipperSnapper<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
-          </div>
-
-          <div class="fork-card blueprint" id="forkCircuitPython">
-            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <div style="display:flex; align-items:center; gap:10px">
-              <span class="fork-title">CircuitPython</span>
-              <span class="tag tag-outline" style="margin-left:auto">One extra step</span>
-            </div>
-            <p>Your own code on the board. Marquee writes you a code bundle to copy across once — after that, dashboards arrive over the air like any other board.</p>
-            <div class="hr"></div>
-            <div class="fork-path">
-              <div><span class="n">1</span> Pick your display</div>
-              <div><span class="n">2</span> Confirm settings</div>
-              <div class="extra"><span class="n">+</span> Download the code bundle, copy to CIRCUITPY</div>
-              <div><span class="n">3</span> Build and push your dashboard</div>
-            </div>
-            <div class="footnote">Later changes to the display, pins or refresh need a fresh bundle. Dashboard edits don't.</div>
-            <button type="button" class="btn btn-secondary blueprint" id="useCircuitPython">Use CircuitPython<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
-          </div>
-        </div>
-
-        <div style="font-size:12.5px; opacity:0.75">
-          Not sure? Check what's on your board — if it shows up as a <span class="mono">CIRCUITPY</span> drive, it's CircuitPython.
-        </div>
-      </div>
-    </section>
-
     <!-- ══ A4 · pick the device ════════════════════════════════════════════ -->
     <!-- Product cards, not a dropdown of driver chips — and three of them, not the
          whole catalog. presets.js still describes nine panels and any of them can be
@@ -174,54 +117,11 @@
       </div>
     </section>
 
-    <!-- ══ A5 · Act I · confirm settings ═══════════════════════════════════ -->
-    <!-- Show what the preset filled in; keep the intimidating fields collapsed. -->
-    <section class="screen" id="a5" data-screen="a5">
-      <div class="screen-split" style="--rail-w:400px">
-        <div class="col-main">
-          <div class="screen-head">
-            <div class="eyebrow">Act I · step 3 of 3</div>
-            <h3 id="a5Heading">We filled this in for you</h3>
-          </div>
-
-          <div class="summary-plate blueprint">
-            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <div class="proxy" id="summaryProxy"></div>
-            <div class="lines">
-              <div class="headline" id="summaryRes">—</div>
-              <div class="detail" id="summaryDriver">—</div>
-              <div class="detail" id="summaryPins">—</div>
-            </div>
-          </div>
-
-
-          <div class="screen-foot">
-            <button type="button" class="btn btn-secondary" id="a5Back">Back</button>
-            <span class="mono hint" id="a5Debug" style="flex:1"></span>
-            <button type="button" class="btn btn-primary blueprint" id="a5Next">Send to device &amp; open editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
-          </div>
-        </div>
-
-        <aside class="col-rail">
-          <div class="eyebrow">Device check</div>
-          <div style="display:flex; flex-direction:column; gap:10px">
-            <div class="check" data-state="wait" id="chkOnline"><span class="dot"></span><span data-role="text">Checking the broker…</span></div>
-            <div class="check" data-state="wait" id="chkFirmware"><span class="dot"></span><span data-role="text">Firmware support unknown</span></div>
-            <div class="check" data-state="wait" id="chkAck"><span class="dot"></span><span data-role="text">Waiting for config acknowledgement</span></div>
-          </div>
-          <div class="hr" style="margin:6px 0"></div>
-          <div class="eyebrow">Good to know</div>
-          <!-- Load-bearing: this is where the user learns WHY the sleep behavior
-               exists, before they hit it in Act III. -->
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">E-paper takes a few seconds to redraw and keeps the picture with the power off. That's why the display sleeps between updates — and why you can't animate it.</p>
-        </aside>
-      </div>
-    </section>
-
-    <!-- ══ A5b · Act I · CircuitPython only · configure Adafruit IO ═════════ -->
-    <!-- Runs before A6 because the bundle A6 builds bakes in the username, key
-         and feed keys created here. WipperSnapper never sees this screen: that
-         path has no bundle, and its group key is set by hand under Settings. -->
+    <!-- ══ A5b · configure Adafruit IO ══════════════════════════════════════ -->
+    <!-- Runs before the Wi-Fi step because everything downstream — the flash
+         payload, the push, the status watch — addresses the group and feed keys
+         created here. Skipping it leaves the group key to be typed by hand under
+         Settings. -->
     <section class="screen" id="a5b" data-screen="a5b">
       <div class="screen-split" style="--rail-w:400px">
         <div class="col-main">
@@ -421,64 +321,6 @@
       </div>
     </section>
 
-    <!-- ══ A6 · Act I · CircuitPython only · the code bundle ═══════════════ -->
-    <section class="screen" id="a6" data-screen="a6">
-      <div class="screen-split" style="--rail-w:420px">
-        <div class="col-main">
-          <div class="stale-banner hidden" id="bundleStale">
-            <strong>This bundle is out of date.</strong>
-            <span>The display settings changed after you downloaded it — the board is running files that no longer match. Download again and re-copy.</span>
-          </div>
-
-          <div class="screen-head">
-            <div class="eyebrow">Act I · one extra step</div>
-            <h3>Copy this bundle to your board</h3>
-            <p id="a6Sub">Built with the settings you just confirmed. You only do this again if those settings change.</p>
-          </div>
-
-          <div style="display:flex; gap:14px; align-items:center">
-            <button type="button" class="btn btn-primary blueprint" id="bundleDownload" style="padding:12px 26px; font-size:16px; letter-spacing:0.1em">Download bundle<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
-            <span style="font-size:12.5px; opacity:0.7" id="bundleMeta">—</span>
-          </div>
-
-          <div class="drag-plate blueprint">
-            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <div class="boxes">
-              <div class="box">ZIP</div>
-              <div class="arrow">→</div>
-              <div class="box target">CIRCUIT<br>PY</div>
-            </div>
-            <div class="steps">
-              <div><span class="n">1</span> Plug the board in over USB — a CIRCUITPY drive appears.</div>
-              <div><span class="n">2</span> Unzip and drag everything onto that drive, replacing what's there.</div>
-              <div><span class="n">3</span> Press RESET on the board — it connects to Adafruit IO.</div>
-            </div>
-          </div>
-
-          <div class="screen-foot">
-            <a href="https://learn.adafruit.com/adafruit-magtag" target="_blank" rel="noopener" style="font-size:13px">Read the CircuitPython e-paper guide</a>
-            <button type="button" class="btn btn-secondary" id="bundleSkip" style="margin-left:auto">Skip for now</button>
-            <button type="button" class="btn btn-primary blueprint" id="bundleDone">I've copied it — open editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
-          </div>
-        </div>
-
-        <aside class="col-rail">
-          <div class="eyebrow">What's in the bundle</div>
-          <div class="file-list" id="bundleFiles"></div>
-          <div class="hr" style="margin:4px 0"></div>
-          <div class="eyebrow">Device check</div>
-          <div style="display:flex; flex-direction:column; gap:9px">
-            <div class="check" data-state="wait" id="chkCpy"><span class="dot"></span><span data-role="text">CircuitPython version unknown</span></div>
-            <div class="check" data-state="wait" id="chkCheckin"><span class="dot"></span><span data-role="text">Waiting for the board to check in</span></div>
-          </div>
-          <!-- The rule that makes the two paths converge. After check-in, Acts II
-               and III are identical for both paths; only a config change re-opens
-               this screen. -->
-          <p style="margin:auto 0 0; font-size:12.5px; opacity:0.75; text-wrap:pretty">Once it checks in, dashboards arrive over the air. Come back here only if you change the display, its pins or the refresh interval.</p>
-        </aside>
-      </div>
-    </section>
-
     <!-- ══ A7 · Act II · build the scene ═══════════════════════════════════ -->
     <!-- Structure follows the MVP editor — toolbox / canvas / inspector —
          restyled, not redesigned. -->
@@ -510,11 +352,9 @@
           <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
           <span class="label">Wake and redraw</span>
 
-          <!-- CircuitPython only: the alarm the board arms before it sleeps. The
-               WipperSnapper broker path only implements a timer (server.js defers
-               Ext0Config), so this stays hidden there rather than offering a choice
-               nothing downstream would honour. -->
-          <label class="field hidden" id="wakeAlarmField">
+          <!-- The alarm the board arms before it sleeps. Published on the sleep
+               feed alongside the window, so the board knows what to wake on. -->
+          <label class="field" id="wakeAlarmField">
             <span class="pop-label">Wake on</span>
             <select class="input" id="wakeAlarm">
               <option value="timer" selected>Timer</option>
@@ -605,8 +445,6 @@
               <button type="button" class="btn" id="btnRender">Render preview</button>
               <button type="button" class="btn" id="btnExport">Export BMP</button>
               <button type="button" class="btn" id="btnPublish">Publish to IO feed</button>
-              <button type="button" class="btn" id="sendBmp">Send BMP to device</button>
-              <button type="button" class="btn" id="sleepNow">Sleep now (no BMP)</button>
               <p class="tools-status" id="sleepDebug" style="opacity:.65"></p>
             </div>
           </details>
@@ -615,7 +453,7 @@
                not a manual step in the normal pipeline but the way out of a bench that
                has got itself into a state — and a recovery action you have to go looking
                for is one you reach for too late. -->
-          <button type="button" class="btn btn-danger tools-reset" id="btnResetState" title="Clear the canvas and tear down all editor + broker device state">Reset state</button>
+          <button type="button" class="btn btn-danger tools-reset" id="btnResetState" title="Clear the canvas and tear down all editor device state">Reset state</button>
         </aside>
 
         <div class="canvas-ground">
@@ -830,22 +668,22 @@
       <label class="field"><span class="label">AIO key</span><input type="password" id="ioKey" autocomplete="off"></label>
       <label class="field"><span class="label">Group key</span><input type="text" id="ioGroup" placeholder="marquee" autocomplete="off"></label>
     </div>
-    <!-- One name, four feeds. A5b sets this for you on the CircuitPython path;
-         WipperSnapper boards have no bundle step, so it is typed here instead. -->
+    <!-- One name, four feeds. A5b sets this for you during setup; this field is
+         the escape hatch for a device whose group was created elsewhere. -->
     <p class="hint">The device's Adafruit IO group. Its feeds are <span class="mono">{group}.bitmap</span>, <span class="mono">{group}.sleep</span>, <span class="mono">{group}.status</span> and <span class="mono">{group}.canvas-state</span>.</p>
 
     <!-- The one host switch for the whole app. It used to be a "Publish to Prod"
          checkbox in the publish dialog, which read as a per-publish decision and
-         was not one: every read, every write and the generated bundle all resolve
-         through ioHost(), so a box that lived beside a single button was silently
+         was not one: every read and every write resolves through ioHost(), so a
+         box that lived beside a single button was silently
          retargeting all of them. Off means io.adafruit.com, which is where real
          accounts are. -->
     <label class="check-row"><input type="checkbox" id="ioDev"> Developer mode — use <span class="mono">io.adafruit.us</span></label>
-    <p class="hint">Off, everything talks to <span class="mono">io.adafruit.com</span>. On, it all moves to the <span class="mono">.us</span> staging environment — feed reads, publishes, the group A5b creates, and the host written into the code bundle. The two are separate accounts with separate keys, so switching mid-setup will need different credentials.</p>
+    <p class="hint">Off, everything talks to <span class="mono">io.adafruit.com</span>. On, it all moves to the <span class="mono">.us</span> staging environment — feed reads, publishes, and the group A5b creates. The two are separate accounts with separate keys, so switching mid-setup will need different credentials.</p>
 
     <div class="hr"></div>
-    <span class="label">ProtoMQ target</span>
-    <p class="hint">Display publishing uses the topic <span class="mono">{user}/ws-b2d/{device}</span>.</p>
+    <span class="label">Device identity</span>
+    <p class="hint">Written into the panel descriptor that <span class="mono">data/canvas.json</span> carries alongside the layout.</p>
     <div class="grid-3">
       <label class="field"><span class="label">User</span><input type="text" id="pmUser" value="test_user" autocomplete="off"></label>
       <label class="field"><span class="label">Device</span><input type="text" id="pmDevice" value="magtag" autocomplete="off"></label>
@@ -857,11 +695,8 @@
       <label class="field"><span class="label">Duration (seconds)</span>
         <input type="number" id="sleepDuration" value="300" min="0" max="4294967295" autocomplete="off">
       </label>
-      <label class="field"><span class="label">Write-ack retry (min)</span>
-        <input type="number" id="writeRetryWindow" value="5" min="1" max="60" autocomplete="off">
-      </label>
     </div>
-    <p class="hint">Duration is the timer the device sleeps on, and is what "Wake and redraw" in the editor sets. It also picks the sleep mode, which is why there is no control for one: under 5 minutes the device light-sleeps, because waking in place beats paying for a boot; from 5 minutes up it deep-sleeps. The retry window is how long "Push to display" keeps resending the image (every 45s) waiting for the device to confirm the write; sleep is only sent once it does.</p>
+    <p class="hint">Duration is the timer the device sleeps on, and is what "Wake and redraw" in the editor sets. It also picks the sleep mode, which is why there is no control for one: under 5 minutes the device light-sleeps, because waking in place beats paying for a boot; from 5 minutes up it deep-sleeps.</p>
 
     <div class="hr"></div>
     <span class="label">This display's panel</span>
@@ -905,8 +740,8 @@
               <label class="field"><span class="label">Driver</span>
                 <select id="pmDriver">
                   <optgroup label="EPD">
-                    <!-- Values must match a key in EPD_DRIVERS (presets.js) or
-                         cfg-marquee.json cannot name a class to import. -->
+                    <!-- Driver ids as the panel datasheets name them; the
+                         descriptor carries the string through verbatim. -->
                     <option value="SSD1680" selected>SSD1680</option>
                     <option value="IL0373">IL0373</option>
                     <option value="UC8253">UC8253</option>
@@ -914,10 +749,8 @@
                     <option value="UC8151D">UC8151D</option>
                     <option value="SSD1683">SSD1683</option>
                     <option value="JD79661">JD79661</option>
-                    <!-- No adafruit_epd.uc8279 exists, so this one resolves to
-                         no class and is WipperSnapper-only. It is still listed
-                         because applyDisplayPreset() assigns this select by
-                         value: leave it out and the Xteink X4 Pro preset would
+                    <!-- Listed because applyDisplayPreset() assigns this select
+                         by value: leave it out and the Xteink X4 Pro preset would
                          silently fall back to SSD1680. -->
                     <option value="UC8279">UC8279</option>
                   </optgroup>
@@ -971,7 +804,7 @@
               </label>
             </div>
 
-            <p class="hint">Column offset shifts the framebuffer against the controller's column RAM, in pixels — leave it blank unless the panel has a dead zone at one edge. The 2.13" Tri-Color FeatherWing needs <span class="mono">8</span>; the SSD1680Z breakout needs <span class="mono">-8</span>. Blank or <span class="mono">0</span> is left out of <span class="mono">cfg-marquee.json</span>, where absent means no shift.</p>
+            <p class="hint">Column offset shifts the framebuffer against the controller's column RAM, in pixels — leave it blank unless the panel has a dead zone at one edge. The 2.13" Tri-Color FeatherWing needs <span class="mono">8</span>; the SSD1680Z breakout needs <span class="mono">-8</span>. Blank or <span class="mono">0</span> is left out of the descriptor, where absent means no shift.</p>
 
             <div class="prop-row hidden" id="customRes">
               <span class="label">Custom</span>

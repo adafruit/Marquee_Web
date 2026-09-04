@@ -15,7 +15,7 @@
  */
 
 import { BACKEND } from '../core/api.js';
-import { snapshotConfig, loadConfig, syncDerivedUI, configChanged } from '../core/config.js';
+import { snapshotConfig, loadConfig, syncDerivedUI } from '../core/config.js';
 import {
   deserialize, serialize, saveCanvasNow, cancelCanvasSave, invalidateCanvasBaseline,
   whenCanvasSettled,
@@ -23,7 +23,7 @@ import {
 import { readCanvasState, noteCanvasStateSeen } from './canvasfeed.js';
 import { isBackendOnline } from '../canvas/render.js';
 import { resetCounter } from '../canvas/elements.js';
-import { stopDeviceRuntime, ensureStatusWatch, scheduleWakeResponseSync } from './device.js';
+import { stopDeviceRuntime, ensureStatusWatch } from './device.js';
 import { hideDitherPreview } from '../canvas/stage.js';
 import { syncNav } from '../core/router.js';
 import { getState, replaceFlow } from '../core/state.js';
@@ -164,8 +164,6 @@ export async function rehydrateFor(rec) {
   // to notice.
   syncIntervalFromField();
   syncPushBlock();
-  configChanged();
-  scheduleWakeResponseSync();
 
   // This board's panel cache, this board's status watch, and a last pass over the
   // derived UI so selectedPanel (from the flow) and the form (from the descriptor)

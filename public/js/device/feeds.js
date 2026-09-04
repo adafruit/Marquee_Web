@@ -216,9 +216,8 @@ export async function readFeedHistory(feedKey, { hours = 24, raw = false } = {})
  * endpoints and the headline "latest reading" stay exact.
  *
  * Charts are 120-300px wide, so anything denser than that draws multiple samples
- * into one column — and canvas.json is both the wire format to the device and the
- * input to canvasSignature(), so the invisible points cost bytes and repaints for
- * nothing.
+ * into one column — and canvas.json is the wire format to the device, so the
+ * invisible points cost bytes for nothing.
  */
 export function downsample(points, max) {
   if (!Array.isArray(points) || points.length <= max || max < 2) return points || [];

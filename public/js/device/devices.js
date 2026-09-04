@@ -58,10 +58,9 @@ const LEGACY = {
  * DOM.
  *
  * `pmUser` and `ioDev` are account-scoped, and both are limitations rather than
- * findings. /display/*, /sleep/* and /reset are all addressed to {pmUser}/{pmDevice},
- * and ioHost() picks one Adafruit IO host for the whole app — so two boards under
- * different broker users, or split across io.adafruit.com and io.adafruit.us, are not
- * representable. That is fine for a bench tool and would not be fine for a product.
+ * findings: ioHost() picks one Adafruit IO host for the whole app, so two boards
+ * split across io.adafruit.com and io.adafruit.us are not representable. That is
+ * fine for a bench tool and would not be fine for a product.
  */
 export const SETTINGS_SCOPE = {
   ioUser: 'account',
@@ -71,7 +70,6 @@ export const SETTINGS_SCOPE = {
   pmDevice: 'device',
   ioGroup: 'device',
   sleepDuration: 'device',
-  writeRetryWindow: 'device',
   wakeAlarm: 'device',
 };
 
@@ -181,13 +179,9 @@ export function setSetupStep(id, step) {
  * Mint an incomplete device and make it active. A1's add tile calls this; A4, A5b,
  * A5C and A6-A fill it in; A6-A promotes it.
  *
- * `firmwarePath` is set here because A3 — the screen that used to ask — is gone from
- * the flow, and the field still gates ensureStatusWatch(), the push branch in
- * device.js, A7's path copy and A8's take-fetching. A5C and A6-A ARE the CircuitPython
- * path, so that is the honest answer. The consequence is worth stating rather than
- * hiding: the new flow cannot create a WipperSnapper device. Records migrated from an
- * older build keep theirs and keep working, because every consumer reads the field at
- * runtime rather than branching once at setup.
+ * `flow` starts empty. There is one device path now, so nothing here chooses one —
+ * a record migrated from a build that carried a `firmwarePath` simply drops it on
+ * the next load (sanitize() keeps only DEFAULTS keys; see state.js).
  */
 export function createDraft() {
   const id = newId();
@@ -197,8 +191,8 @@ export function createDraft() {
     updatedAt: Date.now(),
     status: 'draft',
     setupStep: 'a4',
-    settings: { pmDevice: '', ioGroup: '', sleepDuration: '300', writeRetryWindow: '5', wakeAlarm: 'timer' },
-    flow: { firmwarePath: 'circuitpython' },
+    settings: { pmDevice: '', ioGroup: '', sleepDuration: '300', wakeAlarm: 'timer' },
+    flow: {},
     displayConfig: null,
   };
   env.draftId = id;
@@ -240,7 +234,7 @@ export function deleteDevice(id) {
 export function resetDevice(id) {
   const rec = env.byId[id];
   if (!rec) return;
-  rec.flow = { firmwarePath: rec.flow?.firmwarePath || 'circuitpython' };
+  rec.flow = {};
   rec.setupStep = 'a4';
   touch(rec);
   persist();

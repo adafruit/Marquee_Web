@@ -32,10 +32,9 @@ import { $, $$, toast, show, fmtInterval } from '../core/util.js';
 const INTERVAL_OPTIONS = [60, 120, 180, 240, 300, 600, 900, 1800, 2700, 3600];
 
 /**
- * The push means two different things on the two paths, so it says two different
- * things. On the broker path the write is confirmed before the device is told to
- * sleep; on the CircuitPython path both facts go onto feeds the board reads when
- * it next wakes, and nothing here ever hears back.
+ * What the push actually does: two feed writes the board collects on its own
+ * schedule. Nothing here ever hears back, and the cue says so rather than implying
+ * a handshake.
  *
  * No "It's showtime —" any more. In the old push block that opening earned its
  * place: the caption sat above a button at the foot of a settings rail and had to
@@ -43,10 +42,7 @@ const INTERVAL_OPTIONS = [60, 120, 180, 240, 300, 600, 900, 1800, 2700, 3600];
  * same line and says PUSH TO DISPLAY on its face, so the flourish was the sentence
  * repeating the row it sits in.
  */
-const PUSH_CUE = {
-  wippersnapper: 'The dashboard is written, then the display sleeps.',
-  circuitpython: 'The dashboard and the sleep window go to Adafruit IO, and the board collects them on its next wake.',
-};
+const PUSH_CUE = 'The dashboard and the sleep window go to Adafruit IO, and the board collects them on its next wake.';
 
 /**
  * The same block while the display is ASLEEP — reached by editing the dashboard
@@ -56,10 +52,7 @@ const PUSH_CUE = {
  * something the hardware cannot do right now. The button becomes the queue, and
  * the cue says which wake the edit lands on.
  */
-const SLEEP_CUE = {
-  wippersnapper: 'The display is sleeping — this edit is held and written the moment the board checks in.',
-  circuitpython: 'The display is sleeping — this edit goes to Adafruit IO, and the board collects it on its next wake.',
-};
+const SLEEP_CUE = 'The display is sleeping — this edit goes to Adafruit IO, and the board collects it on its next wake.';
 
 const PUSH_LABEL = 'Push to display';
 const QUEUE_LABEL = 'Queue for the next take';
@@ -82,19 +75,17 @@ function setPushLabel(text) {
  * button — exported because device.js restores the label after a push.
  */
 export function syncPushBlock() {
-  const st = getState();
-  const path = st.firmwarePath === 'circuitpython' ? 'circuitpython' : 'wippersnapper';
-  const asleep = st.deviceState === 'asleep';
+  const asleep = getState().deviceState === 'asleep';
   const cue = $('pushCue');
-  if (cue) cue.textContent = (asleep ? SLEEP_CUE : PUSH_CUE)[path];
+  if (cue) cue.textContent = asleep ? SLEEP_CUE : PUSH_CUE;
   setPushLabel(asleep ? QUEUE_LABEL : PUSH_LABEL);
 }
 
 /**
  * The inspector's interval select and the numeric field in Settings are two
  * views of one value (the sleep timer). The select drives the field so every
- * existing consumer — the sleep config POST, the wake response, the bundle —
- * keeps reading it from the same place.
+ * existing consumer — the published sleep window, the modelled cycle — keeps
+ * reading it from the same place.
  *
  * Exported because a device switch replaces the field's value wholesale, with no input
  * event to notice it — main.js pulls the chip and the select back into agreement as
@@ -111,7 +102,7 @@ export function syncIntervalFromField() {
     // fixed options in index.html do. Without this a custom interval would be the
     // one setting that hides which side of the five-minute line it falls on.
     const opt = sel.querySelector('option[value="custom"]');
-    const mode = sleepModeFor(secs) === 'S_DEEP' ? 'deep' : 'light';
+    const mode = sleepModeFor(secs);
     if (opt) opt.textContent = `Custom — ${fmtInterval(secs)} · ${mode} sleep`;
   }
   syncSleepChip();
@@ -152,19 +143,6 @@ function syncSleepChip() {
     : `${source} · ${intervalPhrase(refreshInterval())}`;
 }
 
-/**
- * The alarm choice only exists on the CircuitPython path. The broker's
- * /sleep/config encodes a TimerConfig and defers Ext0Config (server.js), so
- * offering a pin there would be a control nothing downstream honours.
- */
-function syncPathCopy() {
-  show($('wakeAlarmField'), getState().firmwarePath === 'circuitpython');
-  syncPushBlock();
-  // The hidden select still reports 'timer', which is what the broker path does, so
-  // the chip keeps naming the source on both paths rather than going bare on one.
-  syncSleepChip();
-}
-
 // ---------- the popovers ------------------------------------------------------
 
 /**
@@ -188,9 +166,9 @@ function popover(popId, chipId) {
     const was = isOpen();
     show(pop, open);
     chip.setAttribute('aria-expanded', String(open));
-    // The first VISIBLE control: on the broker path the sleep panel's "Wake on" is
-    // hidden, and focusing a display:none element is a silent no-op that would leave
-    // the panel opened onto nothing for a keyboard user.
+    // The first VISIBLE control, not simply the first: focusing a display:none
+    // element is a silent no-op that would leave the panel opened onto nothing for
+    // a keyboard user.
     if (open) {
       [...pop.querySelectorAll('select, input, button')].find((el) => el.offsetParent)?.focus();
     // Only when the popover was actually open: calling this on a stray outside click
@@ -294,7 +272,8 @@ export function initA7({ onEnter }) {
 
   syncIntervalFromField();
   syncDitherPreviewBtn();
-  syncPathCopy();
+  syncPushBlock();
+  syncSleepChip();
 
   // The board can fall asleep while this screen is still open — a cycle started
   // here never leaves it — so the push block follows the device rather than only
@@ -312,8 +291,6 @@ export function initA7({ onEnter }) {
     // it — so coming back would land on an open popover nobody asked for.
     closeAllPopovers({ restoreFocus: false });
     syncIntervalFromField();
-    // Re-read the fork on every entry rather than once at boot: the path badge is
-    // a route back to A3, so this screen can be re-entered on the other path.
-    syncPathCopy();
+    syncPushBlock();
   });
 }

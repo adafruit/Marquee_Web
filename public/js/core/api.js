@@ -23,8 +23,8 @@ export const IO_MAX_HISTORY = 1024;
 export const IO_MAX_NO_HISTORY = 512 * 1024;
 
 /**
- * The Adafruit IO host, for the whole app — feed reads, publishes, the group A5b
- * creates, and the ADAFRUIT_IO_HOST written into the code bundle.
+ * The Adafruit IO host, for the whole app — feed reads, publishes, and the group
+ * A5b creates.
  *
  * io.adafruit.com unless "Developer mode" is ticked under Settings, which moves
  * everything to the .us staging environment. Real accounts are on .com, so that is
@@ -81,18 +81,18 @@ export function bitmapFeedKey() {
   return groupFeed('bitmap');
 }
 
-/** The feed carrying the sleep window on the CircuitPython path — seconds until
- *  the next wake. See docs/marquee-sleep.md for the payload. */
+/** The feed carrying the sleep window — seconds until the next wake. See
+ *  docs/marquee-sleep.md for the payload. */
 export function sleepFeedKey() {
   return groupFeed('sleep');
 }
 
 /**
  * The feed the BOARD writes, reporting when it woke and when it went back to
- * sleep — the acknowledgement the CircuitPython path otherwise has none of.
+ * sleep — the only acknowledgement this editor gets.
  *
- * Board -> editor only, which is the whole reason it is not the sleep feed: that
- * one is read by code.py as "the last value is my window", and a board writing its
+ * Board -> editor only, which is the whole reason it is not the sleep feed: the
+ * firmware reads that one as "the last value is my window", and a board writing its
  * own status there would shadow its own config within one cycle. One writer per
  * feed keeps /data/last unambiguous in both directions.
  *

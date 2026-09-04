@@ -1,21 +1,18 @@
 # The status feed — `{group}.status`
 
-How a **CircuitPython** board tells the editor what it is actually doing. Two
-moments, one field required, and nothing else.
+How the board tells the editor what it is actually doing. Two moments, one field
+required, and nothing else.
 
-- **Producer:** `code.py` on a CIRCUITPY drive. **Not yet implemented** — see
-  Known gaps.
+- **Producer:** the board's firmware. **Not yet implemented** — see Known gaps.
 - **Consumer:** the status watch in `public/js/device/device.js` (`pumpStatus`,
   `applyStatus`, `watchForStatus`), read browser-direct through
   `readFeedData()` in `public/js/device/feeds.js`.
 
-This exists because the CircuitPython path had no acknowledgement of any kind. The
-WipperSnapper path hears `goodnight` and `checkin.complete` from the device and drives
-Act III off them; here the editor was left inferring the board's entire life from the
-sleep window it published — `deviceState` went to `asleep` because we sent something,
-not because a board said so. Everything downstream of that was a guess: when the
-panel would redraw, when the next wake was due, and whether a queued take had reached
-the glass.
+This exists because nothing else acknowledges anything. Without it the editor is
+left inferring the board's entire life from the sleep window it published —
+`deviceState` went to `asleep` because we sent something, not because a board said
+so. Everything downstream of that was a guess: when the panel would redraw, when the
+next wake was due, and whether a queued take had reached the glass.
 
 ## The feed key
 
@@ -28,7 +25,7 @@ Derived, not configured (`statusFeedKey()` in `public/js/core/api.js`, sharing
 all three feeds together and they cannot drift apart.
 
 **It must be a separate feed from `.sleep`, not a second use of it.** That feed is
-read by `code.py` as "the last value is my window". A board writing its own status
+read by the firmware as "the last value is my window". A board writing its own status
 there would shadow its own config within one cycle — and it would win that race
 almost always, because it publishes every cycle while the editor publishes only when
 someone pushes. One writer per feed keeps `/data/last` unambiguous in both
@@ -61,7 +58,7 @@ recognise.
 
 | value | published when | the editor does |
 |---|---|---|
-| `awake` | the board has connected to the broker | stops the countdown, `deviceState` → `online-awake`, Showtime says the display is awake and redrawing |
+| `awake` | the board has connected | stops the countdown, `deviceState` → `online-awake`, Showtime says the display is awake and redrawing |
 | `sleeping` | the board is arming its alarm | promotes the queued take, then starts the countdown from this datum's `created_at` |
 
 Those two values are the editor's whole state vocabulary. The chrome shows exactly
@@ -97,7 +94,7 @@ until the next wake happens to be reported.
 The timer the board **actually armed**, which is not necessarily the one the editor
 asked for on `.sleep`. Same name and units as that feed on purpose: a field-by-field
 diff between the two feeds' last values is what exposes a board still sleeping on its
-own `REFRESH_SECONDS`.
+own default interval.
 
 Absent means "the board didn't say", and the editor falls back to `refreshInterval()`.
 It must never be read as `0` — that is a legal value meaning "do not sleep on the
@@ -114,8 +111,9 @@ thing for the chrome to say.
 
 ### `wake_reason` — `"timer"` | `"pin"` | `"reset"`
 
-On `awake` only, from CircuitPython's `alarm.wake_alarm` (`None` on a cold boot).
-Surfaced on the status line. It is what distinguishes a button press from a scheduled
+On `awake` only, from whatever the firmware can tell about the alarm that woke it
+(absent on a cold boot). Surfaced on the status line. It is what distinguishes a
+button press from a scheduled
 take, and a first boot from a cycle.
 
 ## Extending it
@@ -147,14 +145,15 @@ inverse of that.
 `readFeedHistory()` can already bind it to a battery element and chart it. Inside this
 payload it would be unreadable by any of that.
 
-**Anything about the panel** — `cfg-marquee.json`.
+**Anything about the panel** — the display descriptor, which travels with the
+layout in `canvas.json`.
 
 **Errors, tracebacks, or anything unbounded.** The 1 KB history-on ceiling is the
 budget, and a short code is always enough.
 
 ## Fallbacks — what silence means
 
-A board running an older `code.py` publishes nothing, and that has to keep working.
+A board running older firmware publishes nothing, and that has to keep working.
 
 - **No status has ever arrived** → the state and the clock are both modelled from the
   window that was published (`displayState`/`nextWakeAt` in `public/js/device/cycle.js`), and
@@ -174,10 +173,9 @@ A board running an older `code.py` publishes nothing, and that has to keep worki
 
 ## The editor's side of the read
 
-`pushToDisplayCircuitPython()` seeds the cursor with `resetStatusWatch()` before it
-publishes — so a status left over from a previous bench run cannot be credited to this
-cycle, exactly as `resetSleepEvents()` does on the broker path — and starts
-`watchForStatus()` once the push lands.
+`pushToDisplay()` seeds the cursor with `resetStatusWatch()` before it publishes —
+so a status left over from a previous bench run cannot be credited to this cycle —
+and starts `watchForStatus()` once the push lands.
 
 **The seed reads a batch and keeps an open bracket.** If the newest datum is an `awake`,
 `adoptOpenTake()` takes it as `lastAwakeAt` before the cursor moves past it. That is not
@@ -234,9 +232,9 @@ every 153s.
 - **The two surviving estimates are flat constants.** `STATUS_TAKE_CEILING_MS` and
   `FALLBACK_TAKE_S` are budgeted from the `EPaperDisplay` defaults rather than read from
   the board. They are only ever used to decide when to stop waiting, so being generous
-  costs nothing — but if `code.py` sets `refresh_time`/`seconds_per_frame` per driver, those
-  are facts about the display setup and belong in `cfg-marquee.json` beside the pins.
-- **The fallback path is still the one most boards are on.** A `code.py` that publishes
+  costs nothing — but if the firmware sets a per-driver refresh time, that is a fact
+  about the display setup and belongs in the descriptor beside the pins.
+- **The fallback path is still the one most boards are on.** Firmware that publishes
   neither transition keeps working: the state and the clock are modelled, and the sub line
   says so. Everything above assumes the producer is present.
 - **No `.status` write from the editor, ever.** If a future feature needs the editor
@@ -245,5 +243,6 @@ every 153s.
 - **A reload mid-cycle does not resume the watch.** `statusCursor` and `statusSeen`
   are module state, and `published` is deliberately not persisted either
   (`state.js`), so a reloaded tab is back to the fallback until the next push.
-- **`settings.toml` has no `ADAFRUIT_IO_STATUS_FEED`.** Same call as `.sleep`: whether
-  the producer derives the key or reads it from the environment is its business.
+- **Nothing configures a status-feed key on the board.** Same call as `.sleep`:
+  whether the producer derives the key or reads it from its own configuration is its
+  business.

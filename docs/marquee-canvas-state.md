@@ -7,8 +7,7 @@ design stops living only in the browser that drew it.
   `public/js/device/canvasfeed.js`, called by `saveCanvasNow()` in `public/js/core/doc.js`.
 - **Consumer:** the editor, from `readCanvasState()` in the same module, called by
   `hydrateFromCanvasFeed()` in `public/js/device/activate.js`.
-- **The board never touches it.** Not on the WipperSnapper path, not on the
-  CircuitPython one. It is not in the code bundle and not in `settings.toml`.
+- **The board never touches it.** It is not part of anything written to the board.
 
 This is the one feed in the group that is editor-to-editor. Everything else on
 `{group}` is a conversation with the hardware: `.bitmap` is what it draws, `.sleep` is
@@ -133,16 +132,19 @@ the user's typing.
 a render here would put two representations of one scene on one group and invite them
 to disagree.
 
-**Any board-side consumer.** A CircuitPython board parsing a Konva document to redraw
+**Any board-side consumer.** A board parsing a Konva document to redraw
 it locally is a different product. The board gets a bitmap.
 
 **A history of designs.** Ruled out by the 1 KB history cap before it was ruled out on
 taste, but it would be the wrong shape anyway: version history is a repository's job,
 and `Export JSON` in the editor is the manual door out.
 
-**Credentials, pins or identity.** Same line `canvas.json` already draws — see
-`docs/cfg-marquee.md`. The document has never carried them and this feed does not
-change that, which is what makes it safe to leave sitting on an account.
+**Credentials, pins or identity.** The `display` block is geometry, rotation, colour
+mode and dither settings — never a pinout, an Adafruit IO username or a key. That is
+what makes the document safe to leave sitting on an account, and the geometry it does
+carry is read as advisory anyway: `deserialize(…, { keepDisplay: true })` above keeps
+the bench's own descriptor, because a document authored on another machine describes
+that machine's idea of the panel.
 
 ## Known gaps
 

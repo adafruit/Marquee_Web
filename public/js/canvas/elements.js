@@ -181,9 +181,8 @@ export function addDivider(attrs = {}) {
 //
 // Series data lives in the `series` attr, keyed by feed key, and is refetched by
 // refreshChartElements() (feeds.js). It is DOWNSAMPLED before it lands there —
-// canvas.json is the wire format to the device and canvasSignature() diffs it to
-// decide whether to repaint, so storing 640 raw points per feed would bloat both
-// for pixels that don't exist.
+// canvas.json is the wire format to the device and is republished on every push,
+// so storing 640 raw points per feed would bloat it for pixels that don't exist.
 
 /** How many chart history windows the inspector offers, in hours. */
 export const CHART_RANGES = [

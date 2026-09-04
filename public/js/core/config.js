@@ -8,7 +8,7 @@
  * assumes A5 is visible.
  */
 
-import { display, logicalDims, MODE_LABELS, ditherLabel, ditherChipLabel } from '../canvas/palette.js';
+import { display, logicalDims, ditherLabel, ditherChipLabel } from '../canvas/palette.js';
 import { fitZoom, updateDims, suspendDitherPreview, scheduleDitherRefresh } from '../canvas/stage.js';
 import { remapColorsToPalette } from '../canvas/elements.js';
 import { refreshProps } from '../canvas/selection.js';
@@ -37,15 +37,18 @@ const DITHER_HINTS = {
   none: 'No dithering — each pixel snaps to the nearest palette colour. Good for text, high-contrast line art and bold flat graphics.',
 };
 
-/** Fires whenever anything that invalidates a CircuitPython bundle changes. */
-const configListeners = new Set();
-export function onConfigChange(fn) { configListeners.add(fn); }
-
 // ---------- the descriptor --------------------------------------------------
 
 /**
- * Build the /display/add request body from the live form. Shared by "Send to
- * device", the deep-sleep re-provision, and the CircuitPython bundle.
+ * The display descriptor as the live form describes it — geometry, colour mode,
+ * identity, and the full SPI/EPD pinout.
+ *
+ * NO CALLERS RIGHT NOW, and kept deliberately. This is the assembled "panel
+ * configuration" payload A6-A promises to write to the board; `device/flash.js`
+ * names it as the builder for that, and the seam is the only thing missing. Note
+ * that it is NOT what canvas.json carries: serialize() in doc.js writes the
+ * `display` object from palette.js, which is geometry and dither only — the pinout
+ * has no other assembled form.
  */
 export function buildDisplayBody() {
   // Reconstruct the interfaceType object from the individual pin fields.
@@ -56,7 +59,7 @@ export function buildDisplayBody() {
         bus: Number($('spiBus')?.value) || 0,
         pinMosi: val('pinMosi'),
         pinSck: val('pinSck'),
-        pinCs: val('pinCs'),        // EPD chip select (ws.spi.Descriptor.pinCs)
+        pinCs: val('pinCs'),        // EPD chip select, not the SRAM one
       },
       pinDc: val('pinDc'),
       pinRst: val('pinRst'),
@@ -105,18 +108,15 @@ export function refreshInterval() {
  *
  * The first two tiers give the same answer, so there is one threshold and it is
  * this one. The 60s tier is the reasoning, not configuration: nothing in this repo
- * reads a device keepalive, and ws.sleep has no field for one.
- *
- * MIRRORED in server.js (sleepModeFor). That copy is the authoritative one — it is
- * what actually encodes ws.sleep.SleepConfig and registers the wake response. This
- * one exists because the CircuitPython path never talks to the backend at all, and
- * because the interval picker has to name the mode without a round trip.
+ * reads a device keepalive.
  */
 export const DEEP_SLEEP_THRESHOLD_SECS = 300;
 
-/** The ws.sleep.SleepMode name for a sleep of `secs`. */
+/** The sleep mode for a sleep of `secs`, spelled the way the sleep feed carries it
+ *  (docs/marquee-sleep.md). Both the interval picker and the published payload read
+ *  this, so the label a user sees and the value the board gets cannot drift. */
 export function sleepModeFor(secs) {
-  return secs >= DEEP_SLEEP_THRESHOLD_SECS ? 'S_DEEP' : 'S_LIGHT';
+  return secs >= DEEP_SLEEP_THRESHOLD_SECS ? 'deep' : 'light';
 }
 
 // ---------- resolution / orientation ----------------------------------------
@@ -245,7 +245,6 @@ export function applyDisplayPreset(key, { silent = false } = {}) {
   // and re-derive explicitly.
   saveConfig();
   syncDerivedUI();
-  notifyConfigChanged();
   if (!silent) toast(`Loaded the ${p.label} preset`);
 }
 
@@ -380,48 +379,8 @@ function syncDitherChip() {
   if (el) el.textContent = ditherChipLabel();
 }
 
-/** The A5 summary plate, the orientation control, the preset chips, the heading. */
+/** The orientation control, the preset chips and the dimension readouts. */
 export function syncDerivedUI() {
-  const { w, h } = logicalDims();
-  const st = getState();
-  const preset = st.selectedPanel ? DISPLAY_PRESETS[st.selectedPanel] : null;
-
-  const heading = $('a5Heading');
-  if (heading) {
-    heading.textContent = preset
-      ? `${preset.label} — we filled this in for you`
-      : 'Set up your panel by hand';
-  }
-
-  const res = $('summaryRes');
-  if (res) res.textContent = `${w} × ${h} pixels, ${MODE_LABELS[display.type] || display.type}`;
-
-  const drv = $('summaryDriver');
-  if (drv) {
-    // The column offset is only named when there is one. On the two 2.13"
-    // tri-colors it is the single field that tells them apart, so leaving it out of
-    // the plate would make the two look like the same setup.
-    const cols = val('pmColstart');
-    const off = cols === '' || Number(cols) === 0 ? '' : ` · colstart ${cols}`;
-    drv.textContent = `Driver ${val('pmDriver') || '—'} · panel ${val('pmPanel') || '—'} · SPI bus ${$('spiBus')?.value ?? 0}${off}`;
-  }
-
-  const pins = $('summaryPins');
-  if (pins) {
-    const p = (id) => val(id) || '—';
-    pins.textContent = `Pins: BUSY ${p('pinBusy')} · DC ${p('pinDc')} · RST ${p('pinRst')} · CS ${p('pinCs')}`;
-  }
-
-  // Scale the panel proxy to the real aspect ratio so a 7.5" and a 2.13" don't
-  // look identical in the plate.
-  const proxy = $('summaryProxy');
-  if (proxy) {
-    const maxW = 150, maxH = 84;
-    const scale = Math.min(maxW / w, maxH / h);
-    proxy.style.width = Math.round(w * scale) + 'px';
-    proxy.style.height = Math.round(h * scale) + 'px';
-  }
-
   setSegValue('orientSeg', currentOrientation());
 
   $$('#presetRow .preset-chip').forEach((chip) => {
@@ -433,19 +392,6 @@ export function syncDerivedUI() {
 
   updateDims();
 }
-
-function notifyConfigChanged() {
-  configListeners.forEach((fn) => fn());
-}
-
-/**
- * Announce a change made outside this module's own fields — the refresh interval
- * lives in the Settings dialog but is what a sleeping device is re-registered with
- * (and, via sleepModeFor, what picks its sleep mode), so an edit there has to reach
- * the same listeners a re-pin does. It is NOT in cfg-marquee.json, so it does not
- * stale a downloaded bundle; code.py owns its own sleep window.
- */
-export function configChanged() { notifyConfigChanged(); }
 
 // ---------- boot ------------------------------------------------------------
 
@@ -534,12 +480,11 @@ export function initConfig() {
 
   restoreConfig();
 
-  // One persistence hook across every descriptor field. Also the only place that
-  // can notice a re-pin, which is what invalidates a CircuitPython bundle.
+  // One persistence hook across every descriptor field.
   [...CONFIG_FIELDS, 'ditherSeg'].forEach((id) => {
     const el = $(id);
     if (!el) return;
-    const onEdit = () => { saveConfig(); syncDerivedUI(); notifyConfigChanged(); };
+    const onEdit = () => { saveConfig(); syncDerivedUI(); };
     el.addEventListener('input', onEdit);
     el.addEventListener('change', onEdit);
   });

@@ -18,9 +18,9 @@
  *      a manifest URL, a release asset, a checked-in bin — resolves inside
  *      firmwareFor() below, keyed by the board the panel preset implies.
  *   3. The four payloads A6-A's copy promises: the firmware, the Adafruit IO
- *      configuration, the network configuration, and the panel configuration. The last
- *      three already exist as builders — see bundle.js, which assembles exactly these
- *      for the CircuitPython path.
+ *      configuration, the network configuration, and the panel configuration. The
+ *      last of these already exists as a builder — buildDisplayBody() in config.js —
+ *      and the middle two are held by A5b and A5C respectively.
  *
  * THE CONTRACT
  *

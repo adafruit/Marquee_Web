@@ -306,7 +306,7 @@ function fetchTakes() {
     //
     // Renders on the way out rather than returning bare: the placeholder below is the
     // whole point of the branch, and the finally clears takesFetch either way.
-    if (getState().firmwarePath === 'circuitpython' && getState().ioSetup === 'pending') {
+    if (getState().ioSetup === 'pending') {
       takes = { panel: null, next: null, state: 'unconfigured' };
       if (currentScreen() === 'a8') { renderWritten(); renderNext(); }
       return takes;

@@ -273,9 +273,9 @@ async function createGroupAndFeeds() {
       group = made.data;
 
       // IO gets the last word on the key. We ask for one, but it is free to derive
-      // its own from the name, and a bundle written against the key we ASKED for
-      // would point the board at a group that does not exist. Everything downstream
-      // — the feed POSTs, the saved state, settings.toml — follows what came back.
+      // its own from the name, and a board configured against the key we ASKED for
+      // would point at a group that does not exist. Everything downstream — the feed
+      // POSTs, the saved state, what is written to the board — follows what came back.
       const actual = String(group?.key || '').trim();
       if (actual && actual !== groupKey) {
         groupKey = actual;

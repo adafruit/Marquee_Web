@@ -14,12 +14,12 @@
  * screen importing this entry point would be a cycle.
  */
 
-import { initConfig, configChanged } from './core/config.js';
+import { initConfig } from './core/config.js';
 import { initDoc, saveCanvasNow } from './core/doc.js';
 import { initRender } from './canvas/render.js';
 import { initFeeds } from './device/feeds.js';
 import { initIconFont } from './canvas/elements.js';
-import { initDevice, scheduleWakeResponseSync } from './device/device.js';
+import { initDevice } from './device/device.js';
 import { initKeyboard } from './canvas/selection.js';
 import { initRouter, navigate, onEnter, syncNav, isNavigable } from './core/router.js';
 import { getState, subscribe, replaceFlow } from './core/state.js';
@@ -36,7 +36,7 @@ import { $, wireModal, openModal, closeModal, toast } from './core/util.js';
 
 // ---------- settings persistence --------------------------------------------
 //
-// Credentials, the ProtoMQ target and the sleep behaviour live in localStorage rather
+// Credentials, the device identity and the sleep behaviour live in localStorage rather
 // than on the server: they are per-browser bench setup, and keeping them client-side
 // means they survive a server restart.
 //
@@ -73,19 +73,6 @@ function initSettings() {
     const evt = id === 'ioDev' ? 'change' : 'input';
     el.addEventListener(evt, () => {
       saveSettings(id);
-      // The refresh interval is what a sleeping device is re-registered with — and
-      // also what picks its sleep mode (sleepModeFor in config.js) — so an edit here
-      // has to reach the device path exactly like a pin change does. It does not stale
-      // a downloaded bundle: cfg-marquee.json carries no timing, and code.py owns its
-      // own.
-      //
-      // wakeAlarm is deliberately NOT in here: it reaches a CircuitPython board over
-      // the sleep feed, so it neither re-registers a broker cycle nor invalidates a
-      // bundle.
-      if (id === 'sleepDuration') {
-        configChanged();
-        scheduleWakeResponseSync();
-      }
     });
   });
 
@@ -93,9 +80,8 @@ function initSettings() {
   // descriptor, credentials and dashboard are bench setup and survive, exactly as they
   // do through "Reset state".
   //
-  // The old copy promised "Acts I-III run again from the firmware question", which is
-  // wrong twice over now: there is no firmware question, and with more than one device
-  // on the list it never said which one it meant.
+  // The copy names the device on purpose: with more than one on the list, "setup
+  // runs again" never said which one it meant.
   $('restartSetup')?.addEventListener('click', async () => {
     const rec = devices.activeDevice();
     if (!rec) { toast('No display selected'); return; }
@@ -161,11 +147,7 @@ async function boot() {
   initDevice();
   initKeyboard();
 
-  // A3 (the firmware fork), A5 (confirm settings) and A6 (the code bundle) are parked:
-  // their sections stay in the DOM because config.js reads the descriptor fields inside
-  // A5's advanced disclosure, but they are not initialised and router.js has no entry
-  // for them. Dropping them from this list is what keeps their modules out of the graph
-  // entirely — they still import router exports that no longer exist.
+  // One init per navigable screen, and router.js's SCREENS is the same list.
   initA1({ onEnter });
   initA4({ onEnter });
   initA5b({ onEnter });

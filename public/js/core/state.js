@@ -4,35 +4,22 @@
  * palette.js) and from the canvas document (doc.js).
  *
  * Everything here except the published snapshot survives a reload, so returning
- * to the tab drops you back where you were rather than at the fork.
+ * to the tab drops you back where you were rather than at the start of setup.
  */
 
 const KEY = 'marquee.flow';
 
 const DEFAULTS = {
-  /** 'wippersnapper' | 'circuitpython' | null — set at A3. Drives whether A6
-   *  appears, and whether the chrome shows a path badge. */
-  firmwarePath: null,
-
   /** Preset key from presets.js, or null when the panel was set up by hand. */
   selectedPanel: null,
 
-  /** CircuitPython only. 'not-generated' | 'downloaded' | 'confirmed' | 'stale'.
-   *  Goes stale when the display config changes after a download — the board is
-   *  then running files that no longer describe its panel. */
-  bundleState: 'not-generated',
-
-  /** The config signature the last bundle was built from. Compared against the
-   *  live one to detect staleness across reloads. */
-  bundleSig: null,
-
-  /** CircuitPython only. 'pending' | 'ready' | 'skipped' — whether A5b has
-   *  confirmed the device's group and its feeds exist on Adafruit IO.
+  /** 'pending' | 'ready' | 'skipped' — whether A5b has confirmed the device's
+   *  group and its feeds exist on Adafruit IO.
    *
    *  'skipped' is a deliberate choice and is never re-prompted: the editor works
    *  without a board, and someone who has no network to hand should not be held in
-   *  Act I. 'pending' re-opens A5b on the way to the editor, because a bundle built
-   *  before that step embeds feed keys nobody has checked. */
+   *  setup. 'pending' re-opens A5b on the way to the editor, because nothing
+   *  downstream can publish to feed keys nobody has checked. */
   ioSetup: 'pending',
 
   /** The group key A5b actually resolved. Compared against the live #ioGroup field
@@ -50,14 +37,14 @@ const DEFAULTS = {
   lastWriteAt: null,
 
   /** The sleep window the board actually collected, in seconds — NOT the number
-   *  the form currently shows. A8 models the CircuitPython cycle from this, and
-   *  an interval edited mid-sleep changes nothing until the board reads the feed
-   *  again. Null until a cycle has run. */
+   *  the form currently shows. A8 models the cycle from this, and an interval
+   *  edited mid-sleep changes nothing until the board reads the feed again. Null
+   *  until a cycle has run. */
   sleepSeconds: null,
 
-  /** Epoch ms of the last wake and the last sleep the DEVICE ITSELF reported — the
-   *  status feed on the CircuitPython path, checkin/goodnight on the broker path. Null
-   *  until it says so; never set from anything the editor merely published.
+  /** Epoch ms of the last wake and the last sleep the DEVICE ITSELF reported on its
+   *  status feed. Null until it says so; never set from anything the editor merely
+   *  published.
    *
    *  Act III shows the pair as the board's own record, and while `deviceState` is
    *  'online-awake' the wake also anchors the redraw clock: the start is evidence, the
@@ -67,7 +54,7 @@ const DEFAULTS = {
   lastWokeAt: null,
   lastSleptAt: null,
 
-  /** CircuitPython only. What the last published sleep window wakes on:
+  /** What the last published sleep window wakes on:
    *  'timer' | 'pin' | 'timer+pin' | null. A pin-only alarm has no wake TIME, so
    *  A8 has to say "until you press the button" rather than tick a countdown at
    *  a `wakesAt` that would be a fiction. */
@@ -185,8 +172,8 @@ export function clearPublished() {
 
 // ---------- the queued take -------------------------------------------------
 //
-// CircuitPython only. What has been published to the feeds but not yet drawn: the
-// board is asleep, so this is neither on the glass nor merely a local edit. It is
+// What has been published to the feeds but not yet drawn: the board is asleep, so
+// this is neither on the glass nor merely a local edit. It is
 // held until the modelled redraw completes, at which point it BECOMES `published`
 // — see device.js, which owns that clock.
 //

@@ -20,7 +20,7 @@ import {
 // ---------- backend health gating -------------------------------------------
 
 let backendOnline = false;
-const RENDER_BTN_IDS = ['btnPublish', 'sendBmp', 'sendBmpSleep', 'btnExport', 'btnRender', 'btnDitherPreview'];
+const RENDER_BTN_IDS = ['btnPublish', 'sendBmpSleep', 'btnExport', 'btnRender', 'btnDitherPreview'];
 
 export function isBackendOnline() { return backendOnline; }
 
@@ -109,10 +109,9 @@ export function tooLargeForIO(b64) {
 /**
  * POST one datum to an Adafruit IO feed, browser-direct.
  *
- * The feed defaults to the image feed, which is what every caller wanted until
- * the CircuitPython push started writing a second feed with the sleep window.
- * Failures name the feed, so "which of the two POSTs went wrong" is answerable
- * from the toast alone.
+ * The feed defaults to the image feed. It is a parameter because a push writes two
+ * of them — the dashboard and the sleep window — and failures name the feed, so
+ * "which of the two POSTs went wrong" is answerable from the toast alone.
  *
  * `quiet` is for the one publish nobody asked for: canvasfeed.js mirrors the scene on
  * a timer behind the user's typing, and a toast per attempt would turn one wrong feed

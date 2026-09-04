@@ -22,8 +22,7 @@ import { select } from '../canvas/selection.js';
 import {
   addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery, addImage,
 } from '../canvas/elements.js';
-import { buildDisplayBody, applyDisplayToForm, setResolution } from './config.js';
-import { scheduleWakeResponseSync } from '../device/device.js';
+import { applyDisplayToForm, setResolution } from './config.js';
 import { isBackendOnline } from '../canvas/render.js';
 import { activeDeviceId, saveCanvas } from '../device/devices.js';
 import { scheduleCanvasStatePublish } from '../device/canvasfeed.js';
@@ -43,8 +42,8 @@ export function serialize() {
         });
         if (n.attrs.width !== undefined) base.width = Math.round(n.width());
         // A linked label remembers where its text came from, how it wraps the value,
-        // and the sample itself — the last of these is what makes a new reading
-        // register in canvasSignature() and repaint the panel on the next wake.
+        // and the sample itself — the last of these is what makes a new reading part
+        // of the pushed document rather than a live-only detail.
         if (n.getAttr('feedKey')) {
           base.feedKey = n.getAttr('feedKey');
           base.feedName = n.getAttr('feedName') || '';
@@ -63,7 +62,7 @@ export function serialize() {
         // Explicit branch: the generic widget shape below is {ink,title,w}+value,
         // which would drop the feed binding, the condition and the on/off colors.
         // The sampled `value` is included deliberately — it is what makes a state
-        // change register in canvasSignature() and redraw the panel on the next wake.
+        // change part of the pushed document rather than a live-only detail.
         Object.assign(base, {
           w: n.getAttr('w'), ink: n.getAttr('ink'),
           onColor: n.getAttr('onColor'), offColor: n.getAttr('offColor'),
@@ -252,9 +251,6 @@ export function saveCanvasNow() {
   // Up to {group}.canvas-state, on a much longer leash than either of the two writes
   // above — see canvasfeed.js for the cadence and for what reads it back down.
   scheduleCanvasStatePublish(doc);
-  // A real content change during a sleep window has to reach the broker's wake
-  // response before the device wakes (see syncWakeResponse).
-  scheduleWakeResponseSync();
   changeListeners.forEach((fn) => fn(doc));
 }
 
@@ -278,32 +274,6 @@ export function invalidateCanvasBaseline() { lastCanvasJson = null; }
 export function currentCanvasJson() {
   return lastCanvasJson || JSON.stringify(serialize(), null, 2);
 }
-
-// ---------- device baseline -------------------------------------------------
-//
-// A deep-sleep wake cold-boots the board, so re-adding its display makes the
-// firmware repaint a splash before our BMP lands — an idle panel would flicker
-// once per cycle for nothing. E-ink is bistable, so when the design is unchanged
-// we send NEITHER the display add nor the write, and the panel keeps the image
-// it already holds.
-//
-// The signature covers the canvas document AND the display descriptor: the SPI
-// pins and identity live in localStorage, not in canvas.json, so without them a
-// re-pinned panel would never get re-provisioned.
-
-/**
- * The signature as last CONFIRMED written to the device (display.WriteComplete
- * acked). null = we don't know what the panel is showing -> treat as changed.
- */
-let deviceCanvasSig = null;
-
-export function canvasSignature() {
-  return JSON.stringify({ doc: serialize(), display: buildDisplayBody() });
-}
-
-export function canvasChanged() { return canvasSignature() !== deviceCanvasSig; }
-export function setDeviceCanvasSig(sig) { deviceCanvasSig = sig; }
-export function getDeviceCanvasSig() { return deviceCanvasSig; }
 
 // ---------- boot ------------------------------------------------------------
 

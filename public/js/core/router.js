@@ -17,12 +17,9 @@
  * locked cells, no "step 2 of 3". The rail survives only as a two-entry switch
  * between the two editor screens.
  *
- * A3 (the firmware fork), A5 (confirm settings) and A6 (the code bundle) are
- * PARKED: their <section>s stay mounted, because config.js reads the display
- * descriptor fields that live inside A5's advanced disclosure from A7 and A8, but
- * they are absent from SCREENS below and `navigate()` hard-rejects anything not in
- * that map. That rejection IS the parking mechanism — do not soften it into a
- * warning.
+ * SCREENS below is the whole set, and `navigate()` hard-rejects anything not in
+ * it. Keep that rejection a hard return rather than a warning: it is what stops a
+ * `lastScreen` from an older build routing to a screen that no longer exists.
  */
 
 import { getState, setState } from './state.js';
