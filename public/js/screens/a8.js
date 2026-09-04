@@ -275,7 +275,7 @@ export async function capturePanelFromCanvas() {
 const TAKES_EMPTY = {
   unknown: 'Reading the feed…',
   unconfigured: 'No feeds yet — finish "Configure Adafruit IO" in Act I and this fills in.',
-  unreadable: 'Could not read the feed — check the feed key and AIO credentials under Settings.',
+  unreadable: 'Could not read the feed — check the group key under Settings, and the connected Adafruit IO account.',
   empty: 'Nothing has been published to this feed yet.',
   undrawn: 'Nothing confirmed on the glass yet — the board has not reported collecting a take.',
 };

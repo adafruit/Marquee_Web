@@ -25,7 +25,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 46px;
+  height: var(--chrome-h);
   flex: none;
   padding: 0 18px;
   background: var(--color-chrome);
@@ -225,6 +225,33 @@
    panels rather than a table of device names. */
 
 .device-count { font-size: 13px; opacity: 0.7; }
+
+/* The one header row that carries an action. .screen-head is a column of two
+   lines everywhere else, so the lines get their own box and the button sits
+   beside them. */
+.screen-head-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.screen-head-row .head-lines { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* Which Adafruit IO account the whole app is pointed at — a status readout that
+   happens to be clickable, so the username rides along in body type rather than
+   the heading face the label uses. */
+.account-btn { flex: none; height: 38px; padding: 0 12px; gap: 8px; background: var(--color-bg); }
+.account-btn .account-btn-user {
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-muted);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .device-grid {
   display: grid;

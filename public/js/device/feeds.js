@@ -52,7 +52,7 @@ function renderFeedList() {
 
 export async function openFeedPicker(target = null, { mode = 'bind' } = {}) {
   const user = val('ioUser'), key = val('ioKey');
-  if (!user || !key) { toast('Set your IO username and key under Settings'); return; }
+  if (!user || !key) { toast('Connect your Adafruit IO account from the display list'); return; }
 
   feedPickerTarget = target;
   feedPickerMode = mode;

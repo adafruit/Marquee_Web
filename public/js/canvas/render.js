@@ -123,7 +123,7 @@ export async function publishToIO(value, feed = bitmapFeedKey(), { quiet = false
   const say = (msg) => { if (!quiet) toast(msg); };
   const user = val('ioUser'), key = val('ioKey');
   if (!user || !key || !feed) {
-    say('Username, AIO key and group key are all required — set them under Settings');
+    say('An Adafruit IO account and a group key are both required — connect the account from the display list, and set the group under Settings');
     return { ok: false, error: 'missing credentials' };
   }
   const host = ioHost();

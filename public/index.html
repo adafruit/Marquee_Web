@@ -85,9 +85,19 @@
          dashed tile alone, no onboarding cards, no secondary buttons. -->
     <section class="screen" id="a1" data-screen="a1">
       <div class="screen-pad">
-        <div class="screen-head">
-          <h3>Your Displays</h3>
-          <p class="device-count" id="a1Count">No displays yet</p>
+        <!-- The one header on the setup side that carries an action, and it is not
+             an add button: the dashed tile is still the only way into setup. This
+             says which Adafruit IO account the whole app is pointed at, and opens
+             A1-C to change it. -->
+        <div class="screen-head screen-head-row">
+          <div class="head-lines">
+            <h3>Your Displays</h3>
+            <p class="device-count" id="a1Count">No displays yet</p>
+          </div>
+          <button type="button" class="btn btn-secondary account-btn" id="a1Account">
+            <span class="account-btn-label">Adafruit IO account</span>
+            <span class="account-btn-user" id="a1AccountUser"></span>
+          </button>
         </div>
         <div class="device-grid" id="a1Grid"></div>
       </div>
@@ -130,27 +140,29 @@
             <p id="a5bSub">Your board reads its picture from Adafruit IO and reports back on the same account. This makes the feeds it needs.</p>
           </div>
 
-          <div class="grid-3">
-            <label class="field">
-              <span class="label">Adafruit IO username</span>
-              <input type="text" id="a5bUser" autocomplete="off" spellcheck="false">
-            </label>
-            <div class="field">
-              <span class="label">Adafruit IO key</span>
-              <!-- Masked by default. The reveal is here because this is a long
-                   random string being retyped from another tab, and a masked field
-                   with no way to check it is how a 401 becomes a mystery. -->
-              <div class="key-field">
-                <input type="password" id="a5bKey" autocomplete="off" spellcheck="false">
-                <button type="button" class="reveal-toggle" id="a5bKeyReveal" aria-pressed="false" aria-label="Show the key">Show</button>
-              </div>
+          <!-- The account, stated rather than asked for. It was settled once in
+               A1-C and every screen since has read it; re-offering the two fields
+               here would be a second, unchecked way to change them. -->
+          <div class="account-plate blueprint" id="a5bAccount">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div class="account-lines">
+              <div class="eyebrow">Connected account</div>
+              <div class="account-user" id="a5bAccountUser">—</div>
+              <div class="account-key" id="a5bAccountKey">key ••••••••••••••••••••</div>
             </div>
+            <button type="button" class="btn btn-sm btn-ghost" id="a5bAccountChange">Change account</button>
+          </div>
+
+          <div class="grid-3">
             <label class="field">
               <span class="label">Device name</span>
               <input type="text" id="a5bDevice" autocomplete="off">
             </label>
           </div>
-          <p class="field-error" id="a5bKeyError" hidden></p>
+          <!-- One error line for the screen. It used to be the key field's, and the
+               key field is gone; what it carries now is the group-name collision
+               and a key Adafruit IO stopped accepting since it was connected. -->
+          <p class="field-error" id="a5bError" hidden></p>
 
           <!-- The preview of what will be created, and then the progress display
                for creating it. Deliberately the same box in both states: the rows
@@ -187,9 +199,6 @@
         <aside class="col-rail">
           <div class="eyebrow">What a Group is</div>
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">A Group is a folder for feeds on Adafruit IO. This display gets one, named after it, holding the four feeds it needs: the picture it draws, how long it sleeps, what it reports back, and the editable scene behind the picture.</p>
-          <div class="hr" style="margin:6px 0"></div>
-          <div class="eyebrow">Where to find your key</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Your Adafruit IO key is on <a href="https://io.adafruit.com/api/docs/#authentication" target="_blank" rel="noopener">io.adafruit.com</a>, behind the yellow key icon. It is stored in this browser and written onto the device when you flash it — treat it like a password.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">If it already exists</div>
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">We'll check to see if you already have a group and feeds configured for this device. If it's already configured, we'll do nothing and we'll let you know!</p>
@@ -625,7 +634,7 @@
 <!-- ── modals ─────────────────────────────────────────────────────────────── -->
 
 <div class="modal-backdrop hidden" id="previewModal">
-  <div class="modal" role="dialog" aria-label="Render preview">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Render preview">
     <div class="modal-head">
       <h4>Render preview</h4>
       <button type="button" class="modal-close" id="previewClose" aria-label="Close preview">✕</button>
@@ -642,12 +651,12 @@
 </div>
 
 <div class="modal-backdrop hidden" id="publishModal">
-  <div class="modal" role="dialog" aria-label="Publish to Adafruit IO">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Publish to Adafruit IO">
     <div class="modal-head">
       <h4>Publish to IO feed</h4>
       <button type="button" class="modal-close" id="publishClose" aria-label="Close publish dialog">✕</button>
     </div>
-    <p class="hint">Set your IO username, key and group under <strong>Settings</strong>.</p>
+    <p class="hint">Connect your Adafruit IO account from the display list, and set the group under <strong>Settings</strong>.</p>
     <div class="modal-actions">
       <span class="hint mono" id="publishDebug" style="flex:1; text-align:left"></span>
       <button type="button" class="btn btn-primary" id="publishSend">Publish</button>
@@ -656,16 +665,35 @@
 </div>
 
 <div class="modal-backdrop hidden" id="settingsModal">
-  <div class="modal" role="dialog" aria-label="Settings">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
     <div class="modal-head">
       <h4>Settings</h4>
       <button type="button" class="modal-close" id="settingsClose" aria-label="Close settings">✕</button>
     </div>
 
     <span class="label">Adafruit IO</span>
+    <!-- The account is read-only here. It is set in exactly one place — A1-C, which
+         checks the key against Adafruit IO before saving it — and a second editable
+         door would put an unchecked pair in the store and silently gate the user out
+         of adding a display.
+
+         #ioUser and #ioKey are still right here, and still ARE the store: every
+         val('ioUser') in the app, SETTINGS_SCOPE, snapshotAccountFields() and
+         restoreAccountFields() all read them. `hidden` takes them off the screen
+         and leaves .value and the `input` event exactly as they were. -->
+    <div class="account-plate blueprint" id="settingsAccount">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="account-lines">
+        <div class="eyebrow">Connected account</div>
+        <div class="account-user" id="settingsAccountUser">—</div>
+        <div class="account-key" id="settingsAccountKey">key ••••••••••••••••••••</div>
+      </div>
+      <button type="button" class="btn btn-sm btn-ghost" id="settingsAccountChange">Change account</button>
+    </div>
+    <input type="text" id="ioUser" autocomplete="off" hidden>
+    <input type="password" id="ioKey" autocomplete="off" hidden>
+
     <div class="grid-3">
-      <label class="field"><span class="label">IO username</span><input type="text" id="ioUser" autocomplete="off"></label>
-      <label class="field"><span class="label">AIO key</span><input type="password" id="ioKey" autocomplete="off"></label>
       <label class="field"><span class="label">Group key</span><input type="text" id="ioGroup" placeholder="marquee" autocomplete="off"></label>
     </div>
     <!-- One name, four feeds. A5b sets this for you during setup; this field is
@@ -849,7 +877,7 @@
 </div>
 
 <div class="modal-backdrop hidden" id="feedDataModal">
-  <div class="modal" role="dialog" aria-label="Select a feed">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Select a feed">
     <div class="modal-head">
       <h4>Select a feed</h4>
       <button type="button" class="modal-close" id="feedDataClose" aria-label="Close feed picker">✕</button>
@@ -857,6 +885,55 @@
     <input type="text" id="feedFilter" placeholder="Filter feeds…" autocomplete="off">
     <div id="feedList" style="max-height:320px; overflow:auto; display:flex; flex-direction:column; gap:4px; margin-top:8px"></div>
     <p class="hint mono" id="feedListStatus"></p>
+  </div>
+</div>
+
+<!-- ── A1-C · connect Adafruit IO ─────────────────────────────────────────── -->
+<!-- Not a screen and not a route: a dialog over the display list, shown the FIRST
+     time someone adds a display and any time they click the account button. The
+     shelf stays mounted behind it and the app bar stays lit above the scrim —
+     this is a step in front of A1, not a place you navigate to.
+
+     Deliberately not a <form>. There is no submit event to default-GET the key
+     into a query string; Enter is wired explicitly in a1c.js instead. -->
+<div class="modal-backdrop under-chrome hidden" id="a1cModal">
+  <div class="modal modal-gate blueprint" role="dialog" aria-modal="true" aria-labelledby="a1cTitle">
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+    <div class="modal-head">
+      <div class="head-lines">
+        <div class="eyebrow" id="a1cEyebrow">Before you add a display</div>
+        <h4 id="a1cTitle">Connect your Adafruit IO account</h4>
+      </div>
+      <button type="button" class="modal-close" id="a1cClose" aria-label="Close">✕</button>
+    </div>
+    <p class="hint" id="a1cBody">Marquee reads and writes feeds on your behalf, so it needs your
+      username and key before setup can start.</p>
+
+    <label class="field">
+      <span class="label">Adafruit IO username</span>
+      <input type="text" id="a1cUser" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="field-error" id="a1cUserError" hidden></p>
+
+    <div class="field">
+      <span class="label">Adafruit IO key</span>
+      <div class="key-field">
+        <input type="password" id="a1cKey" autocomplete="off" spellcheck="false">
+        <button type="button" class="reveal-toggle" id="a1cKeyReveal"
+                aria-pressed="false" aria-label="Show the key">Show</button>
+      </div>
+    </div>
+    <p class="field-error" id="a1cKeyError" hidden></p>
+
+    <p class="hint">Your username and key appear on every page on
+      <a href="https://io.adafruit.com" target="_blank" rel="noopener">io.adafruit.com</a>.
+      Click the key icon to reveal them!</p>
+
+    <div class="modal-actions">
+      <span class="hint" id="a1cFoot" style="flex:1; text-align:left">We check the key before continuing.</span>
+      <button type="button" class="btn btn-secondary" id="a1cCancel">Cancel</button>
+      <button type="button" class="btn btn-primary blueprint" id="a1cSave">Connect account<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+    </div>
   </div>
 </div>
 

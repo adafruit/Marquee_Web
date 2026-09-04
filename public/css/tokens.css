@@ -80,6 +80,7 @@
   --color-canvas-ground: var(--color-neutral-200);
   --color-canvas-dot: var(--color-neutral-400);
   --color-chrome: var(--color-accent-900);       /* app bar, sleep bar */
+  --chrome-h: 46px;                              /* the app bar's height, in one place */
   --color-chrome-text: #f2f2f3;
   --color-chrome-hairline: rgba(242, 242, 243, 0.35);
 
@@ -113,6 +114,11 @@
   --shadow-lg: 0 12px 32px color-mix(in srgb, var(--color-neutral-900) 22%, transparent);
   --shadow-md: 0 6px 18px color-mix(in srgb, var(--color-neutral-900) 18%, transparent);
   --shadow-glass: inset 0 1px 4px rgba(0, 0, 0, 0.15);
+
+  /* A dialog that belongs to the page rather than the window dims the shelf and
+     leaves the app bar lit. --color-text is #1d1f20, so this is rgba(29,31,32,0.42)
+     without a literal. */
+  --color-scrim-below-chrome: color-mix(in srgb, var(--color-text) 42%, transparent);
 
   /* ---- 3. PANEL (physical, do not re-point at brand colors) -------------- */
 

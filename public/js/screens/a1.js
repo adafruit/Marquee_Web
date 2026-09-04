@@ -16,9 +16,15 @@
  * watched draw, from that display's own bitmap feed, read here (see sweepThumbs). The
  * cache alone left most of the wall saying "Nothing drawn yet" about boards with a
  * perfectly good picture published to them.
+ *
+ * It is also where the Adafruit IO account is settled. The add tile is gated on one:
+ * setup writes feeds from its first step, so a display added without a checked
+ * username and key is a display whose setup cannot finish. See a1c.js.
  */
 
 import { activateDevice, removeDevice } from '../device/activate.js';
+import { hasIoConfig, connectedUser } from '../device/credentials.js';
+import { openCredentialsGate } from './a1c.js';
 import { feedKeyIn } from '../core/api.js';
 import { readFeedLast } from '../device/feeds.js';
 import { deviceEntry, navigate, currentScreen } from '../core/router.js';
@@ -235,6 +241,39 @@ function render() {
     draft ? draftTileHTML(draft) : '',
     ADD_TILE_HTML,
   ].join('');
+
+  renderAccountButton();
+}
+
+/**
+ * Which account the app is pointed at, on the button that changes it.
+ *
+ * The username is the whole content: "Adafruit IO account" alone says nothing a
+ * user with two accounts needs, and it is exactly the user with two accounts who
+ * will click this. textContent, not innerHTML — a username is user data.
+ */
+function renderAccountButton() {
+  const btn = $('a1Account');
+  if (!btn) return;
+  const connected = hasIoConfig();
+  btn.dataset.connected = String(connected);
+  $('a1AccountUser').textContent = connected ? connectedUser() : 'not connected';
+}
+
+/**
+ * Mint a display and go and set it up.
+ *
+ * Named because it is now a continuation as well as a click handler: when there
+ * are no credentials it is what A1-C runs on success, which is what makes
+ * cancelling the dialog leave nothing behind — the draft is not created until
+ * after the account is.
+ */
+async function startNewDisplay() {
+  const rec = devices.createDraft();
+  // createDraft() only mints the record; the app still has to be pointed at it, and
+  // that means flushing whatever device was active behind this list.
+  await activateDevice(rec.id);
+  navigate('a4');
 }
 
 /**
@@ -291,12 +330,15 @@ export function initA1({ onEnter }) {
       return;
     }
 
-    if (e.target.closest('#a1Add')) {
-      const rec = devices.createDraft();
-      // createDraft() only mints the record; the app still has to be pointed at it, and
-      // that means flushing whatever device was active behind this list.
-      await activateDevice(rec.id);
-      navigate('a4');
+    const add = e.target.closest('#a1Add');
+    if (add) {
+      // The gate. Nothing is created on the way in, so cancelling the dialog is a
+      // no-op rather than something to roll back.
+      if (!hasIoConfig()) {
+        openCredentialsGate({ mode: 'add', trigger: add, onSaved: startNewDisplay });
+        return;
+      }
+      await startNewDisplay();
       return;
     }
 
@@ -307,6 +349,13 @@ export function initA1({ onEnter }) {
     await activateDevice(rec.id);
     navigate(deviceEntry(rec));
   });
+
+  // Edit mode, and no continuation: changing the account from here settles a fact
+  // about the browser, not a step in a flow, so a successful save just repaints
+  // the button. That callback is the only difference from the add tile's path.
+  $('a1Account').addEventListener('click', (e) => openCredentialsGate({
+    mode: 'edit', trigger: e.currentTarget, onSaved: renderAccountButton,
+  }));
 
   onEnter('a1', () => {
     // Arriving here is the moment an abandoned draft stops being in progress. Only the

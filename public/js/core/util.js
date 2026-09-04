@@ -282,15 +282,96 @@ export function wireModal(backdropId, closeIds = []) {
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdropId); });
 }
 
-export function openModal(id) {
-  $(id)?.classList.remove('hidden');
+/**
+ * Teardown for a dialog, fired on EVERY way out — the close button, Cancel, a
+ * backdrop click and Escape.
+ *
+ * Distinct from onModalEscape() below, which only ever fires on Escape. A dialog
+ * holding a secret needs the one that cannot be missed.
+ */
+const closeHandlers = new Map();
+export function onModalClose(id, fn) { closeHandlers.set(id, fn); }
+
+// ---------- focus, while a dialog is open -----------------------------------
+//
+// Two separate favours, and a caller can ask for either: remember where focus came
+// from so it can go back, and confine Tab to the dialog while it is open.
+//
+// The trap is opt-in rather than automatic. The four dialogs that predate it were
+// written without one and their content is inert; a credential prompt is the one
+// place in the app where tabbing out to the shelf behind is a real defect. Focus
+// RETURN is worth having either way, which is why it is not conditional on it.
+
+const focusStack = new Map();
+
+/** Everything the browser would let you tab to inside a dialog. */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), '
+  + 'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusablesIn(root) {
+  // offsetParent is null for anything display:none — the reveal toggle of a hidden
+  // sub-block, a field the caller took out of the flow — and tabbing to something
+  // invisible is the same bug as tabbing out of the dialog.
+  return [...root.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+}
+
+const asElement = (x) => (typeof x === 'string' ? $(x) : x);
+
+/**
+ * Show a dialog.
+ *
+ * `trap` confines Tab to the dialog. Where focus came from is remembered either
+ * way. Pass `returnFocusTo` explicitly rather than trusting document.activeElement:
+ * Safari does not focus a <button> on click, so the trigger would read as <body>.
+ */
+export function openModal(id, { trap = false, focus = null, returnFocusTo = null } = {}) {
+  const backdrop = $(id);
+  if (!backdrop) return;
+  backdrop.classList.remove('hidden');
   openModals.add(id);
+
+  focusStack.set(id, { trap, returnTo: asElement(returnFocusTo) || document.activeElement });
+  // Only move focus for a dialog that asked to hold it. The editor's modals put
+  // focus where the user clicked and are better left alone.
+  if (!trap && !focus) return;
+  const first = asElement(focus) || focusablesIn(backdrop)[0];
+  first?.focus();
 }
 
 export function closeModal(id) {
   $(id)?.classList.add('hidden');
   openModals.delete(id);
+  closeHandlers.get(id)?.();
+
+  const t = focusStack.get(id);
+  if (!t) return;
+  focusStack.delete(id);
+  // The trigger may be gone: A1 rebuilds its grid with innerHTML, and a successful
+  // connect navigates away from the screen the button was on.
+  if (t.returnTo?.isConnected) t.returnTo.focus();
 }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab' || !focusStack.size) return;
+  // The last TRAPPED one opened is the one on top; a dialog that only asked for
+  // focus return does not confine anything.
+  const id = [...focusStack].filter(([, v]) => v.trap).map(([k]) => k).pop();
+  const backdrop = id && $(id);
+  if (!backdrop) return;
+  const items = focusablesIn(backdrop);
+  if (!items.length) return;
+
+  const first = items[0];
+  const last = items[items.length - 1];
+  const on = document.activeElement;
+  if (e.shiftKey && (on === first || !backdrop.contains(on))) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (on === last || !backdrop.contains(on))) {
+    e.preventDefault();
+    first.focus();
+  }
+});
 
 /** Escape closes whatever is open. Callers register extra teardown per modal. */
 const escapeHandlers = new Map();

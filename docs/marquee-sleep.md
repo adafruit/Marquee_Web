@@ -126,7 +126,7 @@ for. That is the consumer's call to make, and the answer is to say so and fall
 back to the timer, not to refuse to sleep.
 
 **Credentials and the group key itself** — written to the board at flash time
-(A5b and A5C collect them, A6-A writes them), as with the image feed.
+(A1-C collects the account, A5b the group, A5C the network, A6-A writes them), as with the image feed.
 
 **Anything about the panel** — the display descriptor, which this file does not
 touch. It travels with the layout in `canvas.json`; see

@@ -26,6 +26,9 @@ import { getState, subscribe, replaceFlow } from './core/state.js';
 import * as devices from './device/devices.js';
 import { rehydrateFor, removeDevice } from './device/activate.js';
 import { initA1 } from './screens/a1.js';
+// A1-C is a modal, not a route — it registers no enter hook and router.js has
+// never heard of it. Its init lives here so the one-line-per-screen list stays honest.
+import { initA1c, openCredentialsGate } from './screens/a1c.js';
 import { initA4 } from './screens/a4.js';
 import { initA5b } from './screens/a5b.js';
 import { initA5c } from './screens/a5c.js';
@@ -33,6 +36,7 @@ import { initA6a } from './screens/a6a.js';
 import { initA7 } from './screens/a7.js';
 import { initA8 } from './screens/a8.js';
 import { $, wireModal, openModal, closeModal, toast } from './core/util.js';
+import { clearIoVerified, hasIoConfig, connectedUser } from './device/credentials.js';
 
 // ---------- settings persistence --------------------------------------------
 //
@@ -52,8 +56,14 @@ import { $, wireModal, openModal, closeModal, toast } from './core/util.js';
 
 function saveSettings(id) {
   const scope = devices.SETTINGS_SCOPE[id];
-  if (scope === 'account') devices.saveAccount(devices.snapshotAccountFields());
-  else devices.flushActive();
+  if (scope === 'account') {
+    // An edit to either credential, or a move to the other host, retires the
+    // verification: none of them is a check against Adafruit IO. saveIoAccount()
+    // writes its stamp AFTER raising these same events, which is why it can do
+    // both without fighting this line.
+    if (id === 'ioUser' || id === 'ioKey' || id === 'ioDev') clearIoVerified();
+    devices.saveAccount(devices.snapshotAccountFields());
+  } else devices.flushActive();
 }
 
 function restoreSettings() {
@@ -61,11 +71,39 @@ function restoreSettings() {
   devices.restoreDeviceFields(devices.activeDevice()?.settings || {});
 }
 
+/**
+ * Which Adafruit IO account this browser is on, in Settings — the same read-only
+ * plate A5b carries, for the same reason. The fields behind it are hidden, so this
+ * is the only thing here that says who we are talking to.
+ */
+function renderSettingsAccount() {
+  const connected = hasIoConfig();
+  const user = $('settingsAccountUser');
+  const keyLine = $('settingsAccountKey');
+  if (!user || !keyLine) return;
+  user.textContent = connected ? connectedUser() : 'No account connected';
+  keyLine.hidden = !connected;
+  $('settingsAccountChange').textContent = connected
+    ? 'Change account' : 'Connect your Adafruit IO account';
+}
+
 function initSettings() {
   wireModal('settingsModal', ['settingsClose', 'settingsDone']);
-  $('btnSettings')?.addEventListener('click', () => openModal('settingsModal'));
+  $('btnSettings')?.addEventListener('click', (e) => {
+    renderSettingsAccount();
+    openModal('settingsModal', { returnFocusTo: e.currentTarget });
+  });
+
+  // Settings closes FIRST. The shared Escape handler dismisses every modal in the
+  // open set, so leaving this one behind A1-C would mean one keypress taking both.
+  $('settingsAccountChange')?.addEventListener('click', (e) => {
+    const trigger = e.currentTarget;
+    closeModal('settingsModal');
+    openCredentialsGate({ mode: 'edit', trigger, onSaved: renderSettingsAccount });
+  });
 
   restoreSettings();
+  renderSettingsAccount();
 
   Object.keys(devices.SETTINGS_SCOPE).forEach((id) => {
     const el = $(id);
@@ -73,6 +111,9 @@ function initSettings() {
     const evt = id === 'ioDev' ? 'change' : 'input';
     el.addEventListener(evt, () => {
       saveSettings(id);
+      // Developer mode moves the whole app to the other host, where this key has
+      // never been checked — so the plate above has to stop claiming otherwise.
+      if (id === 'ioDev') renderSettingsAccount();
     });
   });
 
@@ -148,6 +189,7 @@ async function boot() {
   initKeyboard();
 
   // One init per navigable screen, and router.js's SCREENS is the same list.
+  initA1c();
   initA1({ onEnter });
   initA4({ onEnter });
   initA5b({ onEnter });

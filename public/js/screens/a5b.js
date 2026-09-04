@@ -7,7 +7,9 @@
  * draws nothing, and there is no error anywhere to tell you why — which is the failure
  * this screen exists to prevent.
  *
- * Three fields and one action. The device name becomes the group's name, its slug
+ * ONE field and one action. The Adafruit IO account is not asked for here — it was
+ * settled once in A1-C, before the first display was ever added, and this screen
+ * reads it (see the plate at the top). The device name becomes the group's name, its slug
  * becomes the group key, and it is also what this display is called everywhere else in
  * the app — the tile on A1, the crumb in the chrome. The feeds box below is a preview of
  * what will be created, and then the progress display for creating it. The endpoints box
@@ -25,6 +27,8 @@ import {
 import { getState, setState } from '../core/state.js';
 import { navigate } from '../core/router.js';
 import { activeDeviceId, groupKeyTaken, setSetupStep } from '../device/devices.js';
+import { hasIoConfig, connectedUser, clearIoVerified } from '../device/credentials.js';
+import { openCredentialsGate } from './a1c.js';
 import { $, val, toast, setCheck, slugifyKey, setFieldValue, escapeHtml } from '../core/util.js';
 
 /** What each feed is for, in the user's terms. The row's resting label, and the
@@ -53,16 +57,17 @@ function slug() {
 }
 
 /**
- * Mirror this screen's fields into the canonical settings fields.
+ * Mirror this screen's field into the canonical settings fields.
  *
  * Those live in the Settings modal and are the app's real store — every other screen
- * reads `#ioUser`, `#ioKey` and `#ioGroup`, and main.js persists them by listening
- * for `input`. setFieldValue() raises that event, so writing through here is what
- * makes A5b's fields the same fields rather than a second copy that drifts.
+ * reads `#ioGroup`, and main.js persists it by listening for `input`. setFieldValue()
+ * raises that event, so writing through here is what makes A5b's field the same
+ * field rather than a second copy that drifts.
+ *
+ * The credentials used to be mirrored from here too. They are A1-C's now, and this
+ * screen only ever reads them.
  */
 function mirrorToSettings() {
-  setFieldValue('ioUser', ($('a5bUser')?.value || '').trim());
-  setFieldValue('ioKey', $('a5bKey')?.value || '');
   setFieldValue('ioGroup', slug());
   // The typed name, not the slug, and into the descriptor rather than the settings
   // blob — `marqueeName` is where deviceLabel() looks. This field is the only place
@@ -87,12 +92,16 @@ function syncForm() {
   // behaviour rather than an obvious mess. Caught here, on the field, rather than after
   // a write that would succeed.
   const taken = groupKeyTaken(key, activeDeviceId());
-  if (taken) showKeyError(`Another display in this browser already uses the group ${key}. `
+  if (taken) showFormError(`Another display in this browser already uses the group ${key}. `
     + 'Give this one a different name — two boards sharing a group overwrite each '
-    + "other's picture and misread each other's status.");
-  else if ($('a5bKeyError')?.textContent.startsWith('Another display')) clearKeyError();
+    + "other's picture and misread each other's status.", { field: 'a5bDevice' });
+  else if ($('a5bError')?.textContent.startsWith('Another display')) clearFormError();
 
-  const ready = !!($('a5bUser')?.value.trim()) && !!($('a5bKey')?.value) && !!slug() && !taken;
+  // hasIoConfig(), not "are the fields filled in": the account can be un-verified
+  // underneath this screen — Developer mode moves the app to another host, a 401
+  // below retires the stamp — and creating feeds against an unchecked key is the
+  // thing A1-C exists to prevent.
+  const ready = hasIoConfig() && !!slug() && !taken;
   const btn = $('a5bCreate');
   if (btn && !running) btn.disabled = !ready;
 }
@@ -125,11 +134,13 @@ function renderEndpoints() {
   const box = $('a5bEndpoints');
   if (!box) return;
   const host = ioHost();
-  const user = ($('a5bUser')?.value || '').trim();
+  // The STORED username, so these URLs follow an account changed mid-flow rather
+  // than freezing at whatever was typed on a form that no longer exists.
+  const user = connectedUser();
   const group = ioGroupKey();
 
   if (!user || !group) {
-    box.innerHTML = '<p class="hint">Fill in your username and a device name to see where this lands.</p>';
+    box.innerHTML = '<p class="hint">Connect your Adafruit IO account and name this device to see where this lands.</p>';
     return;
   }
 
@@ -142,18 +153,52 @@ function renderEndpoints() {
     `<div class="endpoint"><span class="k">${k}</span><span class="mono v">${escapeHtml(v)}</span></div>`).join('');
 }
 
-/** Clear the credential error. Any edit to either field earns a clean slate — the
- *  message was about the values IO rejected, and these are no longer those. */
-function clearKeyError() {
-  const err = $('a5bKeyError');
+/**
+ * The screen's one error line.
+ *
+ * `field` is optional because not every failure here belongs to a field: a group
+ * name already in use is about the name, and a key Adafruit IO has stopped
+ * accepting is about the account plate above, which is not an input at all.
+ *
+ * It used to mark #a5bKey for both. That was already the wrong field for the
+ * name collision — removing the key input is just what forced the fix.
+ */
+function clearFormError() {
+  const err = $('a5bError');
   if (err) { err.hidden = true; err.textContent = ''; }
-  $('a5bKey')?.removeAttribute('aria-invalid');
+  $('a5bDevice')?.removeAttribute('aria-invalid');
 }
 
-function showKeyError(msg) {
-  const err = $('a5bKeyError');
+function showFormError(msg, { field } = {}) {
+  const err = $('a5bError');
   if (err) { err.hidden = false; err.textContent = msg; }
-  $('a5bKey')?.setAttribute('aria-invalid', 'true');
+  if (field) $(field)?.setAttribute('aria-invalid', 'true');
+}
+
+// ---------- the connected account ------------------------------------------
+
+/**
+ * Which Adafruit IO account these feeds will be created on — stated, not asked for.
+ *
+ * Two states rather than one, because this screen is reachable without an account:
+ * a reload lands on whatever setupStep the record carries, and Developer mode moves
+ * the app to a host the stored key was never checked against. In that case the
+ * plate stops being a readout and becomes the way out — the create button is
+ * already disabled by syncForm(), and an error line saying so with nothing to click
+ * would be a dead end.
+ *
+ * textContent throughout: a username is user data.
+ */
+function renderAccountBlock() {
+  const connected = hasIoConfig();
+  const user = $('a5bAccountUser');
+  const keyLine = $('a5bAccountKey');
+  const btn = $('a5bAccountChange');
+  if (!user || !keyLine || !btn) return;
+
+  user.textContent = connected ? connectedUser() : 'No account connected';
+  keyLine.hidden = !connected;
+  btn.textContent = connected ? 'Change account' : 'Connect your Adafruit IO account';
 }
 
 // ---------- the feeds box --------------------------------------------------
@@ -215,7 +260,7 @@ function setActionLabel(text) {
  *  fields simply stop accepting edits that the run would not pick up. */
 function setBusy(busy) {
   running = busy;
-  ['a5bUser', 'a5bKey', 'a5bDevice'].forEach((id) => { const el = $(id); if (el) el.disabled = busy; });
+  ['a5bDevice', 'a5bAccountChange'].forEach((id) => { const el = $(id); if (el) el.disabled = busy; });
   const btn = $('a5bCreate');
   if (btn) btn.disabled = busy;
 }
@@ -236,14 +281,16 @@ function alreadyConfirmed() {
 
 async function createGroupAndFeeds() {
   if (running) return;
-  const user = ($('a5bUser').value || '').trim();
-  const key = $('a5bKey').value || '';
+  // Straight off the canonical store. The guard stays as defence behind a button
+  // syncForm() has already disabled — this function is also reachable from Enter.
+  const user = val('ioUser');
+  const key = $('ioKey')?.value || '';
   const name = ($('a5bDevice').value || '').trim();
   let groupKey = slug();
   if (!user || !key || !groupKey) return;
 
   mirrorToSettings();
-  clearKeyError();
+  clearFormError();
   resetRows();
   setBusy(true);
   setActionLabel(BUSY_LABEL);
@@ -256,7 +303,14 @@ async function createGroupAndFeeds() {
     const found = await getGroup(user, key, groupKey);
     if (!found.ok) {
       if (found.status === 401) {
-        showKeyError('Adafruit IO rejected this username and key. Check both — nothing was created.');
+        // A1-C proved this key, so a 401 here means it stopped being true since —
+        // regenerated on io.adafruit.com, most likely. Retire the stamp rather than
+        // leave the app claiming a connection it does not have, and let the plate
+        // above turn into the way back.
+        clearIoVerified();
+        renderAccountBlock();
+        showFormError('Adafruit IO rejected this key — it may have been regenerated since you '
+          + 'connected. Reconnect the account above. Nothing was created.');
       } else {
         setOutcome(reason(found, 'group'), 'fail');
       }
@@ -416,35 +470,37 @@ export function initA5b({ onEnter }) {
     else createGroupAndFeeds();
   });
 
-  ['a5bUser', 'a5bKey', 'a5bDevice'].forEach((id) => {
-    $(id).addEventListener('input', () => {
-      clearKeyError();
-      mirrorToSettings();
-      // Editing after a run makes the result stale — the dots would otherwise keep
-      // claiming feeds are ready under a group key that no longer applies.
-      if (!running) renderRestingState();
-      syncForm();
-    });
+  $('a5bDevice').addEventListener('input', () => {
+    clearFormError();
+    mirrorToSettings();
+    // Editing after a run makes the result stale — the dots would otherwise keep
+    // claiming feeds are ready under a group key that no longer applies.
+    if (!running) renderRestingState();
+    syncForm();
   });
 
-  $('a5bKeyReveal').addEventListener('click', () => {
-    const input = $('a5bKey');
-    const shown = input.type === 'text';
-    input.type = shown ? 'password' : 'text';
-    const btn = $('a5bKeyReveal');
-    btn.textContent = shown ? 'Show' : 'Hide';
-    btn.setAttribute('aria-pressed', String(!shown));
-    btn.setAttribute('aria-label', shown ? 'Show the key' : 'Hide the key');
+  $('a5bAccountChange').addEventListener('click', (e) => {
+    const before = connectedUser();
+    openCredentialsGate({ mode: 'edit', trigger: e.currentTarget, onSaved: () => {
+      renderAccountBlock();
+      clearFormError();
+      // A confirmed group on the OLD account is not a confirmed group on this one.
+      // alreadyConfirmed() only compares group KEYS, so the swap has to retire the
+      // claim itself — otherwise four green dots and a "Continue" button would go
+      // on asserting that these feeds exist on an account they may never have.
+      if (connectedUser().toLowerCase() !== before.toLowerCase() && getState().ioSetup === 'ready') {
+        setState({ ioSetup: 'pending' });
+      }
+      renderRestingState();
+      renderGroupLine();   // -> renderEndpoints(), so the URLs follow the new account
+      syncForm();
+    } });
   });
 
   onEnter('a5b', () => {
     if (running) return;
     const st = getState();
 
-    // The canonical fields are the source of truth — Settings may have been edited
-    // since, and this screen must not show a stale copy of a credential.
-    $('a5bUser').value = val('ioUser');
-    $('a5bKey').value = $('ioKey')?.value || '';
     // The group key we resolved last time, else the name the user gave the marquee
     // on A5 — which is almost always the answer, and saves retyping it.
     $('a5bDevice').value = st.ioGroupKey || ioGroupKey() || val('marqueeName');
@@ -460,14 +516,9 @@ export function initA5b({ onEnter }) {
       setState({ ioSetup: 'pending' });
     }
 
-    // The key field starts masked on every entry regardless of how it was left.
-    $('a5bKey').type = 'password';
-    $('a5bKeyReveal').textContent = 'Show';
-    $('a5bKeyReveal').setAttribute('aria-pressed', 'false');
-    $('a5bKeyReveal').setAttribute('aria-label', 'Show the key');
-
-    clearKeyError();
+    clearFormError();
     setBusy(false);
+    renderAccountBlock();
     renderRestingState();
     syncForm();
   });

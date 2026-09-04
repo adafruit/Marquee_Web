@@ -336,6 +336,56 @@ input[aria-invalid="true"] { border-color: var(--color-danger); }
 .modal-close:hover { color: var(--color-text); }
 .modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
+/* A dialog that belongs to the page under the app bar rather than to the window.
+   .chrome is in normal flow with no z-index, so starting the scrim below it is all
+   it takes to leave the bar lit — no stacking context anywhere. */
+.modal-backdrop.under-chrome {
+  top: var(--chrome-h);
+  background: var(--color-scrim-below-chrome);
+}
+
+/* The credentials dialog. Narrower than the editor's modals, and framed.
+
+   overflow is VISIBLE, unlike .modal: .blueprint > .corner sits 6px outside the
+   box, so the inherited `overflow: auto` would shear all four marks off. That
+   means giving up max-height too — the content here is fixed and short. If the
+   copy ever grows past the viewport, put the scroll on an inner wrapper rather
+   than back on this frame.
+
+   `class="modal blueprint"` keeps the paper fill only because .modal is declared
+   AFTER .blueprint in this file, at equal specificity — .blueprint sets
+   `background: none`. Reorder the two rules and this dialog goes transparent. */
+.modal-gate { width: min(94vw, 520px); max-height: none; overflow: visible; }
+.modal-gate .modal-head { align-items: flex-start; }
+.modal-gate .modal-head .head-lines { display: flex; flex-direction: column; gap: 4px; }
+.modal-gate .modal-head h4 { text-transform: none; letter-spacing: -0.015em; }
+
+/* — the connected Adafruit IO account, read-only — */
+/* One block, three homes: A5b, the Settings modal, and whatever asks next. The
+   key is a fixed run of bullets, not a render of the real one — its LENGTH is
+   worth nothing to the reader and something to a shoulder. */
+
+.account-plate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  max-width: 520px;
+}
+.account-plate .account-lines { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.account-plate .account-user {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 19px;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-plate .account-key { font-size: 12px; color: var(--color-muted); }
+.account-plate > .btn { flex: none; }
+
 /* — toast — */
 
 #toast {

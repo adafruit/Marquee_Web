@@ -102,12 +102,39 @@ function errorText(status, data) {
 const enc = encodeURIComponent;
 
 /**
+ * Prove a username and key before anything is written — the check behind A1-C's
+ * CONNECT ACCOUNT.
+ *
+ * `/api/v2/user` and NOT `/{username}/user`. The latter is not a route: it answers
+ * 404 "that username does not exist" on a perfectly good key, which is the mistake
+ * recorded in getGroup() below. `/{username}/groups` is not a substitute either —
+ * a bad key makes IT 404 as well, so it cannot tell a wrong key from a wrong
+ * username. This one 401s on a bad key and names the account the key belongs to on
+ * a good one, so a single request settles both halves of what was typed.
+ *
+ * `user` is not sent anywhere; it is the caller's to compare against the username
+ * that comes back.
+ */
+export async function validateCredentials(user, key) {
+  const out = await ioFetch('/api/v2/user', key);
+  // ioLog prefixes with the CURRENT #ioUser, which during a validation is still
+  // whatever account was connected before. Cosmetic, and only in the log.
+  ioLog('account', '(user)', out.ok
+    ? `key accepted for ${out.data?.username ?? '?'}`
+    : `key rejected (${out.status}) ${out.error}`);
+  return out.ok
+    ? { ok: true, status: out.status, username: String(out.data?.username || '').trim() }
+    : out;
+}
+
+/**
  * Look for the group — and, in the same request, prove the credentials.
  *
  * This is the ONLY read A5b makes before it starts writing, and it carries both jobs
  * on purpose. A separate credential check was tried first and was a mistake twice
  * over: `GET /{username}/user` is not a real endpoint (IO answers 404 "that is an
- * invalid URL", which surfaced as a nonsense error on a perfectly good key), and even
+ * invalid URL", which surfaced as a nonsense error on a perfectly good key — see
+ * validateCredentials() above for the route that IS real), and even
  * a valid one would have been a second request to learn something this one already
  * says. A bad key 401s here exactly as it would anywhere else, and a 401 on a GET
  * means no POST was ever attempted — which is the whole guarantee that check existed

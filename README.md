@@ -56,7 +56,7 @@ The server reads three environment variables, all optional:
 `AIO_USER` / `AIO_KEY` exist so `POST /publish` can render and push in one step
 with the key held server-side, out of the browser. Leave them unset — the normal
 path — and `/publish` answers `501`; the editor then publishes directly from the
-browser with the key you enter in the UI, which is stored in that browser's
+browser with the key you connect in A1-C, which is stored in that browser's
 localStorage and never sent here.
 
 Note that the server reads `process.env` directly and does **not** load a `.env`
@@ -84,9 +84,9 @@ public/
     main.js        entry point: wires the modules and the screens together
     core/          state, util, router, api, config, doc
     canvas/        stage, elements, selection, palette, render, icons, konva shim
-    device/        device, devices, activate, provision, flash, cycle, canvasfeed,
-                   feeds, presets
-    screens/       a1, a4, a5b, a5c, a6a, a7, a8
+    device/        device, devices, activate, credentials, provision, flash, cycle,
+                   canvasfeed, feeds, presets
+    screens/       a1, a1c (a modal, not a route), a4, a5b, a5c, a6a, a7, a8
     vendor/        Konva 10.3.0, inlined so there is no CDN dependency
 ```
 
@@ -103,9 +103,15 @@ carry their working names from the design docs:
 
 ```
 A1 device list -> A4 pick device -> A5b Adafruit IO -> A5c Wi-Fi -> A6a flash
-                                                                       |
-                                        A1 <- ALL DISPLAYS <- A7 <-> A8
+      |                                                                |
+   (A1-C, once)                        A1 <- ALL DISPLAYS <- A7 <-> A8
 ```
+
+A1-C is the exception to "screens are sections": it is a modal over the display
+list, shown the first time a display is added, and it is the only place an Adafruit
+IO username and key are ever typed. It checks the key against `/api/v2/user` before
+saving, so every screen after it reads an account that is known to work. A5b shows
+that account read-only and asks only for a device name.
 
 A7 (build) and A8 (show) are the editor proper and loop between themselves; setup
 is only re-entered by adding a device.
