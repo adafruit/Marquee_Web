@@ -16,16 +16,4 @@ npm-debug.log*
 yarn-error.log*
 .npm/
 
-# --- Secrets -----------------------------------------------------------------
-# AIO_USER / AIO_KEY. Never commit a real one; the variables are documented
-# in the README's Configuration section.
-.env
-.env.*
-
-# --- Runtime state -----------------------------------------------------------
-# The editor POSTs the whole canvas document to /canvas on every edit, so this
-# file churns constantly and is per-bench, not source. A fresh clone has none:
-# GET /canvas answers null and the first edit writes it.
-data/canvas.json
-
 *.log

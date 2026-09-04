@@ -3,19 +3,18 @@
  * answers "has the design changed since the device last drew it?".
  *
  * The layout JSON is the internal source of truth. On every edit we serialize
- * the canvas, show it live under the panel, and persist it to canvas.json on the
- * backend. Konva fires 'draw' on the content layer after every add, remove,
+ * the canvas, show it live under the panel, and persist it to localStorage.
+ * Konva fires 'draw' on the content layer after every add, remove,
  * move, transform and attr edit, so one debounced listener captures them all; we
  * de-dupe on the serialized string so pure view changes (zoom, selection,
  * transformer handles) never trigger a write.
  *
- * THREE DESTINATIONS, one authority. localStorage per device is the store and is
- * written first; canvas.json on the backend is a bench-inspection mirror; and
- * {group}.canvas-state on Adafruit IO is the copy another machine can open — see
+ * TWO DESTINATIONS, one authority. localStorage per device is the store and is
+ * written first; {group}.canvas-state on Adafruit IO is the copy another machine
+ * can open — see
  * canvasfeed.js, which is on a much longer leash than the 400ms debounce here.
  */
 
-import { BACKEND } from './api.js';
 import { display } from '../canvas/palette.js';
 import { layer, fitZoom } from '../canvas/stage.js';
 import { select } from '../canvas/selection.js';
@@ -23,7 +22,6 @@ import {
   addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery, addImage,
 } from '../canvas/elements.js';
 import { applyDisplayToForm, setResolution } from './config.js';
-import { isBackendOnline } from '../canvas/render.js';
 import { activeDeviceId, saveCanvas } from '../device/devices.js';
 import { scheduleCanvasStatePublish } from '../device/canvasfeed.js';
 import { $, copyFromButton } from './util.js';
@@ -201,35 +199,6 @@ function setSaveStatus(state, text) {
   el.textContent = text;
 }
 
-/**
- * Mirror the active device's document into canvas.json on the backend.
- *
- * A mirror, not the store. The authority is localStorage, per device — see
- * saveCanvasNow(). Nothing in the app reads canvas.json except the one-time
- * migration seed in devices.js: /render, /publish and /display/send-bmp are all fed a
- * live Konva capture in the request body, never the file. It is kept because being
- * able to `cat canvas.json` on the bench is worth one POST.
- *
- * Gated on the backend actually being up, because there may not be one — served from
- * GitHub Pages this would be a failing fetch every 400ms while typing.
- */
-async function persistCanvas(doc) {
-  if (!isBackendOnline()) { setSaveStatus('saved', 'saved locally'); return; }
-  try {
-    const res = await fetch(BACKEND + '/canvas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ doc }),
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    setSaveStatus('saved', 'saved');
-  } catch {
-    // Not "unsaved": the document IS saved, in localStorage, a line above the call
-    // to this function. Only the bench mirror missed.
-    setSaveStatus('saved', 'saved locally');
-  }
-}
-
 /** Listeners fired whenever the document content actually changes. */
 const changeListeners = new Set();
 export function onDocChange(fn) { changeListeners.add(fn); }
@@ -242,12 +211,11 @@ export function saveCanvasNow() {
   if (text === lastCanvasJson) return;        // no content change -> no write
   lastCanvasJson = text;
   setSaveStatus('saving', 'saving…');
-  // localStorage first, and unconditionally: it is the store, the backend is a
-  // mirror. A device with no id yet (before initDevices has minted one) simply
-  // isn't written — there is nowhere to put it.
+  // localStorage is the store. A device with no id yet (before initDevices has
+  // minted one) simply isn't written — there is nowhere to put it.
   const id = activeDeviceId();
   if (id) saveCanvas(id, doc);
-  persistCanvas(doc);
+  setSaveStatus('saved', 'saved');
   // Up to {group}.canvas-state, on a much longer leash than either of the two writes
   // above — see canvasfeed.js for the cadence and for what reads it back down.
   scheduleCanvasStatePublish(doc);

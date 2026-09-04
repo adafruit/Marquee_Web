@@ -1,99 +1,88 @@
 # Marquee Web
 
-A browser-based canvas editor for **Adafruit IO Marquee** e-ink displays, plus a
-small render backend that turns what you draw into epaper-display-ready bitmaps.
+A browser-based canvas editor for **Adafruit IO Marquee** e-ink displays. It turns
+what you draw into epaper-ready bitmaps entirely in the browser and publishes them
+to Adafruit IO feeds. It is a static site: no server, no build step, and everything
+it remembers lives in your browser's localStorage.
 
 ## Requirements
 
 | | |
 |---|---|
-| **Node.js** | 18 or newer |
-| **ImageMagick** | **7.x** — the `magick` command must be on your `PATH` |
 | **Browser** | Any modern one. The flash step (A6-A) additionally needs Web Serial, so Chrome or Edge. |
+| **Node.js** | Optional — 18 or newer, only for the local dev server (`npm start`) and the tests (`npm test`). |
 
-ImageMagick 7 or newer is **required**.
-
-```sh
-brew install imagemagick        # macOS
-sudo apt install imagemagick    # Debian/Ubuntu
-```
+Nothing else. ImageMagick used to be required; it is not any more — see
+[Rendering](#rendering).
 
 ## Run it
+
+Serve the `public/` folder from any static web server. Browsers refuse to load ES
+modules over `file://`, so it does need *some* HTTP server:
 
 ```sh
 git clone https://github.com/adafruit/Marquee_Web.git
 cd Marquee_Web
-npm install
-npm start
+npm start                       # zero-dependency server, http://localhost:3000
+# or, without Node:
+python3 -m http.server -d public 8080
 ```
 
-Then open <http://localhost:3000>.
+The same folder can be published as-is to GitHub Pages or any other static host.
+All asset paths are relative, so it works from a sub-path too.
 
-`npm run dev` does the same under `node --watch`, restarting the server when you
-edit it. The frontend needs no build step — it is plain ES modules served
-straight from `public/`, so a browser reload picks up any change you make.
+`npm test` runs the render regression suite (see below). There is nothing to
+install first: the repo has no runtime or dev dependencies.
 
-Check your setup at any time:
+## Rendering
 
-```sh
-curl -s localhost:3000/health
-# {"ok":true,"imagemagick":"Version: ImageMagick 7.1.2-27 ...","palettes":[...]}
+Everything you draw is captured at 1:1 and dithered + palette-remapped by
+`public/js/canvas/bitmap.js`, a pure-JS port of the ImageMagick pipeline the editor
+used to shell out to:
+
+```
+magick in.png -dither FloydSteinberg -define dither:diffusion-amount=N% \
+  -remap eink-<type>.png gif:- | magick gif:- -compress none BMP3:-
 ```
 
-A non-200 there means ImageMagick isn't installed or isn't on the `PATH`, and
-nothing will render until it is.
+The port is **byte-identical** to that pipeline — the same indexed BMP3 (1 bpp mono,
+4 bpp for the colour and grayscale panels) that the firmware reads, for every dither
+setting the UI offers (Floyd–Steinberg at any diffusion, ordered 2×2/4×4/8×8, none).
+That claim is enforced by `test/bitmap.test.js`, which renders every raster under
+`test/fixtures/inputs/` and compares the bytes with the goldens ImageMagick produced
+(`test/fixtures/golden/`, 4 panel types × 7 dither settings each).
 
-## Configuration
+Two things worth knowing if you ever regenerate the goldens
+(`scripts/regen-goldens.sh`, needs `magick`):
 
-The server reads three environment variables, all optional:
-
-| Variable | Default | What it does |
-|---|---|---|
-| `PORT` | `3000` | Port the editor and backend listen on. |
-| `AIO_USER` | *(unset)* | Adafruit IO username for the optional server-side publish path. |
-| `AIO_KEY` | *(unset)* | Adafruit IO key for the same. |
-
-`AIO_USER` / `AIO_KEY` exist so `POST /publish` can render and push in one step
-with the key held server-side, out of the browser. Leave them unset — the normal
-path — and `/publish` answers `501`; the editor then publishes directly from the
-browser with the key you connect in A1-C, which is stored in that browser's
-localStorage and never sent here.
-
-Note that the server reads `process.env` directly and does **not** load a `.env`
-file on its own. Export the values in your shell, or:
-
-```sh
-node --env-file=.env server/index.js
-```
-
-Treat your Adafruit IO key like a password, and keep `.env` out of git — the
-`.gitignore` already does this.
+- They were made with ImageMagick 7.1.2-27 Q16-HDRI on macOS. Apple builds use a
+  coarser colour cache during dithering (`quantize.c`, `CacheShift 3` vs 2), which
+  `bitmap.js` mirrors; a Linux `magick` can differ in a handful of pixels.
+- The panel palettes are `PALETTES` in `public/js/canvas/palette.js`. The original
+  `-remap` PNGs are kept under `test/fixtures/palettes/` for the regen script only.
 
 ## Layout
 
 ```
-server/
-  index.js         Express app: render, publish, canvas persistence
-  palettes/        the four -remap PNGs ImageMagick quantizes against
-data/              runtime state — canvas.json lands here, gitignored
 docs/              the feed and file format specs
-public/
+public/            the site — serve this folder
   index.html       every screen, mounted at once and shown/hidden by the router
   css/             tokens.css -> base.css -> app.css, in that order
   js/
     main.js        entry point: wires the modules and the screens together
     core/          state, util, router, api, config, doc
-    canvas/        stage, elements, selection, palette, render, icons, konva shim
+    canvas/        stage, elements, selection, palette, bitmap, render, icons, konva shim
     device/        device, devices, activate, credentials, provision, flash, cycle,
                    canvasfeed, feeds, presets
     screens/       a1, a1c (a modal, not a route), a4, a5b, a5c, a6a, a7, a8
     vendor/        Konva 10.3.0, inlined so there is no CDN dependency
+scripts/
+  serve.js         the `npm start` static server
+  regen-goldens.sh rebuild the render goldens with real ImageMagick
+test/
+  bitmap.test.js   byte-identity regression for the renderer
+  fixtures/        raw inputs, golden BMPs, the original -remap palette PNGs
 ```
-
-`server/palettes/` sits deliberately outside `public/`, so `express.static` never
-serves it — the remap PNGs are an ImageMagick input, not a web asset. Their
-colors are mirrored as `PALETTES` in `public/js/canvas/palette.js`; the two must
-stay in sync.
 
 ## How the app is organised
 
@@ -122,23 +111,13 @@ truth, and `navigate()` hard-rejects anything not in it — which is what keeps 
 exists.
 
 The display descriptor — geometry, rotation, colour mode and the pinout — lives in
-the Settings modal rather than on a setup screen, because `core/config.js` reads
-those fields from A7 and A8 as well.
-
-## Endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/` | the editor |
-| `GET` | `/health` | ImageMagick + palette check |
-| `POST` | `/render` | dither + remap a canvas PNG -> `{ bmp, png, sizes }` |
-| `POST` | `/publish` | render, then push to Adafruit IO with the server's key |
-| `GET` `POST` | `/canvas` | read / persist the canvas layout to `data/canvas.json` |
-| `POST` | `/reset` | empty `data/canvas.json`, keeping its display descriptor |
-
-That is the whole surface, and none of it talks to a board. This server renders and
-persists; everything that reaches the device goes through Adafruit IO feeds straight
-from the browser, per the specs in `docs/`.
+`#settingsModal` rather than on a setup screen, because `core/config.js` reads those
+fields from A7 and A8 as well. That modal has no entry point any more: the chrome
+button that opened it is gone, so it is now a hidden field bank rather than a dialog.
+It stays mounted because those inputs *are* the store — `api.js#ioHost()`,
+`device/feeds.js` and `core/config.js` all read straight out of it — and several of
+those reads are not optional-chained, so removing the markup would throw during boot.
+Panels are chosen from A4's preset picker instead.
 
 ## Documentation
 

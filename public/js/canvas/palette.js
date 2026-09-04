@@ -3,8 +3,7 @@
  * palettes it quantizes to.
  *
  * `display` is mutable shared state on purpose: it is the one object that the
- * editor, the config form, the render backend call and the /display/add
- * descriptor all agree on. Everything that changes it also has to re-fit the
+ * editor, the config form and the render call all agree on. Everything that changes it also has to re-fit the
  * canvas and invalidate any dither preview — see config.js, which owns the form
  * bindings that do exactly that.
  */
@@ -27,9 +26,12 @@ export const display = {
 };
 
 /**
- * Extracted from the committed remap PNGs (palettes/*.png). These must stay in
- * sync with what `magick -remap` quantizes to, or the editor shows colors the
- * panel cannot produce.
+ * The colours each panel type can show — the single source of truth the renderer
+ * (canvas/bitmap.js) quantizes to. Originally extracted from the ImageMagick
+ * `-remap` PNGs now kept under test/fixtures/palettes/ as provenance.
+ *
+ * Order here is for the editor's swatches only: the BMP palette that reaches the
+ * panel is in the renderer's octree order, exactly as ImageMagick emitted it.
  */
 export const PAPER = '#F2F4EF';
 
@@ -39,14 +41,6 @@ export const PALETTES = {
   tricolor:  ['#2F2429', '#F2F4EF', '#D72627'],
   // black/white/red/yellow; red+yellow from the product 6373 datasheet
   quadcolor: ['#2F2429', '#F2F4EF', '#FD2A00', '#FFFF03'],
-};
-
-/** Display type -> ImageMagick -remap palette file. The backend contract. */
-export const REMAP_FILES = {
-  mono:      'eink-2color.png',
-  tricolor:  'eink-3color.png',
-  gray4:     'eink-4gray.png',
-  quadcolor: 'eink-4color.png',
 };
 
 export const MODE_LABELS = {
@@ -102,9 +96,9 @@ export function neutralShades() {
  *   tricolor   2.9" ≈ 14s    7.5" ≈ 25s
  *   quadcolor  2.9" ≈ 19s    7.5" ≈ 30s
  *
- * An estimate, and used only where being EARLY is the failure — see A8's
- * clapperboard, which would otherwise call a redraw overdue while the panel is
- * still visibly flashing.
+ * An estimate, and used only where being EARLY is the failure — a take promoted onto
+ * "on the panel now" before the panel has finished flashing is claiming a redraw that
+ * has not happened yet.
  */
 const REFRESH_FIT = {
   mono:      { base: 1.5, perMpx: 8 },

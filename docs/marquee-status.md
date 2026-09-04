@@ -4,9 +4,16 @@ How the board tells the editor what it is actually doing. Two moments, one field
 required, and nothing else.
 
 - **Producer:** the board's firmware. **Not yet implemented** — see Known gaps.
-- **Consumer:** the status watch in `public/js/device/device.js` (`pumpStatus`,
-  `applyStatus`, `watchForStatus`), read browser-direct through
-  `readFeedData()` in `public/js/device/feeds.js`.
+- **Consumers:** two, both browser-direct through `readFeedData()` in
+  `public/js/device/feeds.js`.
+  - The status watch in `public/js/device/device.js` (`pumpStatus`, `applyStatus`,
+    `watchForStatus`) polls the **active** display's feed continuously.
+  - The display list, `public/js/screens/a1.js` (`sweepStatus`), reads **every other**
+    display's feed once per visit. A record carries its own group key, so this needs no
+    activation. It exists because those tiles used to render a stored snapshot of flow
+    state, which is only ever written for the active device — so every other tile was
+    frozen at whatever its board was doing the last time it was open, and a board
+    typically freezes just after a push, reading "On air" for good while it slept.
 
 This exists because nothing else acknowledges anything. Without it the editor is
 left inferring the board's entire life from the sleep window it published —
@@ -68,8 +75,12 @@ used to be extra states — modelled vs reported, timed vs pin, due-back — are
 in how far the *numbers* can be trusted, not in what the board is doing, so they show up
 in the countdown's caption and prose rather than as states of their own.
 
-`displayState()` in `public/js/device/cycle.js` is the single derivation, imported by both the
-chrome pill (`router.js`) and the Showtime bar (`screens/a8.js`). It lives in its own
+`displayState()` in `public/js/device/cycle.js` is the single derivation, imported by the
+chrome pill (`router.js`), the Showtime bar (`screens/a8.js`) and the display-list tiles
+(`screens/a1.js`). The PARSE and the READING are shared from the same file for the same
+reason — `parseStatus()` and `readReport()` turn a batch of data into a flow patch, and
+`reportIsOverdue()` is the offline judgement, so the watch and the tile wall cannot grow
+separate ideas of what a payload means. It lives in its own
 module because `device.js` imports `router.js`, so the reading cannot live in either of
 those without closing a cycle — and because two copies of it drifted apart the first
 time: the pill read `deviceState` alone and said Sleeping while the countdown beside it
@@ -160,7 +171,7 @@ A board running older firmware publishes nothing, and that has to keep working.
   the queued take is promoted by `scheduleQueuedWrite`'s timer. All estimates, and the
   sub line says so.
 - **A status has arrived at some point, and then the board goes quiet** past
-  `STATUS_TAKE_CEILING_MS` plus a 60s grace → `deviceState` → `offline`. A board that has
+  `TAKE_CEILING_MS` plus a 60s grace (`REPORT_GRACE_MS`) → `deviceState` → `offline`. A board that has
   proved it reports can be judged for not reporting; one that never has, cannot. The clock
   runs from when the board is next due to speak, floored at when the watch started, so a
   tab backgrounded for an hour does not call a healthy board dead the moment it resumes.
@@ -215,7 +226,7 @@ board that was mid-refresh.
 
 Two numbers survive, neither of them shown to anyone:
 
-- `STATUS_TAKE_CEILING_MS` (5 min) in `device.js` — how long the board gets to say
+- `TAKE_CEILING_MS` (5 min) in `cycle.js` — how long the board gets to say
   something before it is called offline. A watchdog, not a model, and generously past the
   worst take this hardware can produce.
 - `FALLBACK_TAKE_S` (240s) in `device.js` — used only to promote a queued take onto
@@ -229,7 +240,7 @@ every 153s.
 
 ## Known gaps
 
-- **The two surviving estimates are flat constants.** `STATUS_TAKE_CEILING_MS` and
+- **The two surviving estimates are flat constants.** `TAKE_CEILING_MS` and
   `FALLBACK_TAKE_S` are budgeted from the `EPaperDisplay` defaults rather than read from
   the board. They are only ever used to decide when to stop waiting, so being generous
   costs nothing — but if the firmware sets a per-driver refresh time, that is a fact

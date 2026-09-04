@@ -150,7 +150,7 @@ an error worth bricking a take over.
 
 `pushToDisplay()`, in order:
 
-1. Render through the backend (the only render path — see `render.js`).
+1. Render in the browser (`render.js` -> `bitmap.js`, the only render path).
 2. Publish the base64 BMP to the image feed. **The dashboard goes first:** if only
    one of the two writes lands, a board holding a new image and an old sleep
    window still shows the right thing.
