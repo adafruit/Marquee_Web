@@ -30,7 +30,7 @@ export const DISPLAY_PRESETS = {
     cardMeta: '296×128 · mono · SSD1680',
     terms: 'magtag 2.9 esp32-s2 mono ssd1680',
     preset: '128x296', rotation: '270', mode: 'mono',
-    name: 'epd0', driver: 'SSD1680', panel: 'adafruit-magtag',
+    name: 'epd0', driver: 'SSD1680', panel: 'magtag-2025',
     // The panel is soldered to the board, so the firmware already owns it — these
     // pins describe the wiring, not board attribute names (a MagTag's EPD is on
     // EPD_CS/EPD_DC/…, not D8/D7). `iface: 'builtin'` is what records that.

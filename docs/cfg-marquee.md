@@ -6,9 +6,10 @@ written to the board's filesystem at flash time.
 
 - **Producer:** `device/cfg.js` in the editor (`public/js/device/cfg.js`). Every device
   record carries the file as `rec.cfg`, rebuilt from the live settings after each step
-  of setup. A6-A shows it under **Show JSON config** and will write it when the flash
-  path lands (`device/flash.js`).
-- **Consumer:** the board's firmware.
+  of setup. A6-A shows it under **Show JSON config** and writes it onto the board's USB
+  drive (`device/drive.js`), or offers it as a download to copy over by hand.
+- **Consumer:** the board's firmware, which reads it from the root of its FAT filesystem
+  at boot.
 
 The editor collects these facts on four different screens — A1-C the account, A4 the
 panel, A5b the group, A5C the network — and used to keep them in four different
@@ -25,7 +26,7 @@ A MagTag on the group `kitchen-board`:
   "name": "kitchen-board",
   "display": {
     "driver": "SSD1680",
-    "panel": "adafruit-magtag",
+    "panel": "magtag-2025",
     "width": 128,
     "height": 296,
     "rotation": 3,
@@ -111,6 +112,23 @@ into each display's file, because each board is on its own once flashed.
 **Not carried:** the host. The editor's Developer-mode toggle moves the whole app to
 `io.adafruit.us`, and a board reading this file has no way to know. A board is assumed
 to talk to `io.adafruit.com`.
+
+## How it reaches the board
+
+Not over serial. The firmware mounts the FAT partition on its own flash and exposes it over
+USB mass storage as a volume named `MARQUEE`, then opens `/cfg-marquee.json` on it. With no
+file there, `begin()` returns `ERR_FS_NO_CFG_FILE` and the sketch halts with the drive still
+mounted — which is the state A6-A's drive step writes into.
+
+A6-A uses the File System Access API: the user picks the `MARQUEE` volume in a directory
+dialog, the editor writes the file at the top level and reads it back to check. Then the user
+**ejects the drive and presses RESET**: the file is read at boot only, and ejecting first
+flushes the host's write cache. A board sent back through setup to change networks comes back
+to this step and overwrites the file; the firmware itself is not re-flashed.
+
+A full chip erase (the opt-in box on A6-A) removes the volume: the firmware does not format
+the partition, so the drive comes back unformatted and has to be formatted FAT with the label
+`MARQUEE` before the file can be written.
 
 ## Where it lives in the editor
 

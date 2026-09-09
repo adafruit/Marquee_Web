@@ -9,7 +9,7 @@ small render backend that turns what you draw into epaper-display-ready bitmaps.
 |---|---|
 | **Node.js** | 18 or newer |
 | **ImageMagick** | **7.x** — the `magick` command must be on your `PATH` |
-| **Browser** | Any modern one. The flash step (A6-A) additionally needs Web Serial, so Chrome or Edge. |
+| **Browser** | Any modern one for the editor. The flash step (A6-A) needs Web Serial and the File System Access API — Chrome or Edge on desktop, over https or localhost. |
 
 ImageMagick 7 or newer is **required**.
 
@@ -58,8 +58,8 @@ with the key held server-side, out of the browser. Leave them unset — the norm
 path — and `/publish` answers `501`; the editor then publishes directly from the
 browser with the key you connect in A1-C, which is stored in that browser's
 localStorage and never sent here. The Wi-Fi credentials from A5-C are stored the same
-way, per display, as part of the `cfg-marquee.json` that A6-A shows and will write to
-the board — see [`docs/cfg-marquee.md`](docs/cfg-marquee.md).
+way, per display, as part of the `cfg-marquee.json` that A6-A shows and writes onto the
+board's USB drive — see [`docs/cfg-marquee.md`](docs/cfg-marquee.md).
 
 Note that the server reads `process.env` directly and does **not** load a `.env`
 file on its own. Export the values in your shell, or:
@@ -86,10 +86,11 @@ public/
     main.js        entry point: wires the modules and the screens together
     core/          state, util, router, api, config, doc
     canvas/        stage, elements, selection, palette, render, icons, konva shim
-    device/        device, devices, activate, credentials, provision, flash, cycle,
-                   canvasfeed, feeds, presets
+    device/        device, devices, activate, credentials, provision, flash, drive,
+                   cycle, canvasfeed, feeds, presets
     screens/       a1, a1c (a modal, not a route), a4, a5b, a5c, a6a, a7, a8
-    vendor/        Konva 10.3.0, inlined so there is no CDN dependency
+    vendor/        Konva 10.3.0 and esptool-js 0.6.1 (bundle.js, Apache-2.0), inlined so
+                   there is no CDN dependency
 ```
 
 `server/palettes/` sits deliberately outside `public/`, so `express.static` never
@@ -127,6 +128,35 @@ The display descriptor — geometry, rotation, colour mode and the pinout — li
 the Settings modal rather than on a setup screen, because `core/config.js` reads
 those fields from A7 and A8 as well.
 
+## Flashing a board
+
+A6-A does the whole thing from the browser — Chrome or Edge on desktop, no server involved.
+
+1. **Get the image.** Open the
+   [Adafruit_Marquee build](https://github.com/adafruit/Adafruit_Marquee/actions/workflows/build.yml),
+   pick the latest run, and download the artifact for your board:
+
+   | Display preset | Artifact | Chip |
+   |---|---|---|
+   | MagTag 2.9" | `marquee-magtag-<sha>` | ESP32-S2 |
+   | Any panel on a Feather (tri-color FeatherWing, breakouts, 4.2", 7.5") | `marquee-adafruit_feather_esp32s3-<sha>` | ESP32-S3 |
+   | Xteink X4 Pro | `marquee-x4pro-<sha>` | ESP32-S3 |
+
+   Unzip it. The file A6-A wants is `merged-flash.bin` — bootloader, partition table,
+   `boot_app0` and the app already laid out at their offsets, written at `0x0` in one go.
+2. **Flash.** Hold BOOT, tap RESET, release BOOT. Choose the `.bin` (it is checked for a
+   partition table and the right bootloader offset before any port dialog opens), click
+   **Connect and flash**, pick the board's port. The chip is read and compared with the
+   image before anything is written. Leave "Erase the whole chip first" off — see Known gaps.
+3. **Write the config.** Press RESET. The firmware comes up as a USB drive named `MARQUEE`.
+   Click **Open MARQUEE and write config…**, choose that drive, and `cfg-marquee.json` is
+   written into it and read back. Browsers without a directory picker get a Download button
+   and copy the file over by hand.
+4. **Eject, then press RESET.** The board reads the file at boot only. Done opens the editor.
+
+Skipping the flash ("my board is already flashed") lands on step 3; skipping that too goes
+straight to the editor.
+
 ## Endpoints
 
 | Method | Path | Purpose |
@@ -153,11 +183,14 @@ The wire formats, each one its own contract:
 
 ## Known gaps
 
-- **Flashing is not wired up.** A6-A is built and navigable, but `device/flash.js`
-  is a documented seam: it needs `esptool-js` vendored into `js/vendor/` and a
-  firmware image, neither of which is in this repo. "Skip, my board is already
-  flashed" is the way through for now, and Connect says so in the log rather than
-  miming a result.
+- **Firmware is picked from disk.** A6-A flashes a `merged-flash.bin` the user has
+  downloaded from the Adafruit_Marquee CI run — GitHub Actions artifacts need an
+  authenticated download, so the browser cannot fetch them itself. Pulling the image from
+  a GitHub Release is the next step; `loadFirmware()` in `device/flash.js` is the seam,
+  and nothing else in the app would change.
+- **A full chip erase leaves the drive unformatted.** The firmware never formats its FAT
+  partition, so ticking "Erase the whole chip first" means formatting the `MARQUEE`
+  volume by hand before the config can be written. The box is off by default and says so.
 - **The firmware does not read the sleep feed yet, and publishes no status.** The
   editor's publisher side is complete; the round trip is not. Until a board reports
   on `{group}.status`, Act III models the cycle and says so. See

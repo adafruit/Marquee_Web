@@ -52,7 +52,10 @@ export function escapeAttr(s) {
 
 export function fmtBytes(n) {
   if (!Number.isFinite(n)) return '—';
-  return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024) return `${n} B`;
+  // MB from a megabyte up: a 1.27 MB firmware image as "1300.4 KB" is the wrong unit.
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 // ---------- numbers, for the data-driven widgets ----------------------------

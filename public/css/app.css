@@ -531,7 +531,28 @@
   border: 1px solid var(--color-divider);
 }
 .flash-bar .fill { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width 0.15s linear; }
-.flash-bar .pct { flex: none; width: 40px; font-size: 11px; text-align: right; }
+.flash-bar .pct { flex: none; width: 52px; font-size: 11px; text-align: right; }
+/* The erase row says what it is doing rather than inventing a number: a full-chip erase
+   reports no progress, and an erase that was not asked for is not "0%" of anything. */
+.flash-bar[data-state="skipped"] { opacity: 0.5; }
+.flash-bar[data-state="busy"] .track { position: relative; overflow: hidden; }
+.flash-bar[data-state="busy"] .fill { width: 30%; transition: none; animation: flash-busy 1.1s ease-in-out infinite alternate; }
+@keyframes flash-busy { from { transform: translateX(-10%); } to { transform: translateX(240%); } }
+@media (prefers-reduced-motion: reduce) {
+  .flash-bar[data-state="busy"] .fill { animation: none; width: 100%; opacity: 0.35; }
+}
+
+/* The three stages share the column's rhythm; only one is shown at a time. */
+.flash-stage { display: flex; flex-direction: column; gap: 14px; }
+
+.fw-row { display: flex; align-items: center; gap: 10px; }
+.fw-row .label { flex: none; width: 52px; }   /* lines up with .flash-bar .label */
+.fw-row .fw-name { font-size: 12px; opacity: 0.8; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-row .fw-name[data-state="ok"] { opacity: 1; }
+.fw-row .fw-name[data-state="bad"] { color: var(--color-danger); opacity: 1; }
+
+.drive-steps { font-size: 13px; }
+.drive-fallback { display: flex; flex-direction: column; gap: 10px; }
 
 .log-plate { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; flex: 1; min-height: 0; }
 /* Fixed height rather than growing: the log is the thing on this screen most likely to

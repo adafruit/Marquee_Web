@@ -301,11 +301,17 @@ function applyRestoredConfig() {
  * every element's fill against the CURRENT palette — run it after the deserialize and
  * the incoming artwork gets remapped against the outgoing board's colour space.
  */
+/** Panel ids this editor used to write, and what the firmware's EPD factory calls them
+ *  now. Applied on load so a record saved under the old name does not hand the board a
+ *  panel it rejects (ERR_EPD_PANEL_UNSUPPORTED). */
+const PANEL_RENAMES = { 'adafruit-magtag': 'magtag-2025' };
+
 export function loadConfig(data) {
   if (!data || typeof data !== 'object') { applyRestoredConfig(); return; }
   CONFIG_FIELDS.forEach((id) => {
     if ($(id) && typeof data[id] === 'string') $(id).value = data[id];
   });
+  if (PANEL_RENAMES[$('pmPanel')?.value]) $('pmPanel').value = PANEL_RENAMES[$('pmPanel').value];
   if (typeof data.dmode === 'string') setSegValue('ditherSeg', data.dmode);
   applyRestoredConfig();
 }

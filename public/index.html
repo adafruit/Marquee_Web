@@ -262,51 +262,119 @@
     </section>
 
     <!-- ══ A6-A · flash the device ═════════════════════════════════════════ -->
-    <!-- Browser-side esptool over WebSerial. No server involvement — which is also
-         why the browser gate below is real rather than advisory: on Safari or Firefox
-         there is no navigator.serial to fall back to.
+    <!-- Browser-side esptool over WebSerial, then the File System Access API. No server
+         involvement — which is also why the browser gates below are real rather than
+         advisory: on Safari or Firefox there is neither navigator.serial nor
+         showDirectoryPicker to fall back to.
 
-         THE WRITE PATH IS NOT IMPLEMENTED IN THIS BUILD. flash.js is a documented seam
-         holding the signature and nothing else. The states, the log and the progress
-         rows are built and correct; they simply are not reachable yet, and Connect
-         says so in the log rather than miming a result. -->
+         THREE STAGES IN ONE SCREEN, toggled by a6a.js: flash (pick merged-flash.bin, write
+         it), drive (press RESET, pick the MARQUEE drive, we write cfg-marquee.json), done
+         (eject, press RESET). The rail changes with them; the log and the foot do not. -->
     <section class="screen" id="a6a" data-screen="a6a">
       <div class="screen-split" style="--rail-w:400px">
         <div class="col-main">
           <div class="screen-head">
             <h3>Flash Device</h3>
-            <p>This writes the marquee firmware onto your board, along with everything it needs to run on its own.</p>
+            <p>This writes the marquee firmware onto your board, then hands it the configuration it needs to run on its own.</p>
           </div>
 
           <div class="flash-status">
             <div class="check" data-state="wait" id="a6aStatus"><span class="dot"></span><span data-role="text">Not connected</span></div>
-            <p class="hint" id="a6aLead">Connect an ESP32 or ESP8266 to your computer, then click Connect to start managing it.</p>
+            <p class="hint" id="a6aLead">Put the board in bootloader mode — hold BOOT, tap RESET, release BOOT — then choose the firmware file and click Connect and flash.</p>
             <p class="field-error" id="a6aUnsupported" hidden>This browser cannot talk to a serial port. Use Chrome, Edge or Opera on a desktop computer — Safari and Firefox do not implement WebSerial.</p>
           </div>
 
-          <div class="flash-actions" id="a6aConnectRow">
-            <button type="button" class="btn btn-primary blueprint" id="a6aConnect">Connect<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
-            <button type="button" class="btn btn-secondary" id="a6aSkip">Skip, my board is already flashed</button>
+          <!-- ── stage: flash ── -->
+          <div class="flash-stage" id="a6aStageFlash">
+            <!-- The image comes from disk. CI artifacts need an authenticated download, so
+                 the browser cannot fetch them; the user picks the merged image and flash.js
+                 checks it is one BEFORE any port dialog opens. -->
+            <div class="fw-row">
+              <span class="label">Firmware</span>
+              <button type="button" class="btn btn-secondary btn-sm" id="a6aFwPick">Choose merged-flash.bin…</button>
+              <input type="file" id="a6aFwFile" accept=".bin" hidden>
+              <span class="mono fw-name" id="a6aFwName" data-state="empty">No file chosen</span>
+            </div>
+            <p class="hint" id="a6aFwExpect"></p>
+            <p class="field-error" id="a6aFwError" hidden></p>
+
+            <!-- Opt-in, default off. The firmware never formats its FAT partition, so a full
+                 erase takes the MARQUEE drive with it; on the X4 Pro it also takes the factory
+                 panel calibration in NVS. Writing the merged image alone leaves both alone. -->
+            <label class="check-row"><input type="checkbox" id="a6aEraseAll"> Erase the whole chip first</label>
+            <p class="warn-line hidden" id="a6aEraseWarn">This wipes the MARQUEE drive and everything on it — and on the Xteink X4 Pro, the factory display calibration. The drive comes back unformatted and has to be formatted FAT by hand before the next step can write to it. Leave this off unless the board is misbehaving.</p>
+
+            <div class="flash-actions" id="a6aConnectRow">
+              <button type="button" class="btn btn-primary blueprint" id="a6aConnect" disabled>Connect and flash<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+              <button type="button" class="btn btn-secondary" id="a6aSkip">Skip, my board is already flashed</button>
+            </div>
+
+            <!-- Replaces the connect row once a port is open. Two bars, because erase and
+                 write are separately slow and separately able to fail — and the erase row
+                 says "skipped" when the box above is off rather than sitting at 0%. -->
+            <div class="flash-progress hidden" id="a6aProgressRow">
+              <div class="flash-bar" id="a6aEraseRow" data-state="idle">
+                <span class="label">Erase</span>
+                <span class="track"><span class="fill" id="a6aEraseFill"></span></span>
+                <span class="mono pct" id="a6aErasePct">0%</span>
+              </div>
+              <div class="flash-bar" id="a6aWriteRow" data-state="idle">
+                <span class="label">Write</span>
+                <span class="track"><span class="fill" id="a6aWriteFill"></span></span>
+                <span class="mono pct" id="a6aWritePct">0%</span>
+              </div>
+            </div>
           </div>
 
-          <!-- Replaces the connect row once a port is open. Two bars, because erase and
-               write are separately slow and separately able to fail. -->
-          <div class="flash-progress hidden" id="a6aProgressRow">
-            <div class="flash-bar">
-              <span class="label">Erase</span>
-              <span class="track"><span class="fill" id="a6aEraseFill"></span></span>
-              <span class="mono pct" id="a6aErasePct">0%</span>
+          <!-- ── stage: drive ── -->
+          <!-- The config does not go over serial. The firmware mounts its FAT partition as a
+               USB drive named MARQUEE and reads cfg-marquee.json off it at boot; with no file
+               there it halts with the drive still mounted, which is the state this stage
+               writes into. See device/drive.js. -->
+          <div class="flash-stage hidden" id="a6aStageDrive">
+            <div class="promise-plate blueprint">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span class="label">Reset the board and open the MARQUEE drive</span>
+              <div class="rail-steps drive-steps">
+                <div><span class="n">1</span> Press <strong>RESET</strong> once and give it a few seconds.</div>
+                <div><span class="n">2</span> A drive named <span class="mono">MARQUEE</span> appears — in the Finder sidebar under Locations, or under This PC on Windows.</div>
+                <div><span class="n">3</span> Click below and choose that drive when the browser asks. <span class="mono">cfg-marquee.json</span> is written into it and read back to check.</div>
+              </div>
             </div>
-            <div class="flash-bar">
-              <span class="label">Write</span>
-              <span class="track"><span class="fill" id="a6aWriteFill"></span></span>
-              <span class="mono pct" id="a6aWritePct">0%</span>
+            <div class="check" data-state="wait" id="a6aDriveStatus"><span class="dot"></span><span data-role="text">Configuration not written yet</span></div>
+            <div class="flash-actions">
+              <button type="button" class="btn btn-primary blueprint" id="a6aOpenDrive">Open MARQUEE and write config…<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+              <button type="button" class="btn btn-secondary" id="a6aDriveSkip">Skip, it's already configured</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="a6aFlashAgain" style="margin-left:auto">Flash again</button>
+            </div>
+            <!-- Shown when the browser has no directory picker, or when writing failed: the
+                 same file, by hand. -->
+            <div class="drive-fallback hidden" id="a6aDriveFallback">
+              <p class="hint">This browser cannot write to the drive directly. Download the file and copy it to the top level of <span class="mono">MARQUEE</span> yourself, then continue.</p>
+              <div class="flash-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="a6aDownloadCfg">Download cfg-marquee.json</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="a6aDriveContinue">I copied it — continue</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── stage: done ── -->
+          <div class="flash-stage hidden" id="a6aStageDone">
+            <div class="promise-plate blueprint">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span class="label">Eject, then press RESET</span>
+              <p>Eject <span class="mono">MARQUEE</span> first — the ⏏ next to it in the Finder, or "Safely remove" on Windows — then press <strong>RESET</strong> on the board.</p>
+              <p>The board reads the file at boot only, so it will not notice it until it restarts. Ejecting first flushes the write and keeps macOS from complaining the disk was removed improperly.</p>
+            </div>
+            <div class="flash-actions">
+              <button type="button" class="btn btn-primary blueprint" id="a6aDone">Done — open the editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+              <button type="button" class="btn btn-ghost btn-sm" id="a6aRewrite" style="margin-left:auto">Write the config again</button>
             </div>
           </div>
 
           <div class="log-plate blueprint">
             <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <span class="label">Serial log</span>
+            <span class="label">Log</span>
             <pre class="mono log-body" id="a6aLog"></pre>
           </div>
 
@@ -316,23 +384,49 @@
         </div>
 
         <aside class="col-rail">
-          <div class="eyebrow">Before you connect</div>
-          <div class="rail-steps">
-            <div><span class="n">1</span> Use a <strong>data</strong> cable. A charge-only USB cable powers the board and carries no serial — it is the single most common reason no port appears.</div>
-            <div><span class="n">2</span> Close anything else holding the port: the Arduino IDE's serial monitor, <span class="mono">screen</span>, Mu, Thonny.</div>
-            <div><span class="n">3</span> Pick your board in the browser's port dialog. On macOS it is usually a <span class="mono">usbmodem</span>; on Windows a COM port.</div>
-            <div><span class="n">4</span> If nothing is listed, put the board in bootloader mode: hold <strong>BOOT</strong>, tap <strong>RESET</strong>, release BOOT.</div>
+          <!-- One rail block per stage, toggled with the stage. -->
+          <div id="a6aRailFlash">
+            <div class="eyebrow">Before you connect</div>
+            <div class="rail-steps">
+              <div><span class="n">1</span> Put the board in <strong>bootloader mode</strong>: hold <strong>BOOT</strong>, tap <strong>RESET</strong>, release BOOT. A board already running Marquee shows up as a USB drive, not a serial port, until you do.</div>
+              <div><span class="n">2</span> Use a <strong>data</strong> cable. A charge-only USB cable powers the board and carries no serial — it is the single most common reason no port appears.</div>
+              <div><span class="n">3</span> Close anything else holding the port: the Arduino IDE's serial monitor, <span class="mono">screen</span>, Mu, Thonny.</div>
+              <div><span class="n">4</span> Pick your board in the browser's port dialog. On macOS it is usually a <span class="mono">usbmodem</span> or an "ESP32-S3"; on Windows a COM port.</div>
+            </div>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">Where the firmware comes from</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The <a href="https://github.com/adafruit/Adafruit_Marquee/actions/workflows/build.yml" target="_blank" rel="noopener">Adafruit_Marquee build</a> attaches one artifact per board — <span class="mono">marquee-magtag</span>, <span class="mono">marquee-adafruit_feather_esp32s3</span>, <span class="mono">marquee-x4pro</span>. Download the one for this display, unzip it, and pick its <span class="mono">merged-flash.bin</span>. The file is checked before anything is written, and the chip is checked against it before the write starts.</p>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">What gets written</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The image you chose, at the start of the flash. The <span class="mono">MARQUEE</span> drive and whatever is on it are kept unless you tick "Erase the whole chip first". The configuration is the next step, and goes onto that drive.</p>
           </div>
-          <div class="hr" style="margin:6px 0"></div>
-          <div class="eyebrow">What gets written</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The marquee firmware for your board, and its <span class="mono">cfg-marquee.json</span>: your Adafruit IO account, the group key, the network from the last step, and the panel and its pins. <strong>Existing files on the board are erased.</strong></p>
+
+          <div id="a6aRailDrive" class="hidden">
+            <div class="eyebrow">Why RESET</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board is still in bootloader mode from the flash. RESET starts the new firmware, which mounts the flash's filesystem and presents it to your computer as a USB drive named <span class="mono">MARQUEE</span>.</p>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">What goes onto it</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">One file, <span class="mono">cfg-marquee.json</span>, at the top level of the drive: your Adafruit IO account, the group key, the network from the Wi-Fi step, and the panel and its pins. It holds the Wi-Fi password and the Adafruit IO key in plain text — this drive is the board's, not a place to leave things.</p>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">If no drive appears</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Unplug and replug, then RESET once more. A drive that mounts but reads as unformatted means the filesystem was erased — format it as FAT (MS-DOS) named <span class="mono">MARQUEE</span> with Disk Utility or Explorer, then come back here.</p>
+          </div>
+
+          <div id="a6aRailDone" class="hidden">
+            <div class="eyebrow">Eject first</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Your computer may still be holding part of the file in a write cache. Ejecting flushes it to the board; resetting first can leave a truncated file and a warning about an improperly removed disk.</p>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">What happens on boot</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board reads the file, drives the panel, joins your Wi-Fi and fetches its picture from Adafruit IO. If nothing draws after a minute, open a serial monitor at 115200 — the firmware prints why it stopped.</p>
+          </div>
+
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">Debug</div>
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The configuration file exactly as it will be written, filled in from the previous steps. Includes the Wi-Fi password and the Adafruit IO key in plain text.</p>
           <button type="button" class="btn btn-ghost btn-sm" id="a6aShowCfg">Show JSON config</button>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">Browser support</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Flashing needs WebSerial: Chrome, Edge or Opera on desktop. Safari and Firefox cannot connect to a serial port at all, and there is no extension that adds it.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Flashing needs WebSerial and writing the drive needs the File System Access API: Chrome, Edge or Opera on desktop, over https or localhost. Safari and Firefox have neither, and there is no extension that adds them.</p>
         </aside>
       </div>
     </section>
@@ -812,7 +906,7 @@
                 </select>
               </label>
               <label class="field"><span class="label">Panel</span>
-                <input type="text" id="pmPanel" value="adafruit-magtag" autocomplete="off">
+                <input type="text" id="pmPanel" value="magtag-2025" autocomplete="off">
               </label>
               <label class="field"><span class="label">Display name</span>
                 <input type="text" id="pmName" value="epd0" autocomplete="off">
