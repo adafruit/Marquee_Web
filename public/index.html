@@ -938,10 +938,10 @@
               </label>
               <label class="field"><span class="label">Rotation</span>
                 <select id="rotSel">
-                  <option value="0">0° — native</option>
+                  <option value="0" selected>0° — native</option>
                   <option value="90">90°</option>
                   <option value="180">180°</option>
-                  <option value="270" selected>270°</option>
+                  <option value="270">270°</option>
                 </select>
               </label>
               <label class="field"><span class="label">Mode</span>
@@ -979,8 +979,8 @@
                 <label class="field"><span class="label">Reset</span><input type="text" id="pinRst" value="D6" autocomplete="off"></label>
                 <label class="field"><span class="label">CS (EPD)</span><input type="text" id="pinCs" value="D8" autocomplete="off"></label>
                 <label class="field"><span class="label">SRAM CS</span><input type="text" id="pinSramCs" value="" placeholder="if required" autocomplete="off"></label>
-                <label class="field"><span class="label">MOSI</span><input type="text" id="pinMosi" value="D35" autocomplete="off"></label>
-                <label class="field"><span class="label">SCK</span><input type="text" id="pinSck" value="D36" autocomplete="off"></label>
+                <label class="field"><span class="label">MOSI</span><input type="text" id="pinMosi" value="-1" autocomplete="off"></label>
+                <label class="field"><span class="label">SCK</span><input type="text" id="pinSck" value="-1" autocomplete="off"></label>
                 <label class="field"><span class="label">SPI bus</span><input type="number" id="spiBus" value="0" min="0"></label>
               </div>
             </div>

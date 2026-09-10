@@ -8,7 +8,7 @@
  * assumes A5 is visible.
  */
 
-import { display, logicalDims, ditherLabel, ditherChipLabel } from '../canvas/palette.js';
+import { display, logicalDims, landscapeAtZero, ditherLabel, ditherChipLabel } from '../canvas/palette.js';
 import { fitZoom, updateDims, suspendDitherPreview, scheduleDitherRefresh } from '../canvas/stage.js';
 import { remapColorsToPalette } from '../canvas/elements.js';
 import { refreshProps } from '../canvas/selection.js';
@@ -178,6 +178,7 @@ export function applyDisplayPreset(key, { silent = false } = {}) {
   $('pmName').value = p.name;
   $('pmDriver').value = p.driver;
   $('pmPanel').value = p.panel;
+  display.panel = p.panel;
   // Blanked, not zeroed, for a preset with no offset — see colstartField().
   $('pmColstart').value = colstartField(p);
 
@@ -253,6 +254,7 @@ function saveConfig() {
 export function applyDisplayToForm() {
   if ($('dtype')) $('dtype').value = display.type;
   if ($('rotSel')) $('rotSel').value = String(display.rotation);
+  if ($('pmPanel') && typeof display.panel === 'string' && display.panel) $('pmPanel').value = display.panel;
   if ($('diffusion')) $('diffusion').value = display.diffusion;
   if ($('orderedMap')) $('orderedMap').value = String(display.orderedMap);
   setSegValue('ditherSeg', display.dither);
@@ -276,6 +278,7 @@ function applyRestoredConfig() {
   display.width = +$('resW').value || display.width;
   display.height = +$('resH').value || display.height;
   display.rotation = +$('rotSel').value || 0;
+  display.panel = $('pmPanel')?.value || '';
   display.type = $('dtype').value;
   display.dither = segValue('ditherSeg') || 'FloydSteinberg';
   display.diffusion = +$('diffusion').value;
@@ -443,6 +446,14 @@ export function initConfig() {
   });
 
   restoreConfig();
+
+  // The panel id decides what rotation 0 looks like (palette.js
+  // LANDSCAPE_AT_ZERO_PANELS), so retyping it can turn the canvas on its side.
+  $('pmPanel')?.addEventListener('change', () => {
+    const was = landscapeAtZero();
+    display.panel = val('pmPanel');
+    if (landscapeAtZero() !== was) { afterGeometryChange(); updateDims(); }
+  });
 
   // One persistence hook across every descriptor field.
   [...CONFIG_FIELDS, 'ditherSeg'].forEach((id) => {

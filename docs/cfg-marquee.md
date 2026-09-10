@@ -29,13 +29,13 @@ A MagTag on the group `kitchen-board`:
     "panel": "magtag-2025",
     "width": 128,
     "height": 296,
-    "rotation": 3,
+    "rotation": 0,
     "mode": "mono"
   },
   "interface": {
     "type": "spi_epd",
     "spi_bus": 0,
-    "pins": { "cs": 8, "dc": 7, "reset": 6, "busy": 5, "sram_cs": -1, "mosi": 35, "sck": 36 }
+    "pins": { "cs": 8, "dc": 7, "reset": 6, "busy": 5, "sram_cs": -1, "mosi": -1, "sck": -1 }
   },
   "network": { "wifi_ssid": "Transit", "wifi_password": "BigWindows" },
   "adafruit_io": { "username": "brentrubell", "key": "aio_XXXXXXXXXXXXXXXXXXXXXXXXXXXX" }
@@ -66,7 +66,7 @@ Empty until A5b has run.
 | `driver` | string | `#pmDriver` | the controller, as the datasheet names it: `SSD1680`, `SSD1683`, `JD79661`, `UC8179`, `UC8279`… |
 | `panel` | string | `#pmPanel` | `{size}-{resolution}-{color_mode}` for a bare panel, `{vendor}-{product}` for one inside a product |
 | `width`, `height` | integer | `#resW`, `#resH` | the **unrotated** framebuffer, as the driver is constructed — `(128, 296)` for a MagTag, not `296×128` |
-| `rotation` | integer 0–3 | `#rotSel` | clockwise 90° steps applied on top of the native buffer: `0`→0°, `1`→90°, `2`→180°, `3`→270°. The editor stores degrees; this is `round(deg / 90) mod 4` |
+| `rotation` | integer 0–3 | `#rotSel` | clockwise 90° steps applied on top of the native buffer: `0`→0°, `1`→90°, `2`→180°, `3`→270°. The editor stores degrees; this is `round(deg / 90) mod 4`. For `magtag-2025` the firmware's panel entry already shows the 128×296 buffer as landscape, so `0` is the 296×128 orientation the product is used in |
 | `mode` | string | `#dtype` | `mono` \| `grayscale4` \| `tricolor` \| `quadcolor`. The editor's own name for the second is `gray4`; it is the one that is renamed |
 | `colstart` | integer, **optional** | `#pmColstart` | column offset of the live glass inside the controller's RAM. Present only when non-zero: the FeatherWing tri-color needs `8`, the SSD1680Z breakout `-8`. Absent means no shift |
 
@@ -81,7 +81,7 @@ Empty until A5b has run.
 | `pins.reset` | integer | |
 | `pins.busy` | integer | |
 | `pins.sram_cs` | integer | the frame-buffer SRAM's chip select, if the panel carries one |
-| `pins.mosi`, `pins.sck` | integer | the SPI bus pins |
+| `pins.mosi`, `pins.sck` | integer | the SPI bus pins; `-1` when the panel sits on the board's own bus and the firmware already knows them (the MagTag) |
 
 **Pins are bare GPIO numbers.** The editor's form spells them the way the device's
 `parsePin()` reads them — `D8` — and this file strips the prefix: `D8` → `8`. A blank

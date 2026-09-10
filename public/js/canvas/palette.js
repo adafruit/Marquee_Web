@@ -11,14 +11,17 @@
 /**
  * Seeded with the MagTag, matching the DISPLAY_PRESETS entry and the HTML
  * defaults in index.html. width/height are the panel's NATIVE scan geometry —
- * the 2.9" is a portrait 128×296 buffer — and `rotation` is what turns it into
- * the 296×128 landscape the product is used in. logicalDims() below is the one
- * that answers "how big is the canvas".
+ * the 2.9" is a portrait 128×296 buffer — and `rotation` is the 90° step the
+ * config asks the firmware to apply on top of it. `panel` is the firmware's panel
+ * id, carried here because for some panels it changes what rotation 0 LOOKS like
+ * (see LANDSCAPE_AT_ZERO_PANELS). logicalDims() below is the one that answers
+ * "how big is the canvas".
  */
 export const display = {
   width: 128,        // physical panel width, before rotation
   height: 296,       // physical panel height, before rotation
-  rotation: 270,     // 0 | 90 | 180 | 270 (degrees)
+  rotation: 0,       // 0 | 90 | 180 | 270 (degrees)
+  panel: 'magtag-2025',
   type: 'mono',      // mono | gray4 | tricolor | quadcolor
   dither: 'FloydSteinberg',
   diffusion: 85,
@@ -50,9 +53,21 @@ export const MODE_LABELS = {
   quadcolor: 'black/white/red/yellow',
 };
 
-/** Logical canvas dimensions once rotation is applied. */
+/**
+ * Panels whose firmware entry already turns the portrait scan buffer on its side, so
+ * rotation 0 is LANDSCAPE on the glass. The MagTag's 128×296 buffer is presented as
+ * 296×128 at rotation 0; the editor's canvas has to agree or the bitmap it ships is
+ * the wrong way round. Every other catalogued panel shows its buffer as-is at 0.
+ */
+export const LANDSCAPE_AT_ZERO_PANELS = new Set(['magtag-2025']);
+
+export function landscapeAtZero(panel = display.panel) {
+  return LANDSCAPE_AT_ZERO_PANELS.has(String(panel || '').trim());
+}
+
+/** Logical canvas dimensions once rotation (and the firmware's own step) is applied. */
 export function logicalDims() {
-  const swap = display.rotation % 180 !== 0;
+  const swap = (display.rotation % 180 !== 0) !== landscapeAtZero();
   return {
     w: swap ? display.height : display.width,
     h: swap ? display.width : display.height,

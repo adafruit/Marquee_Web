@@ -13,35 +13,38 @@
  * that native pair: (122, 250), (128, 296), (400, 300), (800, 480). Storing the
  * rotated geometry at rotation 0 instead would build a driver with its width and
  * height transposed, so `preset` here is always the datasheet scan order and
- * `rotation` is what turns it into the orientation the product is used in.
+ * `rotation` is the step written into cfg-marquee.json on top of it.
  */
 
 export const DISPLAY_PRESETS = {
   // Adafruit MagTag (2025): 2.9" mono e-ink, SSD1680. The panel scans portrait —
-  // Adafruit_SSD1680(128, 296) — so the landscape 296×128 everyone knows it by is
-  // a rotation on top of that, not a rotation-0 buffer. 270 rather than 90 to
-  // match quad213 below and the library's own examples, which land on index 3 for
-  // every portrait-native panel; the two differ by a 180° flip, so if a board
-  // comes up upside down this is the single field to change.
+  // Adafruit_SSD1680(128, 296) — and the config ships rotation 0: the firmware's
+  // magtag-2025 panel entry already presents that buffer as the 296×128 landscape
+  // the product is used in, so the file states the native buffer and no step on
+  // top of it. palette.js lists the panel in LANDSCAPE_AT_ZERO_PANELS so the
+  // editor's canvas is landscape at 0 too.
+  //
+  // The EPD is soldered to the board (EPD_CS=8, EPD_DC=7, EPD_RESET=6, EPD_BUSY=5),
+  // spelled here as D<n> because that is the only form parsePin() accepts. There is
+  // no external SRAM, and MOSI/SCK are -1: the panel is on the board's own SPI bus,
+  // which the firmware already knows, so nothing is stated for them.
   magtag: {
     label: 'MagTag 2.9"',
     spec: '296×128 · mono · SSD1680',
     cardLabel: 'MagTag 2.9" (2025)',
     cardMeta: '296×128 · mono · SSD1680',
     terms: 'magtag 2.9 esp32-s2 mono ssd1680',
-    preset: '128x296', rotation: '270', mode: 'mono',
+    preset: '128x296', rotation: '0', mode: 'mono',
     name: 'epd0', driver: 'SSD1680', panel: 'magtag-2025',
-    // The panel is soldered to the board, so the firmware already owns it — these
-    // pins describe the wiring, not board attribute names (a MagTag's EPD is on
-    // EPD_CS/EPD_DC/…, not D8/D7). `iface: 'builtin'` is what records that.
-    iface: 'builtin',
-    pins: { busy: 'D5', dc: 'D7', rst: 'D6', cs: 'D8', sramCs: '', mosi: 'D35', sck: 'D36', bus: 0 },
+    pins: { busy: 'D5', dc: 'D7', rst: 'D6', cs: 'D8', sramCs: '-1', mosi: '-1', sck: '-1', bus: 0 },
   },
 
   // Adafruit 2.13" HD Tri-Color eInk / ePaper FeatherWing: RW, SSD1680. Native
   // buffer is 122×250 portrait — Adafruit_SSD1680(122, 250) — rotated into the
-  // 250×122 landscape the FeatherWing is used in. Same 270-not-90 reasoning as
-  // the MagTag above.
+  // 250×122 landscape the FeatherWing is used in. 270 rather than 90 to match
+  // quad213 below and the library's own examples, which land on index 3 for every
+  // portrait-native panel; the two differ by a 180° flip, so if a board comes up
+  // upside down this is the single field to change.
   // EPD pins per the FeatherWing #defines (EPD_CS=9, EPD_DC=10, SRAM_CS=6,
   // RESET/BUSY shared → -1). MOSI/SCK are the Feather's hardware SPI bus (35/36).
   // Pins are D-prefixed because the device's parsePin() only accepts "D<n>";
@@ -166,8 +169,8 @@ export const DISPLAY_PRESETS = {
   //   * the panel id is 'xteink-x4-pro' — the {vendor}-{product} form the
   //     'adafruit-{product_id}' entries use, because like them this names a
   //     product, and unlike the ThinkInk entries there is no part suffix to name.
-  //   * `iface` stays spi_epd, not builtin: the panel is soldered down, but there
-  //     is no board-owned display object here for the firmware to adopt.
+  //   * the panel is soldered down, but unlike the MagTag there is no firmware
+  //     panel entry that owns the bus, so MOSI/SCK are stated explicitly.
   //
   // 800x400 is already the landscape orientation the device is read in, so
   // rotation is 0 and the framebuffer is the datasheet scan order unchanged.
