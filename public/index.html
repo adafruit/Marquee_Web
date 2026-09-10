@@ -970,7 +970,7 @@
               </label>
             </div>
 
-            <p class="hint">Column offset shifts the framebuffer against the controller's column RAM, in pixels — leave it blank unless the panel has a dead zone at one edge. The 2.13" Tri-Color FeatherWing needs <span class="mono">8</span>; the SSD1680Z breakout needs <span class="mono">-8</span>. Blank or <span class="mono">0</span> is left out of the descriptor, where absent means no shift.</p>
+            <p class="hint">Column offset shifts the framebuffer against the controller's column RAM, in pixels — leave it blank unless the panel has a dead zone at one edge. The 2.13" SSD1680Z breakout needs <span class="mono">-8</span>; the 2.13" Tri-Color FeatherWing needs nothing here, because its firmware panel entry applies the offset itself. Blank or <span class="mono">0</span> is left out of the descriptor, where absent means no shift.</p>
 
             <div class="prop-row hidden" id="customRes">
               <span class="label">Custom</span>

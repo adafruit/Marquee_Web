@@ -8,7 +8,7 @@
  *
  * Rotation and resolution are the UNROTATED framebuffer as the firmware sees it,
  * with `rotation` as the clockwise 90° step the device applies on top. That
- * distinction matters for every panel whose native buffer is portrait — the three
+ * distinction matters for every panel whose native buffer is portrait — the two bare
  * 2.13" entries and the MagTag — because an EPD driver is constructed from exactly
  * that native pair: (122, 250), (128, 296), (400, 300), (800, 480). Storing the
  * rotated geometry at rotation 0 instead would build a driver with its width and
@@ -40,48 +40,53 @@ export const DISPLAY_PRESETS = {
     pins: { busy: 'D5', dc: 'D7', rst: 'D6', cs: 'D8', sramCs: '-1', mosi: '-1', sck: '-1', bus: 0 },
   },
 
-  // Adafruit 2.13" HD Tri-Color eInk / ePaper FeatherWing: RW, SSD1680. Native
-  // buffer is 122×250 portrait — Adafruit_SSD1680(122, 250) — rotated into the
-  // 250×122 landscape the FeatherWing is used in. 270 rather than 90 to match
-  // quad213 below and the library's own examples, which land on index 3 for every
-  // portrait-native panel; the two differ by a 180° flip, so if a board comes up
-  // upside down this is the single field to change.
+  // Adafruit 2.13" HD Tri-Color eInk / ePaper FeatherWing: RW, SSD1683. Unlike the
+  // portrait-native entries below, this one states the 250×122 LANDSCAPE geometry the
+  // FeatherWing is used in, at rotation 0 and with no column offset: the firmware's
+  // 213-tricolor-MFGNR panel entry owns the scan order and the glass offset, so the
+  // config states the geometry the artwork is drawn at and asks for no step on top.
+  // Because those are the same numbers, the panel is NOT in
+  // palette.js's LANDSCAPE_AT_ZERO_PANELS — the editor's canvas is already 250×122
+  // at rotation 0 without a swap.
   // EPD pins per the FeatherWing #defines (EPD_CS=9, EPD_DC=10, SRAM_CS=6,
-  // RESET/BUSY shared → -1). MOSI/SCK are the Feather's hardware SPI bus (35/36).
+  // RESET/BUSY shared → -1). MOSI/SCK are -1 as well, like the MagTag: the wing sits
+  // on the Feather's own hardware SPI bus, which the firmware already knows, so the
+  // file states nothing for them rather than naming the host's pins (35/36).
   // Pins are D-prefixed because the device's parsePin() only accepts "D<n>";
   // "-1" is left bare so parsePin() resolves it to -1 ("pin not used").
   tricolorFW: {
     label: '2.13" Tri-Color FeatherWing',
-    spec: '250×122 · black/white/red · SSD1680',
+    spec: '250×122 · black/white/red · SSD1683',
     cardLabel: '2.13" Tri-Color FeatherWing + ESP32-S3',
     // The FeatherWing is a panel, not a board, so this line names the pairing it is
     // offered as — which is why it ends in a host-board fact (PSRAM) rather than the
     // driver chip `spec` gives.
     cardMeta: '250×122 · black/white/red · 2MB PSRAM',
-    terms: '2.13 tricolor tri-color featherwing red ssd1680 4814',
+    terms: '2.13 tricolor tri-color featherwing red ssd1683 4814',
     photo: 'img/panels/tricolor-featherwing.jpg',   // adafruit.com product 4814
-    preset: '122x250', rotation: '270', mode: 'tricolor',
-    name: 'epd0', driver: 'SSD1680', panel: '213-tricolor-MFGNR',
-    // The 122-wide buffer sits inside 128 columns of controller RAM, and on this
-    // panel the live glass starts 8 columns in. See colstart in cfg.js.
-    colstart: 8,
-    pins: { busy: '-1', dc: 'D10', rst: '-1', cs: 'D9', sramCs: 'D6', mosi: 'D35', sck: 'D36', bus: 0 },
+    preset: '250x122', rotation: '0', mode: 'tricolor',
+    name: 'epd0', driver: 'SSD1683', panel: '213-tricolor-MFGNR',
+    pins: { busy: '-1', dc: 'D10', rst: '-1', cs: 'D9', sramCs: 'D6', mosi: '-1', sck: '-1', bus: 0 },
   },
 
   // Adafruit 2.13" 250x122 Tri-Color eInk / ePaper Display with SRAM (#4947) — the
-  // bare breakout of the same RW glass as the FeatherWing above, so the driver,
-  // the native 122×250 buffer, the rotation and the colour mode are identical and
-  // only two things differ:
-  //   · the wiring, which is the standard Adafruit_EPD breakout pinout (DC=10,
-  //     CS=9, BUSY=7, SRAM_CS=6, RESET=8) rather than the FeatherWing's shared
-  //     RESET/BUSY — the breakout brings both out, so neither is -1;
-  //   · colstart, which is -8 against the FeatherWing's +8. Adafruit's product
-  //     page calls this out directly: as of 2025-08-14 the breakout ships the
-  //     SSD1680Z and "has a different 'offset' than previous panels".
-  // `driver` is still SSD1680 because the Z is the same controller programming
-  // model — there is no separate SSD1680Z driver — and the offset is exactly what
-  // colstart now carries instead. The panel id uses the adafruit-{product} form so
-  // the two 2.13" tri-colors are never confused for one another.
+  // bare breakout of the same RW glass as the FeatherWing above, but described very
+  // differently, because there is no firmware panel entry standing in front of it:
+  //   · geometry is the native 122×250 portrait buffer with rotation 270 on top,
+  //     the datasheet-scan-order form the rest of this catalog uses, rather than the
+  //     landscape-at-0 shorthand the FeatherWing's panel entry allows;
+  //   · the wiring is the standard Adafruit_EPD breakout pinout (DC=10, CS=9,
+  //     BUSY=7, SRAM_CS=6, RESET=8) rather than the FeatherWing's shared RESET/BUSY —
+  //     the breakout brings both out, so neither is -1 — and the SPI bus is stated
+  //     (35/36) rather than left to the firmware, since nothing here is soldered down;
+  //   · colstart is stated here, -8, because this descriptor has to carry the glass
+  //     offset itself. Adafruit's product page calls it out directly: as of
+  //     2025-08-14 the breakout ships the SSD1680Z and "has a different 'offset'
+  //     than previous panels".
+  // `driver` is SSD1680 because the Z is the same controller programming model —
+  // there is no separate SSD1680Z driver — and the offset is exactly what colstart
+  // carries instead. The panel id uses the adafruit-{product} form so the two 2.13"
+  // tri-colors are never confused for one another.
   tricolorBO: {
     label: '2.13" Tri-color Breakout',
     spec: '250×122 · black/white/red · SSD1680Z',
