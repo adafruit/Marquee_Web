@@ -34,6 +34,7 @@ export const DISPLAY_PRESETS = {
     cardLabel: 'MagTag 2.9" (2025)',
     cardMeta: '296×128 · mono · SSD1680',
     terms: 'magtag 2.9 esp32-s2 mono ssd1680',
+    photo: 'img/panels/magtag.jpg',   // adafruit.com product 4800
     preset: '128x296', rotation: '0', mode: 'mono',
     name: 'epd0', driver: 'SSD1680', panel: 'magtag-2025',
     pins: { busy: 'D5', dc: 'D7', rst: 'D6', cs: 'D8', sramCs: '-1', mosi: '-1', sck: '-1', bus: 0 },
@@ -58,6 +59,7 @@ export const DISPLAY_PRESETS = {
     // driver chip `spec` gives.
     cardMeta: '250×122 · black/white/red · 2MB PSRAM',
     terms: '2.13 tricolor tri-color featherwing red ssd1680 4814',
+    photo: 'img/panels/tricolor-featherwing.jpg',   // adafruit.com product 4814
     preset: '122x250', rotation: '270', mode: 'tricolor',
     name: 'epd0', driver: 'SSD1680', panel: '213-tricolor-MFGNR',
     // The 122-wide buffer sits inside 128 columns of controller RAM, and on this
@@ -187,6 +189,7 @@ export const DISPLAY_PRESETS = {
     // `spec` say what this descriptor actually drives. One of the two is wrong.
     cardMeta: '4.3" · grayscale',
     terms: 'xteink x4 pro pocket ereader 800x400 mono uc8279 esp32-s3',
+    photo: 'img/panels/xteink-x4-pro.jpg',   // xteink.com product shot
     preset: '800x400', rotation: '0', mode: 'mono',
     name: 'epd0', driver: 'UC8279', panel: 'xteink-x4-pro',
     pins: { busy: 'D6', dc: 'D18', rst: 'D14', cs: 'D13', sramCs: '-1', mosi: 'D11', sck: 'D12', bus: 0 },
@@ -216,6 +219,12 @@ export function presetCardLabel(key) {
 export function presetCardMeta(key) {
   const p = DISPLAY_PRESETS[key];
   return p?.cardMeta || p?.spec || '';
+}
+
+/** The product shot on the A4 card, relative to public/. Empty when a preset has none:
+ *  the card then shows its grey placeholder. */
+export function presetCardPhoto(key) {
+  return DISPLAY_PRESETS[key]?.photo || '';
 }
 
 /** Free-text match over the label, spec and the extra search terms. */

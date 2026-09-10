@@ -364,6 +364,21 @@
 
 /* ---- A4 · pick the device ------------------------------------------------ */
 
+/* The "not on the list?" banner across the top of A4. Always two lines, one per way
+   out, on the accent's palest tint so it reads as a notice and not as a fourth card. */
+.a4-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  margin: 14px 0 18px;
+  background: var(--color-accent-100);
+  border-color: var(--color-accent-300);
+}
+.a4-banner p { margin: 0; font-size: 13px; line-height: 1.5; text-wrap: pretty; }
+.a4-banner a { color: var(--color-accent-700); text-decoration: underline; text-underline-offset: 2px; }
+.a4-banner a:hover { color: var(--color-accent-900); }
+
 #a4 .panel-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -393,6 +408,18 @@
   color: var(--color-neutral-700);
   font-size: 11px;
   letter-spacing: 0.14em;
+  overflow: hidden;
+}
+/* Product shots are white-ground catalogue photos, so the slot goes white and taller
+   and the whole product is shown (contain), rather than cropping a 4:3 shot down to a
+   strip of its middle. */
+.panel-card .photo:has(img) { height: 190px; background: #fff; }
+.panel-card .photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 .panel-card .body {
   display: flex;
