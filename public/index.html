@@ -267,9 +267,10 @@
          advisory: on Safari or Firefox there is neither navigator.serial nor
          showDirectoryPicker to fall back to.
 
-         THREE STAGES IN ONE SCREEN, toggled by a6a.js: flash (pick merged-flash.bin, write
-         it), drive (press RESET, pick the MARQUEE drive, we write cfg-marquee.json), done
-         (eject, press RESET). The rail changes with them; the log and the foot do not. -->
+         THREE STAGES IN ONE SCREEN, toggled by a6a.js: flash (fetch the latest release's
+         merged-flash.bin, or pick one, write it), drive (press RESET, pick the MARQUEE drive, we write cfg-marquee.json), done
+         (eject, press RESET). The rail changes with them; the foot does not. The log stays
+         hidden unless something fails, then shows everything so far. -->
     <section class="screen" id="a6a" data-screen="a6a">
       <div class="screen-split" style="--rail-w:400px">
         <div class="col-main">
@@ -280,20 +281,30 @@
 
           <div class="flash-status">
             <div class="check" data-state="wait" id="a6aStatus"><span class="dot"></span><span data-role="text">Not connected</span></div>
-            <p class="hint" id="a6aLead">Put the board in bootloader mode — hold BOOT, tap RESET, release BOOT — then choose the firmware file and click Connect and flash.</p>
+            <p class="hint" id="a6aLead">Put the board in bootloader mode — hold BOOT, tap RESET, release BOOT — then, once the firmware has downloaded, click Connect and flash.</p>
             <p class="field-error" id="a6aUnsupported" hidden>This browser cannot talk to a serial port. Use Chrome, Edge or Opera on a desktop computer — Safari and Firefox do not implement WebSerial.</p>
           </div>
 
           <!-- ── stage: flash ── -->
           <div class="flash-stage" id="a6aStageFlash">
-            <!-- The image comes from disk. CI artifacts need an authenticated download, so
-                 the browser cannot fetch them; the user picks the merged image and flash.js
-                 checks it is one BEFORE any port dialog opens. -->
-            <div class="fw-row">
+            <!-- The image comes from the latest release on Adafruit_Marquee's firmware branch,
+                 downloaded here and checked against the manifest's sha256 — then the same
+                 structural checks a file from disk gets, BEFORE any port dialog opens. "Use a
+                 file instead…" is the fallback: a CI artifact, an older release, a panel set up
+                 by hand or a board the release has no build for. a6a.js drives data-mode and
+                 data-state. -->
+            <div class="fw-row" id="a6aFwRow" data-mode="release" data-state="idle">
               <span class="label">Firmware</span>
-              <button type="button" class="btn btn-secondary btn-sm" id="a6aFwPick">Choose merged-flash.bin…</button>
+              <div class="fw-release" id="a6aFwRelease">
+                <div class="check" data-state="wait" id="a6aFwStatus"><span class="dot"></span><span data-role="text">Looking for the latest release…</span></div>
+                <span class="fw-track hidden" id="a6aFwTrack"><span class="fill" id="a6aFwFill"></span></span>
+              </div>
+              <span class="mono fw-name hidden" id="a6aFwName" data-state="empty">No file chosen</span>
+              <button type="button" class="btn btn-ghost btn-sm hidden" id="a6aFwRetry">Retry</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="a6aFwUseFile">Use a file instead…</button>
+              <button type="button" class="btn btn-secondary btn-sm hidden" id="a6aFwPick">Choose merged-flash.bin…</button>
+              <button type="button" class="btn btn-ghost btn-sm hidden" id="a6aFwUseRelease">Use the latest release</button>
               <input type="file" id="a6aFwFile" accept=".bin" hidden>
-              <span class="mono fw-name" id="a6aFwName" data-state="empty">No file chosen</span>
             </div>
             <p class="hint" id="a6aFwExpect"></p>
             <p class="field-error" id="a6aFwError" hidden></p>
@@ -332,19 +343,25 @@
                there it halts with the drive still mounted, which is the state this stage
                writes into. See device/drive.js. -->
           <div class="flash-stage hidden" id="a6aStageDrive">
-            <div class="promise-plate blueprint">
+            <!-- The board's name is filled in by a6a.js from the firmware table (MagTag,
+                 Feather ESP32-S3, …); "board" when the panel was set up by hand. -->
+            <div class="promise-plate drive-plate blueprint">
               <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-              <span class="label">Reset the board and open the MARQUEE drive</span>
+              <span class="label">Next, reset the <span data-role="board">board</span></span>
               <div class="rail-steps drive-steps">
-                <div><span class="n">1</span> Press <strong>RESET</strong> once and give it a few seconds.</div>
-                <div><span class="n">2</span> A drive named <span class="mono">MARQUEE</span> appears — in the Finder sidebar under Locations, or under This PC on Windows.</div>
+                <div><span class="n">1</span> Press the <strong>RESET</strong> button on the <span data-role="board">board</span> and give it a few seconds.</div>
+                <div><span class="n">2</span> A drive named <span class="mono">MARQUEE</span> should appear — in the Finder sidebar under Locations, or under This PC on Windows. If it is not named <span class="mono">MARQUEE</span>, it may be named <span class="mono">CIRCUITPY</span> or <span class="mono">WIPPER</span>.</div>
                 <div><span class="n">3</span> Click below and choose that drive when the browser asks. <span class="mono">cfg-marquee.json</span> is written into it and read back to check.</div>
               </div>
+              <div class="flash-actions drive-plate-actions">
+                <button type="button" class="btn btn-primary blueprint" id="a6aOpenDrive">Select Drive<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+                <button type="button" class="btn btn-secondary" id="a6aDriveSkip" style="margin-left:auto">Skip, it's already configured</button>
+              </div>
             </div>
-            <div class="check" data-state="wait" id="a6aDriveStatus"><span class="dot"></span><span data-role="text">Configuration not written yet</span></div>
+            <!-- Empty and hidden until there is something to say: a failure, or a cancelled
+                 picker. a6a.js shows it with the text. -->
+            <div class="check hidden" data-state="wait" id="a6aDriveStatus"><span class="dot"></span><span data-role="text"></span></div>
             <div class="flash-actions">
-              <button type="button" class="btn btn-primary blueprint" id="a6aOpenDrive">Open MARQUEE and write config…<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
-              <button type="button" class="btn btn-secondary" id="a6aDriveSkip">Skip, it's already configured</button>
               <button type="button" class="btn btn-ghost btn-sm" id="a6aFlashAgain" style="margin-left:auto">Flash again</button>
             </div>
             <!-- Shown when the browser has no directory picker, or when writing failed: the
@@ -360,19 +377,26 @@
 
           <!-- ── stage: done ── -->
           <div class="flash-stage hidden" id="a6aStageDone">
-            <div class="promise-plate blueprint">
+            <!-- Same plate as the drive stage: numbered steps, the board's name, and the
+                 button that finishes the job inside it. -->
+            <div class="promise-plate drive-plate blueprint">
               <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-              <span class="label">Eject, then press RESET</span>
-              <p>Eject <span class="mono">MARQUEE</span> first — the ⏏ next to it in the Finder, or "Safely remove" on Windows — then press <strong>RESET</strong> on the board.</p>
-              <p>The board reads the file at boot only, so it will not notice it until it restarts. Ejecting first flushes the write and keeps macOS from complaining the disk was removed improperly.</p>
+              <span class="label">⏏ Eject, then press RESET</span>
+              <div class="rail-steps drive-steps">
+                <div><span class="n">1</span> Eject <span class="mono">MARQUEE</span> — the ⏏ next to it in the Finder sidebar, or "Safely remove" on Windows.</div>
+                <div><span class="n">2</span> Press the <strong>RESET</strong> button on the <span data-role="board">board</span>.</div>
+              </div>
+              <div class="flash-actions drive-plate-actions">
+                <button type="button" class="btn btn-primary blueprint" id="a6aDone">Done — open the editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+              </div>
             </div>
             <div class="flash-actions">
-              <button type="button" class="btn btn-primary blueprint" id="a6aDone">Done — open the editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
               <button type="button" class="btn btn-ghost btn-sm" id="a6aRewrite" style="margin-left:auto">Write the config again</button>
             </div>
           </div>
 
-          <div class="log-plate blueprint">
+          <!-- Hidden until the flow finishes or something fails; a6a.js reveals it. -->
+          <div class="log-plate blueprint hidden" id="a6aLogPlate">
             <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
             <span class="label">Log</span>
             <pre class="mono log-body" id="a6aLog"></pre>
@@ -395,10 +419,11 @@
             </div>
             <div class="hr" style="margin:6px 0"></div>
             <div class="eyebrow">Where the firmware comes from</div>
-            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The <a href="https://github.com/adafruit/Adafruit_Marquee/actions/workflows/build.yml" target="_blank" rel="noopener">Adafruit_Marquee build</a> attaches one artifact per board — <span class="mono">marquee-magtag</span>, <span class="mono">marquee-adafruit_feather_esp32s3</span>, <span class="mono">marquee-x4pro</span>. Download the one for this display, unzip it, and pick its <span class="mono">merged-flash.bin</span>. The file is checked before anything is written, and the chip is checked against it before the write starts.</p>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The latest <a href="https://github.com/adafruit/Adafruit_Marquee/releases" target="_blank" rel="noopener">Adafruit_Marquee release</a>, downloaded here for this display's board — the version is shown next to it. The download is checked against the release's checksum, the image is checked before anything is written, and the chip is checked against it before the write starts.</p>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">"Use a file instead…" takes a <span class="mono">merged-flash.bin</span> from a <a href="https://github.com/adafruit/Adafruit_Marquee/actions/workflows/build.yml" target="_blank" rel="noopener">CI build</a> artifact or an older release: <span class="mono">marquee-magtag</span>, <span class="mono">marquee-adafruit_feather_esp32s3</span> or <span class="mono">marquee-x4pro</span>, to match the board.</p>
             <div class="hr" style="margin:6px 0"></div>
             <div class="eyebrow">What gets written</div>
-            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The image you chose, at the start of the flash. The <span class="mono">MARQUEE</span> drive and whatever is on it are kept unless you tick "Erase the whole chip first". The configuration is the next step, and goes onto that drive.</p>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The image shown above, at the start of the flash. The <span class="mono">MARQUEE</span> drive and whatever is on it are kept unless you tick "Erase the whole chip first". The configuration is the next step, and goes onto that drive.</p>
           </div>
 
           <div id="a6aRailDrive" class="hidden">
@@ -982,7 +1007,7 @@
 
     <div class="hr"></div>
     <span class="label">Setup</span>
-    <p class="hint">"Start setup over" runs this display through the flow again — pick the device, its Adafruit IO group, its Wi-Fi. Its panel settings, credentials and dashboard are kept. "Remove" forgets it in this browser only: nothing on Adafruit IO is touched, and the board keeps running whatever was last flashed onto it.</p>
+    <p class="hint">"Start setup over" runs this display through the flow again — pick the device, its Adafruit IO group, its Wi-Fi. Its panel settings, credentials and dashboard are kept. "Remove" deletes it here and deletes its group and feeds on Adafruit IO; the board itself is not touched and keeps running whatever was last flashed onto it.</p>
     <div style="display:flex; gap:10px">
       <button type="button" class="btn btn-secondary btn-sm" id="restartSetup">Start setup over</button>
       <button type="button" class="btn btn-danger btn-sm" id="removeDisplay">Remove this display</button>

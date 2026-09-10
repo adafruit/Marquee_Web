@@ -147,9 +147,9 @@ function initSettings() {
     const rec = devices.activeDevice();
     if (!rec) { toast('No display selected'); return; }
     const name = devices.deviceLabel(rec);
-    if (!confirm(`Remove "${name}" from this browser?\n\nIts dashboard and settings are `
-      + 'deleted here. Nothing on Adafruit IO is touched — the group and its feeds stay, '
-      + 'and the board keeps running whatever was last flashed onto it.')) return;
+    if (!confirm(`Remove "${name}"?\n\nIts dashboard and settings are deleted from this `
+      + 'browser, and its group and feeds are deleted from Adafruit IO. The board itself is '
+      + 'not touched — it keeps running whatever was last flashed onto it.')) return;
     closeModal('settingsModal');
     // The same path A1's Remove takes, and it does more than delete: this record is the
     // active one, so the canvas, the descriptor and the status watch in front of the user

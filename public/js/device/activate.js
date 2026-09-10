@@ -29,6 +29,9 @@ import { syncNav } from '../core/router.js';
 import { getState, replaceFlow } from '../core/state.js';
 import * as devices from './devices.js';
 import { syncCfg } from './cfg.js';
+import { deleteGroupFeeds } from './provision.js';
+import { hasIoConfig, connectedUser } from './credentials.js';
+import { ioGroupKey } from '../core/api.js';
 import { syncPushBlock, syncIntervalFromField } from '../screens/a7.js';
 import { resetDrawnCache, capturePanelFromCanvas } from '../screens/a8.js';
 
@@ -184,6 +187,29 @@ export async function rehydrateFor(rec) {
 }
 
 /**
+ * Delete the removed display's group and feeds on Adafruit IO — silently, best-effort.
+ *
+ * Skipped when there is no verified account to do it with, when the record never got a
+ * group (a draft abandoned before A5b), and when another display in this browser still
+ * uses the same group key: that one's feeds are not this one's to delete.
+ */
+function cleanupFeeds(rec, wasActive) {
+  const groupKey = ((wasActive ? ioGroupKey() : '') || rec.settings?.ioGroup || '').trim();
+  if (!groupKey || !hasIoConfig()) return;
+  if (devices.groupKeyTaken(groupKey, rec.id)) {
+    console.log(`[io] delete ${groupKey} skipped — another display in this browser uses it`);
+    return;
+  }
+  const user = connectedUser();
+  const key = document.getElementById('ioKey')?.value || '';
+  deleteGroupFeeds(user, key, groupKey)
+    .then((out) => {
+      if (!out.ok) console.warn(`[io] some of ${groupKey}'s feeds could not be deleted:`, out.failed);
+    })
+    .catch((err) => console.warn(`[io] feed cleanup for ${groupKey} threw`, err));
+}
+
+/**
  * Forget a device, and leave the app pointed at something coherent.
  *
  * The delete itself is one line in devices.js. Everything here is about the case that
@@ -202,8 +228,15 @@ export async function rehydrateFor(rec) {
  * editor is emptied by hand — the same end state, reached without a record to load.
  */
 export async function removeDevice(id) {
-  if (!id || !devices.getDevice(id)) return;
+  const rec = devices.getDevice(id);
+  if (!id || !rec) return;
   const wasActive = id === devices.activeDeviceId();
+
+  // The board's feeds go with the record. Started BEFORE the delete, because the group key
+  // and the credentials are read from the record and the live fields that are about to be
+  // cleared; not awaited, because four requests to Adafruit IO must not hold up a local
+  // removal, and a failure there is a console line, not a reason to keep the tile.
+  cleanupFeeds(rec, wasActive);
 
   if (wasActive) {
     // The 400ms autosave debounce must not fire after activeId moves — the same hazard

@@ -1,12 +1,13 @@
 {
   "name": "marquee-web",
   "version": "1.0.0",
-  "description": "Adafruit IO Marquee — browser e-ink canvas editor and its ImageMagick render backend",
+  "description": "Adafruit IO Marquee \u2014 browser e-ink canvas editor and its ImageMagick render backend",
   "type": "commonjs",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.mjs"
   },
   "engines": {
     "node": ">=18"

@@ -550,8 +550,32 @@
 .fw-row .fw-name { font-size: 12px; opacity: 0.8; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fw-row .fw-name[data-state="ok"] { opacity: 1; }
 .fw-row .fw-name[data-state="bad"] { color: var(--color-danger); opacity: 1; }
+/* Release mode: the status line says which release and how far along; the track under it
+   fills while the image downloads. File mode swaps this block for the old file row. */
+.fw-release { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.fw-release .check { font-size: 12.5px; min-width: 0; }
+.fw-release .check [data-role="text"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-track { display: block; height: 4px; background: var(--color-neutral-200); border: 1px solid var(--color-divider); }
+.fw-track .fill { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width 0.15s linear; }
+.fw-row[data-state="fetching"] .check .dot { animation: fw-pulse 1.1s ease-in-out infinite alternate; }
+@keyframes fw-pulse { from { opacity: 0.35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .fw-row[data-state="fetching"] .check .dot { animation: none; } }
+.fw-row[data-mode="file"] .fw-release { display: none; }
 
 .drive-steps { font-size: 13px; }
+/* The drive stage's plate is the whole instruction — the steps AND the button that acts
+   on them — so it is bigger and darker than the A5C promise plate it borrows from, and
+   reads as the one thing to look at rather than a note beside the actions. */
+.drive-plate {
+  gap: 14px;
+  padding: 22px 24px 24px;
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-neutral-200));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-divider));
+}
+.drive-plate .label { font-size: 12px; color: var(--color-text); }
+.drive-plate .drive-steps { font-size: 14px; gap: 10px; line-height: 1.5; }
+.drive-plate .drive-steps .n { width: 16px; opacity: 0.7; }
+.drive-plate-actions { margin-top: 6px; }
 .drive-fallback { display: flex; flex-direction: column; gap: 10px; }
 
 .log-plate { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; flex: 1; min-height: 0; }

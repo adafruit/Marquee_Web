@@ -280,19 +280,20 @@ async function startNewDisplay() {
  * What removing a display actually costs, said before it happens.
  *
  * Named rather than inlined because it is the one thing on this screen that cannot be
- * undone, and because the second paragraph is the part that matters: this is a browser
- * bookmark being torn up, not a board being decommissioned. Nothing on Adafruit IO is
- * touched, so the group, the four feeds and the scene on canvas-state all survive — and
- * the panel keeps drawing whatever was last published to it, on its own, indefinitely.
+ * undone, and because the second paragraph is the part that matters: the record goes,
+ * and so do the display's group and four feeds on Adafruit IO — the scene on canvas-state
+ * with them (removeDevice() → provision.js#deleteGroupFeeds, best-effort). The board is
+ * not touched: it keeps drawing whatever it last fetched, and will find its feeds gone the
+ * next time it wakes.
  *
  * Same wording as "Remove display" in Settings, which is the same action reached from
  * the other end.
  */
 function confirmRemoval(rec) {
   const name = devices.deviceLabel(rec);
-  return confirm(`Remove "${name}" from this browser?\n\nIts dashboard and settings are `
-    + 'deleted here. Nothing on Adafruit IO is touched — the group and its feeds stay, '
-    + 'and the board keeps running whatever was last flashed onto it.');
+  return confirm(`Remove "${name}"?\n\nIts dashboard and settings are deleted from this `
+    + 'browser, and its group and feeds are deleted from Adafruit IO. The board itself is '
+    + 'not touched — it keeps running whatever was last flashed onto it.');
 }
 
 export function initA1({ onEnter }) {

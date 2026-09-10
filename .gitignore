@@ -28,4 +28,7 @@ yarn-error.log*
 # GET /canvas answers null and the first edit writes it.
 data/canvas.json
 
+# A6-A smoke-test fixture (a fake firmware manifest + image served from public/)
+public/__fixture/
+
 *.log

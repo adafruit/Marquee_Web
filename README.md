@@ -30,7 +30,7 @@ npm start
 Then open <http://localhost:3000>.
 
 `npm run dev` does the same under `node --watch`, restarting the server when you
-edit it. The frontend needs no build step — it is plain ES modules served
+edit it. `npm test` runs the small `node --test` suite (no dependencies). The frontend needs no build step — it is plain ES modules served
 straight from `public/`, so a browser reload picks up any change you make.
 
 Check your setup at any time:
@@ -86,8 +86,8 @@ public/
     main.js        entry point: wires the modules and the screens together
     core/          state, util, router, api, config, doc
     canvas/        stage, elements, selection, palette, render, icons, konva shim
-    device/        device, devices, activate, credentials, provision, flash, drive,
-                   cycle, canvasfeed, feeds, presets
+    device/        device, devices, activate, credentials, provision, firmware, flash,
+                   drive, cycle, canvasfeed, feeds, presets
     screens/       a1, a1c (a modal, not a route), a4, a5b, a5c, a6a, a7, a8
     vendor/        Konva 10.3.0 and esptool-js 0.6.1 (bundle.js, Apache-2.0), inlined so
                    there is no CDN dependency
@@ -132,9 +132,17 @@ those fields from A7 and A8 as well.
 
 A6-A does the whole thing from the browser — Chrome or Edge on desktop, no server involved.
 
-1. **Get the image.** Open the
-   [Adafruit_Marquee build](https://github.com/adafruit/Adafruit_Marquee/actions/workflows/build.yml),
-   pick the latest run, and download the artifact for your board:
+1. **The image downloads itself.** A6-A fetches the latest
+   [Adafruit_Marquee release](https://github.com/adafruit/Adafruit_Marquee/releases) for the
+   display's board, shows its version next to the board name, and verifies the download
+   against the release's SHA-256 before using it. The file is `merged-flash.bin` — bootloader,
+   partition table, `boot_app0` and the app already laid out at their offsets, written at
+   `0x0` in one go. See [`docs/firmware-branch.md`](docs/firmware-branch.md) for where it is
+   fetched from and why that is not the Release page itself.
+
+   **Use a file instead…** takes a `merged-flash.bin` you downloaded yourself — from a
+   [CI build](https://github.com/adafruit/Adafruit_Marquee/actions/workflows/build.yml)
+   artifact, an older release, or for a panel set up by hand:
 
    | Display preset | Artifact | Chip |
    |---|---|---|
@@ -142,12 +150,11 @@ A6-A does the whole thing from the browser — Chrome or Edge on desktop, no ser
    | Any panel on a Feather (tri-color FeatherWing, breakouts, 4.2", 7.5") | `marquee-adafruit_feather_esp32s3-<sha>` | ESP32-S3 |
    | Xteink X4 Pro | `marquee-x4pro-<sha>` | ESP32-S3 |
 
-   Unzip it. The file A6-A wants is `merged-flash.bin` — bootloader, partition table,
-   `boot_app0` and the app already laid out at their offsets, written at `0x0` in one go.
-2. **Flash.** Hold BOOT, tap RESET, release BOOT. Choose the `.bin` (it is checked for a
-   partition table and the right bootloader offset before any port dialog opens), click
-   **Connect and flash**, pick the board's port. The chip is read and compared with the
-   image before anything is written. Leave "Erase the whole chip first" off — see Known gaps.
+2. **Flash.** Hold BOOT, tap RESET, release BOOT. Once the row reads "ready", click
+   **Connect and flash** and pick the board's port. The image is checked for a partition
+   table and the right bootloader offset before any port dialog opens, and the chip is read
+   and compared with the image before anything is written. Leave "Erase the whole chip first"
+   off — see Known gaps.
 3. **Write the config.** Press RESET. The firmware comes up as a USB drive named `MARQUEE`.
    Click **Open MARQUEE and write config…**, choose that drive, and `cfg-marquee.json` is
    written into it and read back. Browsers without a directory picker get a Download button
@@ -180,14 +187,18 @@ The wire formats, each one its own contract:
 - [`docs/marquee-sleep.md`](docs/marquee-sleep.md) — the `{group}.sleep` feed: how long to sleep and what to wake on
 - [`docs/marquee-status.md`](docs/marquee-status.md) — the `{group}.status` feed: what the board reports back
 - [`docs/cfg-marquee.md`](docs/cfg-marquee.md) — `cfg-marquee.json`: the file written to the board at flash time, assembled during setup and viewable from A6-A
+- [`docs/firmware-branch.md`](docs/firmware-branch.md) — where A6-A fetches firmware from: the `firmware` branch of Adafruit_Marquee and its `manifest.json`
 
 ## Known gaps
 
-- **Firmware is picked from disk.** A6-A flashes a `merged-flash.bin` the user has
-  downloaded from the Adafruit_Marquee CI run — GitHub Actions artifacts need an
-  authenticated download, so the browser cannot fetch them itself. Pulling the image from
-  a GitHub Release is the next step; `loadFirmware()` in `device/flash.js` is the seam,
-  and nothing else in the app would change.
+- **Latest release only.** A6-A offers whatever `manifest.json` on Adafruit_Marquee's
+  `firmware` branch says is newest, pre-releases included (and labelled). There is no
+  version picker; an older release or a CI artifact goes through "Use a file instead…".
+  Per-tag manifests are committed, so a picker is a small change when wanted.
+- **Not the Release assets.** GitHub's release-asset CDN sends no CORS header, so a browser
+  cannot read those files. The firmware repo's publish job therefore writes the binaries to
+  the `firmware` branch as well as attaching zips to the release — see
+  [`docs/firmware-branch.md`](docs/firmware-branch.md).
 - **A full chip erase leaves the drive unformatted.** The firmware never formats its FAT
   partition, so ticking "Erase the whole chip first" means formatting the `MARQUEE`
   volume by hand before the config can be written. The box is off by default and says so.

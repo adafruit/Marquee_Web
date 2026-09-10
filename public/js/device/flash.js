@@ -12,10 +12,12 @@
  * is the whole flash image. The MagTag's bootloader sits at 0x1000, so its image starts with
  * 0x1000 bytes of padding; the two ESP32-S3 boards start with the bootloader itself.
  *
- * WHERE IT COMES FROM. A file the user picked. GitHub Actions artifacts need an authenticated
- * download and expire, so a browser cannot fetch them; the user downloads the artifact for
- * their board and picks the .bin. loadFirmware() is the seam for the next source — a GitHub
- * Release URL is one more `kind` there and nothing else in the app changes.
+ * WHERE IT COMES FROM. The latest release, by default: firmware.js fetches the manifest CI
+ * commits to the `firmware` branch of Adafruit_Marquee and downloads the board's merged image
+ * from it, sha256-checked. (Not the Release page's assets — GitHub's asset CDN sends no CORS
+ * header, so a browser cannot read them; see firmware.js.) A file the user picked is the
+ * fallback, for a CI artifact, an older release, or a panel set up by hand. loadFirmware() is
+ * where the two meet: both return the same shape, and nothing downstream knows which it was.
  *
  * WHAT IS NOT HERE. The config file. The firmware reads `cfg-marquee.json` from the FAT
  * volume it exposes over USB, not from anything written over serial, so that step lives in
@@ -36,6 +38,8 @@
  * progress at all: esptool-js sends one command and waits up to the chip-erase timeout, so the
  * honest thing to show is "erasing…" and not a number.
  */
+
+import { fetchManifest, fetchReleaseFirmware } from './firmware.js';
 
 /** Is this browser capable of talking to a serial port at all? */
 export function serialSupported() {
@@ -84,14 +88,32 @@ export function firmwareFor(device) {
 /**
  * Get the bytes of a firmware image from wherever it lives.
  *
- * The source seam. `{ kind: 'file', file }` is the only kind today. When the firmware is
- * published as a GitHub Release, `{ kind: 'url', url }` becomes a fetch() branch here.
+ * The source seam. Two kinds:
+ *
+ *   { kind: 'release', board, manifest?, signal?, onProgress? }
+ *       the latest published release, from the firmware branch (firmware.js). The manifest is
+ *       fetched here when the caller has not already got one. Failures carry firmware.js's
+ *       error codes so the screen can pick its sentence and its button.
+ *   { kind: 'file', file }
+ *       a File the user chose.
+ *
+ * Both resolve to `{ ok, name, size, bytes, source }` — validateFirmware() and flashDevice()
+ * take that and never learn which it was.
  */
 export async function loadFirmware(source) {
   try {
+    if (source?.kind === 'release') {
+      let { manifest } = source;
+      if (!manifest) {
+        const m = await fetchManifest({ signal: source.signal });
+        if (!m.ok) return m;
+        manifest = m.manifest;
+      }
+      return fetchReleaseFirmware({ manifest, board: source.board, signal: source.signal, onProgress: source.onProgress });
+    }
     if (source?.kind === 'file' && source.file) {
       const buf = await source.file.arrayBuffer();
-      return { ok: true, name: source.file.name, size: buf.byteLength, bytes: new Uint8Array(buf) };
+      return { ok: true, name: source.file.name, size: buf.byteLength, bytes: new Uint8Array(buf), source: 'file' };
     }
     return { ok: false, error: 'load-failed', message: `Unsupported firmware source: ${source?.kind ?? 'none'}` };
   } catch (err) {
