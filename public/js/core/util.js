@@ -123,16 +123,6 @@ export function scaleUnit(v, lo, hi, log = false) {
   return hi === lo ? 0 : (v - lo) / (hi - lo);
 }
 
-/** mm:ss for the clapperboard countdown; hh:mm:ss once past an hour. */
-export function fmtClock(totalSeconds) {
-  const s = Math.max(0, Math.floor(totalSeconds || 0));
-  const hh = Math.floor(s / 3600);
-  const mm = Math.floor((s % 3600) / 60);
-  const ss = s % 60;
-  const pad = (n) => String(n).padStart(2, '0');
-  return hh > 0 ? `${hh}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
-}
-
 /** "5 minutes" / "1 hour" — the human form of a refresh interval. */
 export function fmtInterval(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));

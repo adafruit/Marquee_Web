@@ -1,18 +1,8 @@
 /**
- * Where the two services this editor talks to live.
- *
- *   BACKEND — the render/echo server in ../server.js. Empty string means same
- *   origin, because the editor is served out of that server's public/ folder,
- *   so fetch('/render') just works.
- *
- *   ioHost() — Adafruit IO itself, which the browser calls directly for feed
- *   reads and datum publishes (the backend is not a proxy for those).
+ * Adafruit IO, the one service this editor talks to. The browser calls it directly
+ * for feed reads and datum publishes; there is no server of our own — rendering
+ * happens in the page (canvas/bitmap.js) and state lives in localStorage.
  */
-
-export const BACKEND = '';
-
-/** Editor dither names -> backend method names. */
-export const BACKEND_METHOD = { FloydSteinberg: 'floyd', ordered: 'ordered', none: 'none' };
 
 /**
  * IO datum size ceilings, in bytes of the base64 payload. We assume feed history
@@ -26,12 +16,16 @@ export const IO_MAX_NO_HISTORY = 512 * 1024;
  * The Adafruit IO host, for the whole app — feed reads, publishes, and the group
  * A5b creates.
  *
- * io.adafruit.com unless "Developer mode" is ticked under Settings, which moves
- * everything to the .us staging environment. Real accounts are on .com, so that is
- * the default and the opt-in is the unusual one — it used to be the other way round,
- * with a "Publish to Prod" box in the publish dialog, which both defaulted a user's
- * own account to the wrong host and read as a per-publish choice when every call in
- * the app resolves through here.
+ * io.adafruit.com unless #ioDev ("Developer mode") is ticked, which moves everything
+ * to the .us staging environment. Real accounts are on .com, so that is the default
+ * and the opt-in is the unusual one — it used to be the other way round, with a
+ * "Publish to Prod" box in the publish dialog, which both defaulted a user's own
+ * account to the wrong host and read as a per-publish choice when every call in the
+ * app resolves through here.
+ *
+ * NOTE: nothing can tick it any more. #ioDev lives in the settings modal, which lost
+ * its entry point along with the chrome button, so in practice this now always answers
+ * io.adafruit.com unless a profile carries a saved `true` from before that change.
  */
 export function ioHost() {
   return document.getElementById('ioDev')?.checked ? 'io.adafruit.us' : 'io.adafruit.com';

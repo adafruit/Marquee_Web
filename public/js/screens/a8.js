@@ -13,7 +13,7 @@
  */
 
 import { bitmapFeedKey } from '../core/api.js';
-import { backendRender, isBackendOnline, markBackendOffline } from '../canvas/render.js';
+import { renderBitmap } from '../canvas/render.js';
 import { logicalDims } from '../canvas/palette.js';
 import { captureClean } from '../canvas/stage.js';
 import { selected, select } from '../canvas/selection.js';
@@ -25,7 +25,7 @@ import { displayState } from '../device/cycle.js';
 import { refreshIntervalLabel } from '../core/config.js';
 import { navigate, currentScreen, syncNav } from '../core/router.js';
 import { activeDeviceId, panelNowKey } from '../device/devices.js';
-import { $, val, show, fmtClock, fmtInterval, fmtLocalTime, fmtLocalSeconds } from '../core/util.js';
+import { $, val, show, fmtInterval, fmtLocalTime, fmtLocalSeconds } from '../core/util.js';
 
 /**
  * How large to draw a panel preview. NEVER above 1:1.
@@ -241,24 +241,22 @@ export function resetDrawnCache() { lastDrawn = null; }
  * on its next pass, and only falls back to what is cached here when IO has nothing.
  *
  * The BMP rather than the PNG capture, so what is cached is what the panel actually
- * renders — dithered, palette-remapped, at the panel's own colour depth. That is also
- * why it needs the backend, and why it is a no-op without one rather than an error:
- * caching a picture is not worth a toast about a render server.
+ * renders — dithered, palette-remapped, at the panel's own colour depth. A render
+ * failure is a silent false rather than an error: caching a picture is not worth a
+ * toast.
  */
 export async function capturePanelFromCanvas() {
-  if (!isBackendOnline()) return false;
   const id = activeDeviceId();
   const feed = bitmapFeedKey();
   let r;
   try {
-    r = await backendRender();
-  } catch {
-    markBackendOffline();
+    r = renderBitmap();
+  } catch (e) {
+    console.error('[render]', e);
     return false;
   }
-  // A render is a round trip to the backend, and saveDrawn() files under whichever
-  // device is active NOW — so a switch during it would put this board's panel under the
-  // next board's key. The picture is worthless by then anyway: the canvas has moved on.
+  // saveDrawn() files under whichever device is active NOW, so guard against a switch
+  // having happened since this function was entered.
   if (activeDeviceId() !== id) return false;
   lastDrawn = { src: `data:image/bmp;base64,${r.bmp}`, at: Date.now() };
   saveDrawn(feed);
@@ -275,7 +273,7 @@ export async function capturePanelFromCanvas() {
 const TAKES_EMPTY = {
   unknown: 'Reading the feed…',
   unconfigured: 'No feeds yet — finish "Configure Adafruit IO" in Act I and this fills in.',
-  unreadable: 'Could not read the feed — check the group key under Settings, and the connected Adafruit IO account.',
+  unreadable: 'Could not read the feed — check that this display finished setup and that its Adafruit IO account is still connected.',
   empty: 'Nothing has been published to this feed yet.',
   undrawn: 'Nothing confirmed on the glass yet — the board has not reported collecting a take.',
 };
@@ -497,51 +495,6 @@ function setMessage(headline, _sub) {
 }
 
 /**
- * Where the clapperboard belongs: the editor and Showtime, and nowhere else.
- *
- * The chrome is shared by every screen, but the clock is not a fact about the app — it is
- * a fact about ONE board's cycle. On A1 that board is not on screen and the list is about
- * all of them, so a countdown in the corner is a number with nothing to attach itself to;
- * on the setup screens the display it counts for is one the user is still building.
- *
- * Enforced in setClock() rather than at the call sites, so a new caller cannot forget it,
- * and re-evaluated on navigation for free: router.js writes `lastScreen` into state on
- * every navigate, which wakes renderCycle() through the subscription below.
- */
-const CLOCK_SCREENS = new Set(['a7', 'a8']);
-
-/**
- * The clapperboard readout in the app bar.
- *
- * There used to be two: a full-size board filling most of Showtime's dark bar, and this
- * miniature standing in for it everywhere else. The pair was written in one call so they
- * could not drift, and the chrome copy was hidden on Showtime so the same clock never
- * appeared twice in one view.
- *
- * Now there is one, in the chrome, on the two screens that have a cycle to watch. That is
- * the better trade for two reasons: the countdown is the same fact on A7 as on A8, so it
- * belongs in the band both screens share; and it frees Showtime's dark bar to be what it
- * claims to be, which is state — the sleep time and the refresh interval, no controls and
- * no furniture.
- *
- * `null` seconds HIDES it rather than parking it on `--:--`. A clapperboard showing no time
- * is set dressing that has stopped saying anything; during a take, where the honest answer
- * is "this cannot be predicted", the headline says so instead.
- */
-function setClock(cap, secs) {
-  const has = secs != null && secs >= 0 && CLOCK_SCREENS.has(currentScreen());
-
-  // Ships with the `hidden` ATTRIBUTE set, so the first paint has no clock in the bar;
-  // show() works on a class. Clearing it here hands control to show() for good.
-  $('chromeClapper').hidden = false;
-  show($('chromeClapper'), has);
-  if (!has) return;
-
-  $('chromeClapperCap').textContent = cap;
-  $('chromeClapperTime').textContent = fmtClock(secs);
-}
-
-/**
  * The board's own record, under the headline: the times the DEVICE reported, as opposed
  * to the times the editor inferred.
  *
@@ -581,26 +534,6 @@ function renderReport(st) {
   el.textContent = `board reported · ${parts.join(' · ')}`;
 }
 
-/**
- * How much of the sleep is LEFT, in seconds, or null when there is nothing to count.
- *
- * A `{"state": "sleeping", "sleep_time": 300, ...}` starts this at 05:00 and it runs down to
- * 00:00: `wakesAt` is that `sleep_time` added to the moment the board reported arming the
- * alarm, so the readout is counting down evidence rather than a model.
- *
- * CLAMPED at zero rather than continuing into the take. Past the armed window the board is
- * up, or late, and either way the sleep it was counting is over — running the figure past
- * 00:00 would turn a sleep timer into a stopwatch measuring something else. It sits at 00:00
- * until the board reports its wake, which is a poll away.
- *
- * Null for a pin alarm, which has no armed time at all, and for a sleep nobody has reported
- * and nothing was asked for.
- */
-function sleepRemainingSeconds(st) {
-  if (!st.wakesAt || st.wakeSource === 'pin') return null;
-  return Math.max(0, Math.round((st.wakesAt - Date.now()) / 1000));
-}
-
 /** The sleep window the board actually armed, in words; the requested one if it never said. */
 function armedWindowLabel(st) {
   return st.sleepSeconds ? fmtInterval(st.sleepSeconds) : refreshIntervalLabel();
@@ -625,7 +558,6 @@ function renderCycle() {
 
   switch (displayState(st)) {
     case 'offline':
-      setClock('Next take in', null);
       setMessage('Display is offline',
         'The board stopped checking in. Your edits are safe and will be written when it returns.');
       return;
@@ -635,26 +567,11 @@ function renderCycle() {
       // report the difference. The sub line names the ceiling rather than the panel's own
       // refresh time, because a panel sitting still for two minutes reads as a hang, and
       // what makes it two minutes is the driver's frame minimum rather than the artwork.
-      // No figure while a take runs. How long one will take cannot be predicted, and the
-      // headline and sub already say what is happening — a clock counting anything here was
-      // an invention.
-      setClock('Next take in', null);
       setMessage("It's Showtime - Display is awake and redrawing 🎨",
         'Each take can take up to 2 minutes depending on panel driver, color mode, and size.');
       return;
 
     default: {
-      // The countdown is back, but only where it is evidence: `wakesAt` is the board's own
-      // `sleep_time` counted from the moment it said it armed the alarm. Nothing here
-      // predicts the take that follows the wake — that is what the redrawing state is for.
-      //
-      // "Next take in" rather than "Sleeping for", and the caption is doing real work now
-      // that the headline beside it reads "Display is sleeping until 9:47 AM": two clocks
-      // captioned with the same word was the bar saying "sleeping" twice and answering the
-      // same question twice. It is also the more useful of the two framings — the wake is
-      // only interesting because a take follows it — and it stays honest, because this
-      // figure is the armed sleep counted down and nothing about the take itself.
-      setClock('Next take in', sleepRemainingSeconds(st));
       if (st.wakeSource === 'pin') {
         setMessage('Display is sleeping until the button is pressed',
           'Anything you edit is included the next time the board is woken.');
@@ -663,13 +580,13 @@ function renderCycle() {
       } else {
         // The headline carries the WAKE TIME and nothing else. Both of the sentences that used
         // to sit under it have found better homes: the armed total is the cadence stack on the
-        // right of this bar, opposite the countdown running through it, and "anything you edit
-        // is included on the next take" is the helper text of the action bar below — beside the
-        // button that acts on it, which is where a user reads it at the moment it matters.
+        // right of this bar, and "anything you edit is included on the next take" is the helper
+        // text of the action bar below — beside the button that acts on it, which is where a
+        // user reads it at the moment it matters.
         //
-        // A time rather than a duration, because the duration is already on the bar twice: once
-        // ticking down in the clapperboard, once named in the cadence stack. "Until 9:47 AM" is
-        // the one form of it neither of those gives you, and it is the one you can plan against.
+        // A time rather than a duration, and now the only form of it on the bar: the cadence
+        // stack names the window the board armed, which is how OFTEN it wakes. This is WHEN it
+        // wakes next, which is the one you can plan against.
         setMessage(st.wakesAt
           ? `Display is sleeping until ${fmtLocalTime(new Date(st.wakesAt))}`
           : 'Display is sleeping', '');
@@ -678,36 +595,10 @@ function renderCycle() {
   }
 }
 
-/**
- * The readout is the only thing here that moves without the board saying anything, so it is
- * the only thing that needs a timer — and at mm:ss it needs a per-second one.
- *
- * No act guard, because between the two clapperboards there is now one on screen in every
- * act: the chrome stand-in in I and II, the full-size board in III. A guard would only be
- * bookkeeping for a condition that is always true, and the version that had one left the
- * clock frozen at whatever second the user navigated away on.
- *
- * The cost is a 1Hz interval for the life of the session, writing at most four text nodes a
- * second and only when a sleep is being counted.
- */
-let clockTimer = null;
-
-function startClock() {
-  clearInterval(clockTimer);
-  clockTimer = setInterval(renderCycle, 1000);
-}
-
 // ---------- boot ------------------------------------------------------------
 
 export function initA8({ onEnter }) {
   $('editDashboard').addEventListener('click', () => navigate('a7'));
-
-  // The clock is owned by this module but shows on the editor too (CLOCK_SCREENS), so
-  // arriving THERE has to re-evaluate it. Without this a reload landing straight on A7
-  // leaves the chrome empty: currentScreen() is still unset when boot's replaceFlow()
-  // runs renderCycle, and the navigate that follows only notifies when `lastScreen`
-  // actually changes — which it does not, on a reload of the screen you were already on.
-  onEnter('a7', renderCycle);
 
   onEnter('a8', () => {
     renderWritten();      // whatever the last read found, immediately
@@ -728,8 +619,9 @@ export function initA8({ onEnter }) {
   });
 
   subscribe((_st, patch) => {
-    // Both ahead of the screen check. The clock is in the chrome and so live everywhere; the
-    // feed read has to happen everywhere for the reason in fetchTakes().
+    // Both ahead of any screen check. This bar is only on A8, but re-rendering it off-screen
+    // is free and keeps it correct on arrival; the feed read has to happen everywhere for the
+    // reason in fetchTakes().
     renderCycle();
     // The reported times are what SPLIT the feed, so a change to either one re-cuts it.
     // `published` alone was not enough: the status seed (adoptReportedState in device.js)
@@ -762,11 +654,6 @@ export function initA8({ onEnter }) {
   // No timer to pause or resume: the bar changes only when the board says something, and
   // initDevice() already catches the status feed up when a tab returns to the foreground.
   renderCycle();
-  // The clock is chrome-wide, so it runs with the session rather than with a screen. This
-  // module owns it anyway, because renderCycle() writes the clock and the prose beside it in
-  // one pass and those two must never disagree — moving the clock to the router would be the
-  // same reading in two places again.
-  startClock();
   // At boot, on whatever screen: a tab reloaded while the board sleeps has one chance to see
   // the take on the glass before the next push replaces it on the feed.
   fetchTakes();

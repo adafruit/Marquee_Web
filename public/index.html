@@ -23,38 +23,18 @@
     <!-- Three levels, and only the last one is variable: the board this editor is
          pointed at. The trail is here to say WHICH board you are editing, which is the
          one fact the chrome could not answer while the title sat there alone. Written
-         by router.js, which reads the live name field rather than the stored record so
-         a rename in Settings lands while that dialog is still open. -->
+         by router.js, which reads the live name field rather than the stored record, so a
+         rename reaches the crumb the moment it is typed rather than on the next save. -->
     <span class="crumb">Adafruit IO</span>
     <span class="sep">/</span>
     <span class="crumb">Marquee</span>
     <span class="sep">/</span>
     <span class="crumb crumb-current" id="crumbBoard">magtag</span>
     <span class="spacer"></span>
-    <!-- The sleep clock in miniature. Written by a8.js's setClock(), and now the ONLY
-         clapperboard in the app: the full-size one used to sit in Showtime's dark bar,
-         which left A7 without a countdown and made the two able to drift.
-
-         In the chrome, but not on every screen the chrome is: it counts down ONE board's
-         cycle, so it appears on the editor and Showtime and stays hidden on the display
-         list and through setup. CLOCK_SCREENS in a8.js is where that is decided. -->
-    <div class="chrome-clapper" id="chromeClapper" hidden>
-      <span class="stripes"></span>
-      <span class="readout">
-        <span class="cap" id="chromeClapperCap">Next take in</span>
-        <span class="time" id="chromeClapperTime">--:--</span>
-      </span>
-    </div>
     <!-- The way out of the editor loop, and the only one. Setup does not get it. -->
     <button type="button" class="chrome-link hidden" id="crumbAllDisplays">‹ All displays</button>
     <span class="pill pill-asleep" id="devicePill" hidden><span class="dot"></span><span data-role="text">Asleep</span></span>
-    <button type="button" class="btn btn-sm btn-ghost" id="btnSettings" style="color:var(--color-chrome-text)">Settings</button>
   </header>
-
-  <div id="backendBanner">
-    <strong>Render backend unreachable.</strong>
-    <span>ImageMagick is the only render path — every render, push and export action is disabled until it answers <span class="mono">/health</span>.</span>
-  </div>
 
   <!-- ── editor rail ──────────────────────────────────────────────────────── -->
   <!-- Two cells, and it belongs to A7/A8 alone — the setup screens show no rail at
@@ -523,7 +503,13 @@
               <option value="1800">Every 30 minutes — deep sleep</option>
               <option value="2700">Every 45 minutes — deep sleep</option>
               <option value="3600">Every hour — deep sleep</option>
-              <option value="custom">Custom…</option>
+              <!-- Not pickable, and deliberately so: it is a READOUT. There is no longer
+                   anywhere to type an arbitrary interval — the Settings modal this used
+                   to point at has no door — but a record migrated from an older build can
+                   still carry one, and syncIntervalFromField() selects this to name it
+                   rather than leave the select blank. `hidden` keeps it out of the list
+                   while leaving it selectable programmatically. -->
+              <option value="custom" hidden>Custom…</option>
             </select>
           </label>
 
@@ -622,7 +608,7 @@
               </button>
 
               <!-- Dithering lives with the scene, not with the wiring: the device is
-                   handed a BMP that has already been dithered by the render backend,
+                   handed a BMP that has already been dithered by the editor,
                    so this is an authoring decision about how the artwork survives a
                    1-bit panel — made while looking at the artwork. -->
               <div class="dither-pop blueprint elev-md hidden" id="ditherPop" role="dialog"
@@ -799,7 +785,7 @@
       <h4>Publish to IO feed</h4>
       <button type="button" class="modal-close" id="publishClose" aria-label="Close publish dialog">✕</button>
     </div>
-    <p class="hint">Connect your Adafruit IO account from the display list, and set the group under <strong>Settings</strong>.</p>
+    <p class="hint">Connect your Adafruit IO account from the display list. The group is set up when you add the display.</p>
     <div class="modal-actions">
       <span class="hint mono" id="publishDebug" style="flex:1; text-align:left"></span>
       <button type="button" class="btn btn-primary" id="publishSend">Publish</button>
@@ -854,7 +840,7 @@
 
     <div class="hr"></div>
     <span class="label">Device identity</span>
-    <p class="hint">Written into the panel descriptor that <span class="mono">data/canvas.json</span> carries alongside the layout.</p>
+    <p class="hint">Written into the panel descriptor that the saved layout (<span class="mono">canvas.json</span>) carries alongside the elements.</p>
     <div class="grid-3">
       <label class="field"><span class="label">User</span><input type="text" id="pmUser" value="test_user" autocomplete="off"></label>
       <label class="field"><span class="label">Device</span><input type="text" id="pmDevice" value="magtag" autocomplete="off"></label>
@@ -891,7 +877,7 @@
     </div>
     <!-- These fields used to live inside A5, which the new flow does not visit. They
          have to stay mounted regardless — config.js reads them from A7 and A8 to build
-         every /display request — so they moved to the one container that is mounted AND
+         the display descriptor — so they moved to the one container that is mounted AND
          reachable from every screen rather than being stranded on a parked one.
 
          Picking a device on A4 fills all of this in. It is here for a panel someone

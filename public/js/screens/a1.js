@@ -17,6 +17,10 @@
  * cache alone left most of the wall saying "Nothing drawn yet" about boards with a
  * perfectly good picture published to them.
  *
+ * The pill beside it comes from that display's own STATUS feed, read the same way and
+ * for the same reason — see the status section below, which is the longer version of
+ * why a stored snapshot could not answer it.
+ *
  * It is also where the Adafruit IO account is settled. The add tile is gated on one:
  * setup writes feeds from its first step, so a display added without a checked
  * username and key is a display whose setup cannot finish. See a1c.js.
@@ -26,7 +30,10 @@ import { activateDevice, removeDevice } from '../device/activate.js';
 import { hasIoConfig, connectedUser } from '../device/credentials.js';
 import { openCredentialsGate } from './a1c.js';
 import { feedKeyIn } from '../core/api.js';
-import { readFeedLast } from '../device/feeds.js';
+import { readFeedLast, readFeedData } from '../device/feeds.js';
+import { displayState, readReport, reportIsOverdue } from '../device/cycle.js';
+import { boardReportsState } from '../device/device.js';
+import { getState, subscribe } from '../core/state.js';
 import { deviceEntry, navigate, currentScreen } from '../core/router.js';
 import { DISPLAY_PRESETS } from '../device/presets.js';
 import { readPanelCache, writePanelCache } from './a8.js';
@@ -36,28 +43,23 @@ import { $, val, escapeHtml, escapeAttr, fmtAgo, fmtLocalTime, toast } from '../
 /**
  * What a tile can say about a device without activating it.
  *
- * Everything here comes off the stored record. That is the constraint that makes the
- * grid cheap — rendering N tiles must not mean hydrating N boards — and it is why the
+ * The LABELS come off the stored record — that is the constraint that makes the grid
+ * cheap, since rendering N tiles must not mean hydrating N boards, and it is why the
  * record carries `flow` and `displayConfig` snapshots rather than pointers.
+ *
+ * The STATE does not, and must not: see the status section below.
  */
 function tileFacts(rec) {
   const flow = rec.flow || {};
   const preset = flow.selectedPanel ? DISPLAY_PRESETS[flow.selectedPanel] : null;
-  const asleep = flow.deviceState === 'asleep';
-  // An absolute wake time, not a countdown: nothing on this screen ticks, so "wakes in
-  // 4:12" would be frozen at whatever it was when the grid last rendered. "wakes at
-  // 9:47 AM" stays true however long the tile sits there.
-  const wakesAt = asleep && flow.wakesAt && flow.wakeSource !== 'pin' ? flow.wakesAt : null;
+  const reading = readingFor(rec);
 
   return {
     label: devices.deviceLabel(rec),
     hardware: preset?.spec || 'Panel set up by hand',
     group: (rec.settings?.ioGroup || '').trim(),
-    // "On air" needs evidence, not an absence of it. A board that has never been
-    // written to is neither — it reads as the neutral pill with no time beside it.
-    live: !asleep && !!flow.lastWriteAt,
-    asleep,
-    when: wakesAt != null ? `wakes at ${fmtLocalTime(new Date(wakesAt))}` : (flow.lastWriteAt ? `refreshed ${fmtAgo(flow.lastWriteAt)}` : ''),
+    phase: reading.phase,
+    when: whenLine(reading, rec),
   };
 }
 
@@ -72,11 +74,27 @@ function thumbFor(rec) {
   return readPanelCache(rec.id, bitmapFeedFor(rec) || null)?.src || null;
 }
 
+/**
+ * The same vocabulary as the chrome pill (router.js), from the same derivation, in the
+ * same two classes — plus the one reading this screen needs and the chrome does not.
+ *
+ * The chrome only ever describes the ACTIVE board, which by definition has a watch on
+ * it. A wall of tiles is mostly boards nobody is watching, so it has to be able to say
+ * "I have not asked yet" and "it has never told me" without dressing either up as a
+ * state the board is in.
+ */
+const PILL = {
+  redrawing:  ['pill-on-air', 'On air'],
+  sleeping:   ['pill-asleep', 'Asleep'],
+  offline:    ['pill-asleep', 'Offline'],
+  unreported: ['pill-asleep', 'No status'],
+  unreachable:['pill-asleep', 'No status'],
+  checking:   ['pill-asleep', 'Checking\u2026'],
+};
+
 function pillHTML(f) {
-  if (f.live) {
-    return '<span class="pill pill-on-air"><span class="dot"></span>On air</span>';
-  }
-  return `<span class="pill pill-asleep"><span class="dot"></span>${f.asleep ? 'Asleep' : 'Idle'}</span>`;
+  const [cls, text] = PILL[f.phase] || PILL.checking;
+  return `<span class="pill ${cls}"><span class="dot"></span>${text}</span>`;
 }
 
 /**
@@ -142,6 +160,197 @@ const ADD_TILE_HTML = `<button type="button" class="add-tile blueprint" id="a1Ad
     <span class="cap">Add a new marquee display</span>
     <span class="sub">Let's get started!</span>
   </button>`;
+
+// ---------- what each display is actually doing ------------------------------
+//
+// From the board's own status feed, and from nothing else.
+//
+// These tiles used to read `rec.flow` — a snapshot of live flow state, mirrored into
+// the record by main.js's subscribe. Three things were wrong with that, and they
+// compounded into a wall of boards all claiming to be on air while they slept:
+//
+//   - That mirror only ever writes the ACTIVE record, and only one status feed is ever
+//     polled (device.js resolves statusFeedKey() through the live #ioGroup field). So
+//     every other tile was frozen at whatever its board's state was the last time it
+//     was open — and the usual freeze is the worst one. You push, the board goes
+//     'online-awake' with a lastWriteAt, you switch away, and the tile says On air for
+//     good while the board is off sleeping.
+//   - "Live" was `!asleep && !!lastWriteAt`. lastWriteAt is the EDITOR's own write, so
+//     it is evidence about the editor; and excluding only 'asleep' meant a board
+//     device.js had already judged 'offline' came out green as well.
+//   - state.js#normalize() nulls lastWokeAt/lastSleptAt on the way in, precisely
+//     because they are stale claims about a board that has since moved on. A tile
+//     reading them straight out of the record was trusting exactly what state.js
+//     refuses to.
+//
+// So each display's state is read from its OWN {group}.status feed — the same feed
+// device.js watches, through the same reading (cycle.js#readReport), judged silent by
+// the same rule (cycle.js#reportIsOverdue). A record carries its own group key, so this
+// needs no activation, exactly like the thumbnail sweep below.
+//
+// NO MODELLING. A board that has never reported is shown as not having reported. The
+// modelled cycle that used to answer this question was deleted for not surviving
+// contact with hardware (see cycle.js), and a wall of twelve tiles is the last place to
+// reintroduce it twelve times over.
+//
+// In memory for the session only — deliberately unlike the thumbnail cache next door. A
+// picture stays true until something redraws it; "asleep, wakes at 9:47" does not, and a
+// cached one restored tomorrow morning would be a lie with a timestamp on it.
+
+/** Data points per read. More than one for device.js's reason: a read can land after
+ *  both transitions, and the 'sleeping' needs the 'awake' to be bracketed against. */
+const STATUS_BATCH = 4;
+
+/** How long a status read is good for. Short — this is the fact on the tile most likely
+ *  to have changed while you were away — but not zero, or bouncing in and out of a
+ *  display would re-read every feed on the account. */
+const STATUS_TTL_MS = 20000;
+
+/**
+ * id -> what happened when we asked that display's feed:
+ *
+ *   { kind: 'report', r }   the board said something; `r` is cycle.js's reading of it
+ *   { kind: 'silent' }      the feed read fine and holds nothing we recognise
+ *   { kind: 'unreachable' } the read itself failed
+ *
+ * Absent means not asked yet, which is a fourth thing and the reason this is a Map of
+ * outcomes rather than of reports. Collapsing any two of these loses a distinction the
+ * tile has to draw: "asleep" and "we have no idea" are not the same claim.
+ */
+const reports = new Map();
+
+let lastStatusSweepAt = 0;
+
+/** Bumped by every sweep and every render, so a sweep still walking the list when the
+ *  grid is rebuilt underneath it stops rather than painting into stale tiles. */
+let statusRun = 0;
+
+/** The flow-state fields a tile's status row is drawn from. Anything else moving —
+ *  lastScreen, ioSetup, the panel selection — is not this screen's business, and
+ *  repainting on it would rebuild a row on every keystroke in the editor. */
+const REPAINT_ON = ['deviceState', 'wakesAt', 'wakeSource', 'lastWokeAt', 'lastSleptAt', 'lastWriteAt'];
+
+/** This display's status feed, derived from its own record — no activation involved. */
+function statusFeedFor(rec) {
+  return feedKeyIn(rec.settings?.ioGroup, 'status');
+}
+
+/** What to assume when a board sleeps without saying for how long. That display's own
+ *  setting, not the live form field — the form belongs to whichever board is active. */
+function fallbackSleepFor(rec) {
+  return Math.max(0, parseInt(rec.settings?.sleepDuration, 10) || 0);
+}
+
+/**
+ * 'redrawing' | 'sleeping' | 'offline' | 'unreported' | 'checking', with whatever times
+ * came with it.
+ */
+function readingFor(rec) {
+  // The ACTIVE display is not read from here. device.js has a live watch on this very
+  // feed, polling it every few seconds, holding a cursor, and applying an offline
+  // judgement floored at when the watch started — all things a single read cannot do.
+  // Its flow state is strictly fresher than anything this screen could fetch.
+  if (rec.id === devices.activeDeviceId()) {
+    const st = getState();
+    // Same switch A8 uses: until the board has spoken once, there is nothing to report.
+    return { phase: boardReportsState() ? displayState(st) : 'unreported', st };
+  }
+
+  const e = reports.get(rec.id);
+  if (!e) return { phase: 'checking', st: null };
+  if (e.kind === 'unreachable') return { phase: 'unreachable', st: null };
+  if (e.kind === 'silent') return { phase: 'unreported', st: null };
+  // readReport() returns flow-state field names, which is what displayState() reads —
+  // the two halves of cycle.js meeting in the middle. It cannot itself return 'offline':
+  // that is a judgement about silence, and one read hears no silence.
+  return { phase: reportIsOverdue(e.r) ? 'offline' : displayState(e.r), st: e.r };
+}
+
+/**
+ * The one line of time under the pill.
+ *
+ * An ABSOLUTE wake time, not a countdown: nothing on this screen ticks, so "wakes in
+ * 4:12" would be frozen at whatever it was when the grid last rendered. "wakes at
+ * 9:47 AM" stays true however long the tile sits there.
+ */
+function whenLine({ phase, st }, rec) {
+  const at = (t) => fmtLocalTime(new Date(t));
+  switch (phase) {
+    case 'redrawing':
+      return st?.lastWokeAt ? `woke at ${at(st.lastWokeAt)}` : 'awake now';
+    case 'sleeping':
+      // A pin alarm has no wake TIME — it sleeps until a finger lands on the button — so
+      // there is no clock to print and inventing one would be a fiction.
+      if (st?.wakeSource === 'pin') return 'wakes on the button';
+      return Number.isFinite(st?.wakesAt) ? `wakes at ${at(st.wakesAt)}` : 'asleep';
+    case 'offline': {
+      const last = st?.reportedAt ?? st?.lastSleptAt ?? st?.lastWokeAt;
+      return last ? `silent since ${fmtAgo(last)}` : 'not reporting';
+    }
+    // Same pill as 'unreported' — both mean we cannot say what the board is doing — but
+    // the reason is different and belongs somewhere, so it goes on the detail line
+    // rather than inventing a second pill for a distinction about US, not the board.
+    case 'unreachable':
+      return 'could not read its feed';
+    case 'unreported': {
+      // The board has said nothing, so the only true thing left is what WE did. Named as
+      // a publish rather than a refresh: a push is a feed write, and whether the panel
+      // ever drew it is exactly the question this feed exists to answer and has not.
+      const w = rec.flow?.lastWriteAt;
+      return w ? `published ${fmtAgo(w)}` : '';
+    }
+    default:
+      return '';
+  }
+}
+
+/** Repaint one tile's status row in place, without rebuilding the grid under a sweep. */
+function repaintStatus(rec) {
+  const row = $('a1Grid')?.querySelector(`[data-device="${CSS.escape(rec.id)}"] .row`);
+  if (!row) return;
+  const f = tileFacts(rec);
+  row.innerHTML = `${pillHTML(f)}<span class="when">${escapeHtml(f.when)}</span>`;
+  renderCount();
+}
+
+/**
+ * Ask every display that is not the active one what it is doing.
+ *
+ * Sequential and behind a TTL for the same reason the thumbnail sweep is: these are
+ * reads against an account-wide rate limit shared with the status watch and with every
+ * feed-bound element on the canvas.
+ */
+async function sweepStatus() {
+  const run = ++statusRun;
+  if (!val('ioUser') || !val('ioKey')) return;
+  const stale = Date.now() - lastStatusSweepAt >= STATUS_TTL_MS;
+  lastStatusSweepAt = Date.now();
+
+  for (const rec of devices.listDevices()) {
+    if (run !== statusRun || currentScreen() !== 'a1') return;
+    if (rec.id === devices.activeDeviceId()) continue;   // the watch owns that one
+    const feed = statusFeedFor(rec);
+    if (!feed) continue;
+    if (reports.has(rec.id) && !stale) continue;
+
+    const data = await readFeedData(feed, { limit: STATUS_BATCH });
+    if (run !== statusRun) return;
+    // null is UNREADABLE — feed missing, credentials wrong, network down — and that is
+    // not the same as "this board has never reported". Leave the tile saying whatever it
+    // last honestly said rather than recording a silence nobody observed.
+    if (!data) {
+      // Nothing known yet, and now we could not ask: say so rather than leaving the tile
+      // on "Checking…" for a read that has already failed and is not coming back.
+      // A tile that DOES hold a report keeps it — it is still the last thing the board
+      // honestly said, and reportIsOverdue() ages it into Offline on its own.
+      if (!reports.has(rec.id)) { reports.set(rec.id, { kind: 'unreachable' }); repaintStatus(rec); }
+      continue;
+    }
+    const r = readReport(data, { fallbackSleepSecs: fallbackSleepFor(rec) });
+    reports.set(rec.id, r ? { kind: 'report', r } : { kind: 'silent' });
+    repaintStatus(rec);
+  }
+}
 
 // ---------- filling the empty tiles -----------------------------------------
 //
@@ -226,15 +435,27 @@ async function sweepThumbs() {
   }
 }
 
-function render() {
-  sweepRun++;   // whatever a sweep was painting into is about to be replaced
-  const list = devices.listDevices();
-  const draft = devices.getDraft();
-
-  const live = list.filter((r) => r.flow?.deviceState !== 'asleep' && r.flow?.lastWriteAt).length;
+/**
+ * The count under the heading, from the same reading as the pills.
+ *
+ * "on air" is claimed only where a board has SAID so — a display still being checked, or
+ * one that has never reported, is not counted. That means the number can climb as the
+ * sweep lands, which is the honest shape: it is a count of evidence, not of tiles.
+ */
+function renderCount(list = devices.listDevices()) {
+  const live = list.filter((r) => readingFor(r).phase === 'redrawing').length;
   $('a1Count').textContent = list.length
     ? `${list.length} display${list.length === 1 ? '' : 's'} · ${live} on air right now`
     : 'No displays yet';
+}
+
+function render() {
+  sweepRun++;    // whatever a thumbnail sweep was painting into is about to be replaced
+  statusRun++;   // and the same for a status sweep
+  const list = devices.listDevices();
+  const draft = devices.getDraft();
+
+  renderCount(list);
 
   $('a1Grid').innerHTML = [
     ...list.map(deviceTileHTML),
@@ -365,6 +586,23 @@ export function initA1({ onEnter }) {
     render();
     // After the paint, never before it: the grid is complete from cache the moment the
     // screen appears, and the feed reads fill in the gaps behind it.
+    //
+    // Status first. It is the fact most likely to be wrong on arrival — a board sleeps
+    // and wakes on its own schedule while a picture only changes when something redraws
+    // it — and the two sweeps share an account-wide rate limit, so the order they queue
+    // in is the order they land in.
+    sweepStatus();
     sweepThumbs();
+  });
+
+  // The active display's state moves UNDER this screen: the status watch is not
+  // screen-bound, so it keeps polling while the list is open. render() only runs on the
+  // way in, so without this a board that fell asleep in front of you kept saying On air
+  // until you navigated away and came back.
+  subscribe((st, patch) => {
+    if (currentScreen() !== 'a1') return;
+    if (!REPAINT_ON.some((k) => k in patch)) return;
+    const rec = devices.activeDevice();
+    if (rec) repaintStatus(rec);
   });
 }

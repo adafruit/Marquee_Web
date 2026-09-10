@@ -454,7 +454,7 @@ export function initDevices() {
 }
 
 /** True when the active record has never been given a document — the one thing
- *  migration cannot do synchronously, because it lives on the backend. */
+ *  migration could not do synchronously when the document lived on a server. */
 export function activeNeedsCanvasSeed() {
   const rec = activeDevice();
   return !!rec && rec.canvasSeeded === false && !loadCanvas(rec.id);

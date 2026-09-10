@@ -15,7 +15,7 @@ import {
 } from '../canvas/elements.js';
 import { refreshInterval, sleepModeFor } from '../core/config.js';
 import { getState, subscribe } from '../core/state.js';
-import { $, $$, toast, show, fmtInterval } from '../core/util.js';
+import { $, $$, show, fmtInterval } from '../core/util.js';
 
 /**
  * Options offered by "Wake and redraw", in seconds. Must match the option values
@@ -26,8 +26,9 @@ import { $, $$, toast, show, fmtInterval } from '../core/util.js';
  * sub-minute steps are gone: they were the only options that could not survive a
  * take, since a panel refresh alone runs to two minutes on some drivers, so a
  * 15-second cycle described a board that would still be redrawing when its own
- * alarm came due. Anyone who genuinely wants one can still set it under Settings
- * and it lands on "Custom".
+ * alarm came due. There is no longer an escape hatch for one either — the Settings
+ * modal that held the numeric field has no entry point — so "Custom" is now purely
+ * how a value inherited from an older build gets named.
  */
 const INTERVAL_OPTIONS = [60, 120, 180, 240, 300, 600, 900, 1800, 2700, 3600];
 
@@ -82,10 +83,10 @@ export function syncPushBlock() {
 }
 
 /**
- * The inspector's interval select and the numeric field in Settings are two
- * views of one value (the sleep timer). The select drives the field so every
- * existing consumer — the published sleep window, the modelled cycle — keeps
- * reading it from the same place.
+ * The inspector's interval select and the hidden #sleepDuration field are two views
+ * of one value (the sleep timer). The select drives the field so every existing
+ * consumer — the published sleep window, the modelled cycle — keeps reading it from
+ * the same place. The select is now the only view a user can reach.
  *
  * Exported because a device switch replaces the field's value wholesale, with no input
  * event to notice it — main.js pulls the chip and the select back into agreement as
@@ -234,12 +235,9 @@ export function initA7({ onEnter }) {
   });
 
   // ---- refresh interval ----
+  // No 'custom' guard: that option is `hidden` in index.html, so it is a readout
+  // syncIntervalFromField() writes and never a value this event can carry.
   $('wakeInterval').addEventListener('change', (e) => {
-    if (e.target.value === 'custom') {
-      toast('Set a custom interval under Settings → Sleep behaviour');
-      syncIntervalFromField();
-      return;
-    }
     const field = $('sleepDuration');
     field.value = e.target.value;
     // Dispatch so config.js persists it and any live cycle re-registers.

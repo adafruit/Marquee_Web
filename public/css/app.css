@@ -40,8 +40,9 @@
 .chrome .crumb-current { color: var(--color-accent-300); }
 .chrome .sep { opacity: 0.4; }
 /* The way back to the device list. A link rather than a button shape: it sits in a
-   trail of crumbs and is the same KIND of move as one, and giving it a border would
-   make it compete with Settings at the other end of the bar. */
+   trail of crumbs and is the same KIND of move as one. It kept that shape after the
+   Settings button it used to sit opposite was removed: a bordered button alone in the
+   chrome would read as the bar's primary action, which navigating back is not. */
 .chrome-link {
   flex: none;
   border: 0;
@@ -58,42 +59,12 @@
 }
 .chrome-link:hover { opacity: 1; }
 
-/* The clapperboard at chrome scale: 28px against Showtime's 64. Deliberately the same two
-   parts — stripes, then a captioned readout — rather than a simplification of them, because
-   shrinking it whole is what makes it read as the sleep bar in miniature instead of as one
-   more status field. The stripe bands scale with the face: 16px/32px over 140px becomes
-   5px/10px over 30px, so the diagonal keeps its pitch rather than becoming two wide wedges. */
-.chrome-clapper {
-  display: flex;
-  align-items: stretch;
-  flex: none;
-  height: 28px;
+/* The setup-run badge — WEBSERIAL on A6-A. Outlined, on the dark bar, like the state
+   lamp it sits beside; it is naming a capability the screen depends on, not a state. */
+.chrome .chrome-badge {
   border: 1px solid var(--color-chrome-hairline);
-}
-.chrome-clapper .stripes {
-  width: 30px;
-  border-right: 1px solid var(--color-chrome-text);
-  background: repeating-linear-gradient(115deg,
-    var(--color-chrome-text) 0 5px,
-    var(--color-accent-500) 5px 10px);
-}
-.chrome-clapper .readout { display: flex; align-items: center; gap: 8px; padding: 0 10px; }
-.chrome-clapper .cap {
-  font-size: 9.5px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  opacity: 0.7;
-  white-space: nowrap;
-}
-/* Tabular figures for the same reason the big one has them: a countdown whose digits change
-   width jitters the whole bar once a second. */
-.chrome-clapper .time {
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  font-size: 16px;
-  line-height: 1;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
+  color: var(--color-chrome-text);
+  background: none;
 }
 
 /* The device pill is the only LIVE thing in the chrome, and it now says so in the
@@ -956,7 +927,8 @@
 
 /* The headline is now the largest thing on this bar, which is the point: the sleep
    state IS the content of Showtime's context band, and it used to be a 18px caption
-   beside a 44px clapperboard that has since moved to the app bar. */
+   beside a 44px clapperboard. Both clapperboards are gone — the big one first, then the
+   chrome miniature that replaced it — so the prose is the whole of it. */
 .sleep-bar .message { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .sleep-bar .message .headline {
   font-family: var(--font-heading);
@@ -1076,20 +1048,6 @@
 
 .size-ok { color: var(--color-check-pass); }
 .size-bad { color: var(--color-danger); }
-
-/* The render backend is the only render path, so its absence has to be loud —
-   every render action disables when it goes away. */
-#backendBanner {
-  display: none;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-  padding: 7px 18px;
-  font-size: 12.5px;
-  color: var(--color-chrome-text);
-  background: var(--color-danger);
-}
-#backendBanner[data-offline="true"] { display: flex; }
 
 /* ---- panel thumbnails ---------------------------------------------------- */
 /* Small renderings of what a panel is showing, used in A8's captions and A1's

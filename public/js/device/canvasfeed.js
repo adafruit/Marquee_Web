@@ -1,11 +1,11 @@
 /**
  * The scene on Adafruit IO — canvas.json up to {group}.canvas-state, and back down.
  *
- * The document used to exist in exactly two places, and neither of them travelled: a
- * per-device key in THIS browser's localStorage, and a bench mirror written to
- * canvas.json on the render backend. Open a display from another machine and the
- * editor had nothing to show for a board that was, at that moment, drawing something.
- * This module is the third place, and the only one both sides of that gap can see.
+ * The document used to exist in exactly one place, and it did not travel: a
+ * per-device key in THIS browser's localStorage. Open a display from another machine
+ * and the editor had nothing to show for a board that was, at that moment, drawing
+ * something. This module is the second place, and the only one both sides of that
+ * gap can see.
  *
  * UP is a mirror of the autosave, not a second save path: doc.js still writes
  * localStorage first and unconditionally, and calls in here afterwards. So a publish

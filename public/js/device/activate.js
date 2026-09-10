@@ -14,14 +14,12 @@
  * where its reason puts it, not at the end.
  */
 
-import { BACKEND } from '../core/api.js';
 import { snapshotConfig, loadConfig, syncDerivedUI } from '../core/config.js';
 import {
   deserialize, serialize, saveCanvasNow, cancelCanvasSave, invalidateCanvasBaseline,
   whenCanvasSettled,
 } from '../core/doc.js';
 import { readCanvasState, noteCanvasStateSeen } from './canvasfeed.js';
-import { isBackendOnline } from '../canvas/render.js';
 import { resetCounter } from '../canvas/elements.js';
 import { stopDeviceRuntime, ensureStatusWatch } from './device.js';
 import { hideDitherPreview } from '../canvas/stage.js';
@@ -34,32 +32,6 @@ import { hasIoConfig, connectedUser } from './credentials.js';
 import { ioGroupKey } from '../core/api.js';
 import { syncPushBlock, syncIntervalFromField } from '../screens/a7.js';
 import { resetDrawnCache, capturePanelFromCanvas } from '../screens/a8.js';
-
-/**
- * Pull a document out of canvas.json, once, for a device migrated from the build that
- * kept it there.
- *
- * This used to be the boot-time restore for every load. It is not any more: the canvas
- * is per-device and lives in localStorage, and the backend copy is a bench-inspection
- * mirror written by doc.js. The only record that still needs this is the one migration
- * minted, which has a real document sitting on a server and no local copy of it yet.
- *
- * A failure is not fatal: an empty canvas is a valid starting state, a corrupt file
- * should not stop the editor opening, and on GitHub Pages there is no server to ask.
- */
-async function seedCanvasFromServer(id) {
-  try {
-    const res = await fetch(BACKEND + '/canvas');
-    if (!res.ok) return null;
-    const body = await res.json().catch(() => null);
-    const doc = body?.doc ?? body;
-    if (!doc || !Array.isArray(doc.elements) || doc.elements.length === 0) return null;
-    devices.markCanvasSeeded(id, doc);
-    return doc;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Adopt the scene from {group}.canvas-state, if that is the newer one.
@@ -158,15 +130,17 @@ export async function rehydrateFor(rec) {
   // keepDisplay because the descriptor loaded a line above is the authority, not
   // whatever display block the stored document happens to carry.
   resetCounter();
-  const doc = devices.loadCanvas(rec.id)
-    ?? (devices.activeNeedsCanvasSeed() ? await seedCanvasFromServer(rec.id) : null);
+  // A record minted by the migration with no local copy simply starts empty: the
+  // server-side canvas.json it used to be seeded from no longer exists.
+  const doc = devices.loadCanvas(rec.id);
+  if (!doc && devices.activeNeedsCanvasSeed()) devices.markCanvasSeeded(rec.id, null);
   deserialize(doc || { version: 1, elements: [] }, { keepDisplay: true });
 
   // deserialize() fires 'draw' for every element it destroys and re-adds, and the
   // de-dupe baseline still holds the outgoing document. Drop it, or a first edit that
   // happens to serialize identically is swallowed as a no-op.
   invalidateCanvasBaseline();
-  if (isBackendOnline()) saveCanvasNow();
+  saveCanvasNow();
 
   // The action bar reads sleepDuration, which just changed under it with no input event
   // to notice.

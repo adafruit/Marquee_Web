@@ -1,5 +1,10 @@
 /**
- * Boot, the settings modal, and the device-switch sequence.
+ * Boot, the settings field bank, and the device-switch sequence.
+ *
+ * "Settings" is no longer a screen anyone can open — the chrome button that was its
+ * only door is gone. #settingsModal stays mounted and hidden all the same, because it
+ * was never really a settings dialog: it is the DOM home of the app's live store, and
+ * config.js, api.js and devices.js all read straight out of it. See initSettings().
  *
  * Order matters in three places and nowhere else:
  *   - initDevices() runs FIRST. It migrates the pre-multi-device stores and decides
@@ -35,7 +40,7 @@ import { initA5c } from './screens/a5c.js';
 import { initA6a } from './screens/a6a.js';
 import { initA7 } from './screens/a7.js';
 import { initA8 } from './screens/a8.js';
-import { $, wireModal, openModal, closeModal, toast } from './core/util.js';
+import { $, wireModal, closeModal, toast } from './core/util.js';
 import { clearIoVerified, hasIoConfig, connectedUser } from './device/credentials.js';
 import { syncCfg } from './device/cfg.js';
 
@@ -92,12 +97,22 @@ function renderSettingsAccount() {
     ? 'Change account' : 'Connect your Adafruit IO account';
 }
 
+/**
+ * Wire the settings fields. NOTHING OPENS #settingsModal any more — the chrome button
+ * was its only entry point and it has been removed — so everything below is field
+ * persistence, and the handlers on the modal's own controls are inert.
+ *
+ * The markup stays mounted regardless, and that is the load-bearing part: those inputs
+ * ARE the store. api.js#ioHost() reads #ioDev to resolve every Adafruit IO request,
+ * feeds.js/credentials.js/canvasfeed.js read #ioUser and #ioKey, and config.js builds
+ * the display descriptor out of the advanced disclosure — several of those reads are
+ * not optional-chained, so deleting the markup throws during boot rather than degrading.
+ *
+ * The in-modal handlers are kept for the same reason the markup is: they cost one
+ * listener each, and giving the modal a door again is a single openModal() call.
+ */
 function initSettings() {
   wireModal('settingsModal', ['settingsClose', 'settingsDone']);
-  $('btnSettings')?.addEventListener('click', (e) => {
-    renderSettingsAccount();
-    openModal('settingsModal', { returnFocusTo: e.currentTarget });
-  });
 
   // Settings closes FIRST. The shared Escape handler dismisses every modal in the
   // open set, so leaving this one behind A1-C would mean one keypress taking both.
