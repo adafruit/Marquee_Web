@@ -196,7 +196,6 @@ export function initRender() {
     updatePublishEstimate();
   });
   $('ioGroup')?.addEventListener('input', renderPublishDebug);
-  $('ioDev')?.addEventListener('change', renderPublishDebug);
 
   $('publishSend')?.addEventListener('click', async () => {
     const btn = $('publishSend');

@@ -14,21 +14,11 @@ export const IO_MAX_NO_HISTORY = 512 * 1024;
 
 /**
  * The Adafruit IO host, for the whole app — feed reads, publishes, and the group
- * A5b creates.
- *
- * io.adafruit.com unless #ioDev ("Developer mode") is ticked, which moves everything
- * to the .us staging environment. Real accounts are on .com, so that is the default
- * and the opt-in is the unusual one — it used to be the other way round, with a
- * "Publish to Prod" box in the publish dialog, which both defaulted a user's own
- * account to the wrong host and read as a per-publish choice when every call in the
- * app resolves through here.
- *
- * NOTE: nothing can tick it any more. #ioDev lives in the settings modal, which lost
- * its entry point along with the chrome button, so in practice this now always answers
- * io.adafruit.com unless a profile carries a saved `true` from before that change.
+ * A5b creates. Every request resolves through here so there is exactly one place
+ * that names it.
  */
 export function ioHost() {
-  return document.getElementById('ioDev')?.checked ? 'io.adafruit.us' : 'io.adafruit.com';
+  return 'io.adafruit.com';
 }
 
 /**

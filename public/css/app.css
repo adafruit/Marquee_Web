@@ -516,7 +516,9 @@
 
 .flash-progress { display: flex; flex-direction: column; gap: 10px; }
 .flash-bar { display: flex; align-items: center; gap: 12px; }
-.flash-bar .label { flex: none; width: 52px; }
+/* Wide enough for FIRMWARE at the label's tracking; the fw-row below shares it so the
+   status dot and the bar tracks start on the same line. */
+.flash-bar .label { flex: none; width: 72px; }
 .flash-bar .track {
   flex: 1;
   height: 10px;
@@ -539,12 +541,9 @@
 .flash-stage { display: flex; flex-direction: column; gap: 14px; }
 
 .fw-row { display: flex; align-items: center; gap: 10px; }
-.fw-row .label { flex: none; width: 52px; }   /* lines up with .flash-bar .label */
-.fw-row .fw-name { font-size: 12px; opacity: 0.8; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fw-row .fw-name[data-state="ok"] { opacity: 1; }
-.fw-row .fw-name[data-state="bad"] { color: var(--color-danger); opacity: 1; }
-/* Release mode: the status line says which release and how far along; the track under it
-   fills while the image downloads. File mode swaps this block for the old file row. */
+.fw-row .label { flex: none; width: 72px; }   /* lines up with .flash-bar .label */
+/* The status line says which release and how far along; the track under it fills while
+   the image downloads. */
 .fw-release { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .fw-release .check { font-size: 12.5px; min-width: 0; }
 .fw-release .check [data-role="text"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -553,7 +552,6 @@
 .fw-row[data-state="fetching"] .check .dot { animation: fw-pulse 1.1s ease-in-out infinite alternate; }
 @keyframes fw-pulse { from { opacity: 0.35; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .fw-row[data-state="fetching"] .check .dot { animation: none; } }
-.fw-row[data-mode="file"] .fw-release { display: none; }
 
 .drive-steps { font-size: 13px; }
 /* The drive stage's plate is the whole instruction — the steps AND the button that acts
@@ -592,6 +590,7 @@
 .rail-steps { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; text-wrap: pretty; }
 .rail-steps > div { display: flex; gap: 10px; }
 .rail-steps .n { flex: none; width: 14px; opacity: 0.55; }
+.rail-steps .step-body { flex: 1; min-width: 0; }
 
 /* ---- A7 · the editor ----------------------------------------------------- */
 

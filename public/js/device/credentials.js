@@ -25,10 +25,8 @@ import { $, val, setFieldValue } from '../core/util.js';
  *
  *   - both fields have something in them;
  *   - the stamp names THIS username, so a username edited afterwards falsifies it;
- *   - the stamp names THIS host. `#ioDev` moves the whole app to io.adafruit.us,
- *     which is a separate account with a separate key, so a .com verification must
- *     not count on .us. Recording the host is what makes flipping that toggle
- *     re-open the gate on its own, with no extra wiring.
+ *   - the stamp names THIS host, so a verification recorded against any other
+ *     Adafruit IO host does not count here.
  *
  * A key swapped out from under the stamp is the one case this cannot see, which is
  * why A1-C is the only way to change one — and why main.js clears the stamp if the

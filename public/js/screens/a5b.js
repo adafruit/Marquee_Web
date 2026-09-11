@@ -94,9 +94,8 @@ function syncForm() {
   else if ($('a5bError')?.textContent.startsWith('Another display')) clearFormError();
 
   // hasIoConfig(), not "are the fields filled in": the account can be un-verified
-  // underneath this screen — Developer mode moves the app to another host, a 401
-  // below retires the stamp — and creating feeds against an unchecked key is the
-  // thing A1-C exists to prevent.
+  // underneath this screen — a 401 below retires the stamp — and creating feeds
+  // against an unchecked key is the thing A1-C exists to prevent.
   const ready = hasIoConfig() && !!slug() && !taken;
   const btn = $('a5bCreate');
   if (btn && !running) btn.disabled = !ready;
@@ -138,11 +137,10 @@ function showFormError(msg, { field } = {}) {
  * Which Adafruit IO account these feeds will be created on — stated, not asked for.
  *
  * Two states rather than one, because this screen is reachable without an account:
- * a reload lands on whatever setupStep the record carries, and Developer mode moves
- * the app to a host the stored key was never checked against. In that case the
- * plate stops being a readout and becomes the way out — the create button is
- * already disabled by syncForm(), and an error line saying so with nothing to click
- * would be a dead end.
+ * a reload lands on whatever setupStep the record carries, and a 401 can retire the
+ * stored key's verification. In that case the plate stops being a readout and becomes
+ * the way out — the create button is already disabled by syncForm(), and an error
+ * line saying so with nothing to click would be a dead end.
  *
  * textContent throughout: a username is user data.
  */

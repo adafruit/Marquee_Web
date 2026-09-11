@@ -109,9 +109,8 @@ home, so A5C writes it here directly and the rebuild carries it forward.
 Account-scoped in the editor — every display in one browser shares them — and copied
 into each display's file, because each board is on its own once flashed.
 
-**Not carried:** the host. The editor's Developer-mode toggle moves the whole app to
-`io.adafruit.us`, and a board reading this file has no way to know. A board is assumed
-to talk to `io.adafruit.com`.
+**Not carried:** the host. The editor and the board both talk to `io.adafruit.com`,
+so there is nothing to record.
 
 ## How it reaches the board
 

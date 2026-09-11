@@ -53,7 +53,7 @@ import { syncCfg } from './device/cfg.js';
 // They are no longer ONE blob. Half of these fields describe the Adafruit IO account
 // and half describe a particular board, and the split is declared once in
 // devices.js#SETTINGS_SCOPE so a field cannot quietly end up in both or neither. The
-// two legacy migrations that used to live here (ioFeed -> ioGroup, ioProd -> !ioDev)
+// legacy migration that used to live here (ioFeed -> ioGroup)
 // moved into devices.js#migrate(), which is the last place the old flat blob is ever
 // read — so they now run once instead of on every boot forever.
 //
@@ -64,11 +64,10 @@ import { syncCfg } from './device/cfg.js';
 function saveSettings(id) {
   const scope = devices.SETTINGS_SCOPE[id];
   if (scope === 'account') {
-    // An edit to either credential, or a move to the other host, retires the
-    // verification: none of them is a check against Adafruit IO. saveIoAccount()
-    // writes its stamp AFTER raising these same events, which is why it can do
-    // both without fighting this line.
-    if (id === 'ioUser' || id === 'ioKey' || id === 'ioDev') clearIoVerified();
+    // An edit to either credential retires the verification: neither is a check
+    // against Adafruit IO. saveIoAccount() writes its stamp AFTER raising these same
+    // events, which is why it can do both without fighting this line.
+    if (id === 'ioUser' || id === 'ioKey') clearIoVerified();
     devices.saveAccount(devices.snapshotAccountFields());
   } else devices.flushActive();
   // Account and group key both land in the board's config file, so it follows every
@@ -103,8 +102,8 @@ function renderSettingsAccount() {
  * persistence, and the handlers on the modal's own controls are inert.
  *
  * The markup stays mounted regardless, and that is the load-bearing part: those inputs
- * ARE the store. api.js#ioHost() reads #ioDev to resolve every Adafruit IO request,
- * feeds.js/credentials.js/canvasfeed.js read #ioUser and #ioKey, and config.js builds
+ * ARE the store. feeds.js/credentials.js/canvasfeed.js read #ioUser and #ioKey, and
+ * config.js builds
  * the display descriptor out of the advanced disclosure — several of those reads are
  * not optional-chained, so deleting the markup throws during boot rather than degrading.
  *
@@ -128,13 +127,7 @@ function initSettings() {
   Object.keys(devices.SETTINGS_SCOPE).forEach((id) => {
     const el = $(id);
     if (!el) return;
-    const evt = id === 'ioDev' ? 'change' : 'input';
-    el.addEventListener(evt, () => {
-      saveSettings(id);
-      // Developer mode moves the whole app to the other host, where this key has
-      // never been checked — so the plate above has to stop claiming otherwise.
-      if (id === 'ioDev') renderSettingsAccount();
-    });
+    el.addEventListener('input', () => saveSettings(id));
   });
 
   // Send THIS device back through setup. Only its flow record is cleared — the panel

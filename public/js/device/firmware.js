@@ -175,9 +175,9 @@ export async function fetchReleaseFirmware({ manifest, board, signal, onProgress
 /** The one sentence A6-A shows for a failed result. */
 export function describeFirmwareError(res) {
   switch (res?.error) {
-    case 'offline': return 'Could not reach GitHub — check the network, then Retry, or use a file instead.';
-    case 'not-found': return 'No firmware release has been published yet — use a file from a CI build instead.';
-    case 'bad-manifest': return `The release listing could not be read (${res.message}). Retry, or use a file instead.`;
+    case 'offline': return 'Could not reach GitHub — check the network, then Retry.';
+    case 'not-found': return 'No firmware release has been published yet.';
+    case 'bad-manifest': return `The release listing could not be read (${res.message}). Retry.`;
     case 'no-board': return res.message || 'The release has no build for this board.';
     case 'bin-not-found': return 'The release listing points at a file that is not there yet — Retry in a minute.';
     case 'sha-mismatch': return 'The download did not match its checksum and was not used — Retry.';

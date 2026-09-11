@@ -57,16 +57,14 @@ const LEGACY = {
  * listener dispatches on this, and flushActive() reads the 'device' half back off the
  * DOM.
  *
- * `pmUser` and `ioDev` are account-scoped, and both are limitations rather than
- * findings: ioHost() picks one Adafruit IO host for the whole app, so two boards
- * split across io.adafruit.com and io.adafruit.us are not representable. That is
- * fine for a bench tool and would not be fine for a product.
+ * `pmUser` is account-scoped, which is a limitation rather than a finding: one
+ * Adafruit IO account for the whole app is fine for a bench tool and would not be
+ * fine for a product.
  */
 export const SETTINGS_SCOPE = {
   ioUser: 'account',
   ioKey: 'account',
   pmUser: 'account',
-  ioDev: 'account',
   pmDevice: 'device',
   ioGroup: 'device',
   sleepDuration: 'device',
@@ -75,10 +73,6 @@ export const SETTINGS_SCOPE = {
 
 export const ACCOUNT_FIELDS = Object.keys(SETTINGS_SCOPE).filter((k) => SETTINGS_SCOPE[k] === 'account');
 export const DEVICE_FIELDS = Object.keys(SETTINGS_SCOPE).filter((k) => SETTINGS_SCOPE[k] === 'device');
-
-/** `#ioDev` is the one settings control that is a checkbox, so it round-trips through
- *  `.checked` rather than `.value` everywhere this file touches the DOM. */
-const isCheckbox = (id) => id === 'ioDev';
 
 function emptyEnv() {
   return { version: 1, activeId: null, order: [], draftId: null, account: {}, byId: {} };
@@ -285,14 +279,13 @@ export function panelNowKey(id) { return PANEL_KEY(id); }
 function readField(id) {
   const el = $(id);
   if (!el) return undefined;
-  return isCheckbox(id) ? !!el.checked : el.value;
+  return el.value;
 }
 
 function writeField(id, value) {
   const el = $(id);
   if (!el || value === undefined) return;
-  if (isCheckbox(id)) el.checked = !!value;
-  else el.value = value;
+  el.value = value;
 }
 
 /** Snapshot the account-scoped fields off the DOM. */
@@ -378,12 +371,11 @@ function hasLegacySetup() {
 /**
  * Fold the old single-device stores into one record.
  *
- * The two legacy field migrations move here from main.js#restoreSettings(), where they
+ * The legacy field migration moves here from main.js#restoreSettings(), where it
  * ran on every boot forever. This is the last time the flat blob is ever read, so this
- * is the one place they can be genuinely one-time:
+ * is the one place it can be genuinely one-time:
  *
  *   ioFeed  -> ioGroup   v1 stored a flat image-feed key before feeds moved into a group
- *   ioProd  -> !ioDev    the host toggle was inverted and renamed
  */
 function migrate() {
   const settings = readJson(LEGACY.settings, {}) || {};
@@ -392,9 +384,6 @@ function migrate() {
 
   if (typeof settings.ioGroup !== 'string' && typeof settings.ioFeed === 'string') {
     settings.ioGroup = settings.ioFeed;
-  }
-  if (settings.ioDev === undefined && settings.ioProd !== undefined) {
-    settings.ioDev = !settings.ioProd;
   }
 
   const id = newId();

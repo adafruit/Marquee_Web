@@ -268,30 +268,20 @@
 
           <div class="flash-status">
             <div class="check" data-state="wait" id="a6aStatus"><span class="dot"></span><span data-role="text">Not connected</span></div>
-            <p class="hint" id="a6aLead">Put the board in bootloader mode — hold BOOT, tap RESET, release BOOT — then, once the firmware has downloaded, click Connect and flash.</p>
-            <p class="field-error" id="a6aUnsupported" hidden>This browser cannot talk to a serial port. Use Chrome, Edge or Opera on a desktop computer — Safari and Firefox do not implement WebSerial.</p>
           </div>
 
           <!-- ── stage: flash ── -->
           <div class="flash-stage" id="a6aStageFlash">
             <!-- The image comes from the latest release on Adafruit_Marquee's firmware branch,
-                 downloaded here and checked against the manifest's sha256 — then the same
-                 structural checks a file from disk gets, BEFORE any port dialog opens. "Use a
-                 file instead…" is the fallback: a CI artifact, an older release, a panel set up
-                 by hand or a board the release has no build for. a6a.js drives data-mode and
-                 data-state. -->
-            <div class="fw-row" id="a6aFwRow" data-mode="release" data-state="idle">
+                 downloaded here and checked against the manifest's sha256, then structurally
+                 checked BEFORE any port dialog opens. a6a.js drives data-state. -->
+            <div class="fw-row" id="a6aFwRow" data-state="idle">
               <span class="label">Firmware</span>
               <div class="fw-release" id="a6aFwRelease">
                 <div class="check" data-state="wait" id="a6aFwStatus"><span class="dot"></span><span data-role="text">Looking for the latest release…</span></div>
                 <span class="fw-track hidden" id="a6aFwTrack"><span class="fill" id="a6aFwFill"></span></span>
               </div>
-              <span class="mono fw-name hidden" id="a6aFwName" data-state="empty">No file chosen</span>
               <button type="button" class="btn btn-ghost btn-sm hidden" id="a6aFwRetry">Retry</button>
-              <button type="button" class="btn btn-ghost btn-sm" id="a6aFwUseFile">Use a file instead…</button>
-              <button type="button" class="btn btn-secondary btn-sm hidden" id="a6aFwPick">Choose merged-flash.bin…</button>
-              <button type="button" class="btn btn-ghost btn-sm hidden" id="a6aFwUseRelease">Use the latest release</button>
-              <input type="file" id="a6aFwFile" accept=".bin" hidden>
             </div>
             <p class="hint" id="a6aFwExpect"></p>
             <p class="field-error" id="a6aFwError" hidden></p>
@@ -321,6 +311,12 @@
                 <span class="track"><span class="fill" id="a6aWriteFill"></span></span>
                 <span class="mono pct" id="a6aWritePct">0%</span>
               </div>
+              <!-- The esptool output lands in the log plate below, which otherwise stays
+                   hidden until something fails. This shows it on demand, mid-run included,
+                   so it is deliberately NOT locked with the rest of the screen. -->
+              <div class="flash-actions">
+                <button type="button" class="btn btn-ghost btn-sm" id="a6aToggleLog" aria-pressed="false" aria-controls="a6aLogPlate" style="margin-left:auto">Toggle Debug Log</button>
+              </div>
             </div>
           </div>
 
@@ -336,9 +332,9 @@
               <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
               <span class="label">Next, reset the <span data-role="board">board</span></span>
               <div class="rail-steps drive-steps">
-                <div><span class="n">1</span> Press the <strong>RESET</strong> button on the <span data-role="board">board</span> and give it a few seconds.</div>
-                <div><span class="n">2</span> A drive named <span class="mono">MARQUEE</span> should appear — in the Finder sidebar under Locations, or under This PC on Windows. If it is not named <span class="mono">MARQUEE</span>, it may be named <span class="mono">CIRCUITPY</span> or <span class="mono">WIPPER</span>.</div>
-                <div><span class="n">3</span> Click below and choose that drive when the browser asks. <span class="mono">cfg-marquee.json</span> is written into it and read back to check.</div>
+                <div><span class="n">1</span><div class="step-body">Press the <strong>RESET</strong> button on the <span data-role="board">board</span> and give it a few seconds.</div></div>
+                <div><span class="n">2</span><div class="step-body">A drive named <span class="mono">MARQUEE</span> should appear — in the Finder sidebar under Locations, or under This PC on Windows. If it is not named <span class="mono">MARQUEE</span>, it may be named <span class="mono">CIRCUITPY</span> or <span class="mono">WIPPER</span>.</div></div>
+                <div><span class="n">3</span><div class="step-body">Click below and choose that drive when the browser asks. <span class="mono">cfg-marquee.json</span> is written into it and read back to check.</div></div>
               </div>
               <div class="flash-actions drive-plate-actions">
                 <button type="button" class="btn btn-primary blueprint" id="a6aOpenDrive">Select Drive<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
@@ -370,8 +366,8 @@
               <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
               <span class="label">⏏ Eject, then press RESET</span>
               <div class="rail-steps drive-steps">
-                <div><span class="n">1</span> Eject <span class="mono">MARQUEE</span> — the ⏏ next to it in the Finder sidebar, or "Safely remove" on Windows.</div>
-                <div><span class="n">2</span> Press the <strong>RESET</strong> button on the <span data-role="board">board</span>.</div>
+                <div><span class="n">1</span><div class="step-body">Eject <span class="mono">MARQUEE</span> — the ⏏ next to it in the Finder sidebar, or "Safely remove" on Windows.</div></div>
+                <div><span class="n">2</span><div class="step-body">Press the <strong>RESET</strong> button on the <span data-role="board">board</span>.</div></div>
               </div>
               <div class="flash-actions drive-plate-actions">
                 <button type="button" class="btn btn-primary blueprint" id="a6aDone">Done — open the editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
@@ -399,30 +395,33 @@
           <div id="a6aRailFlash">
             <div class="eyebrow">Before you connect</div>
             <div class="rail-steps">
-              <div><span class="n">1</span> Put the board in <strong>bootloader mode</strong>: hold <strong>BOOT</strong>, tap <strong>RESET</strong>, release BOOT. A board already running Marquee shows up as a USB drive, not a serial port, until you do.</div>
-              <div><span class="n">2</span> Use a <strong>data</strong> cable. A charge-only USB cable powers the board and carries no serial — it is the single most common reason no port appears.</div>
-              <div><span class="n">3</span> Close anything else holding the port: the Arduino IDE's serial monitor, <span class="mono">screen</span>, Mu, Thonny.</div>
-              <div><span class="n">4</span> Pick your board in the browser's port dialog. On macOS it is usually a <span class="mono">usbmodem</span> or an "ESP32-S3"; on Windows a COM port.</div>
+              <div><span class="n">1</span><div class="step-body">Put the board in <strong>bootloader mode</strong>: hold <strong>BOOT</strong>, tap <strong>RESET</strong>, release BOOT. A board already running Marquee shows up as a USB drive, not a serial port, until you do.</div></div>
+              <div><span class="n">2</span><div class="step-body">Use a <strong>data</strong> cable. A charge-only USB cable powers the board and carries no serial — it is the single most common reason no port appears.</div></div>
+              <div><span class="n">3</span><div class="step-body">Close anything else holding the port: the Arduino IDE's serial monitor, <span class="mono">screen</span>, Mu, Thonny.</div></div>
+              <div><span class="n">4</span><div class="step-body">Pick your board in the browser's port dialog. On macOS it is usually a <span class="mono">usbmodem</span> or an "ESP32-S3"; on Windows a COM port.</div></div>
             </div>
             <div class="hr" style="margin:6px 0"></div>
             <div class="eyebrow">Where the firmware comes from</div>
             <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The latest <a href="https://github.com/adafruit/Adafruit_Marquee/releases" target="_blank" rel="noopener">Adafruit_Marquee release</a>, downloaded here for this display's board — the version is shown next to it. The download is checked against the release's checksum, the image is checked before anything is written, and the chip is checked against it before the write starts.</p>
-            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">"Use a file instead…" takes a <span class="mono">merged-flash.bin</span> from a <a href="https://github.com/adafruit/Adafruit_Marquee/actions/workflows/build.yml" target="_blank" rel="noopener">CI build</a> artifact or an older release: <span class="mono">marquee-magtag</span>, <span class="mono">marquee-adafruit_feather_esp32s3</span> or <span class="mono">marquee-x4pro</span>, to match the board.</p>
             <div class="hr" style="margin:6px 0"></div>
             <div class="eyebrow">What gets written</div>
             <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The image shown above, at the start of the flash. The <span class="mono">MARQUEE</span> drive and whatever is on it are kept unless you tick "Erase the whole chip first". The configuration is the next step, and goes onto that drive.</p>
           </div>
 
           <div id="a6aRailDrive" class="hidden">
-            <div class="eyebrow">Why RESET</div>
-            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board is still in bootloader mode from the flash. RESET starts the new firmware, which mounts the flash's filesystem and presents it to your computer as a USB drive named <span class="mono">MARQUEE</span>.</p>
+            <div class="eyebrow">What is written to the device?</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The marquee firmware and one file, <span class="mono">cfg-marquee.json</span>, at the top level of the drive. This file contains information to tell the device about your Adafruit IO account, the group key, the network from the Wi-Fi step, and the configuration of the e-ink panel.</p>
+            <button type="button" class="btn btn-ghost btn-sm" id="a6aShowCfg">Show cfg-marquee.json File</button>
+
             <div class="hr" style="margin:6px 0"></div>
-            <div class="eyebrow">What goes onto it</div>
-            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">One file, <span class="mono">cfg-marquee.json</span>, at the top level of the drive: your Adafruit IO account, the group key, the network from the Wi-Fi step, and the panel and its pins. It holds the Wi-Fi password and the Adafruit IO key in plain text — this drive is the board's, not a place to leave things.</p>
+            <div class="eyebrow">Browser Support</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">This page requires needs WebSerial and writing the drive needs the File System Access API. Supported Browsers are Chrome, Edge, and the latest Firefox versions.</p>
+
             <div class="hr" style="margin:6px 0"></div>
-            <div class="eyebrow">If no drive appears</div>
-            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Unplug and replug, then RESET once more. A drive that mounts but reads as unformatted means the filesystem was erased — format it as FAT (MS-DOS) named <span class="mono">MARQUEE</span> with Disk Utility or Explorer, then come back here.</p>
+            <div class="eyebrow">Help - No Drive Appeared!</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Try unplugging and replugging the device, then pressing RESET again.</p>
           </div>
+
 
           <div id="a6aRailDone" class="hidden">
             <div class="eyebrow">Eject first</div>
@@ -432,13 +431,6 @@
             <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board reads the file, drives the panel, joins your Wi-Fi and fetches its picture from Adafruit IO. If nothing draws after a minute, open a serial monitor at 115200 — the firmware prints why it stopped.</p>
           </div>
 
-          <div class="hr" style="margin:6px 0"></div>
-          <div class="eyebrow">Debug</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The configuration file exactly as it will be written, filled in from the previous steps. Includes the Wi-Fi password and the Adafruit IO key in plain text.</p>
-          <button type="button" class="btn btn-ghost btn-sm" id="a6aShowCfg">Show JSON config</button>
-          <div class="hr" style="margin:6px 0"></div>
-          <div class="eyebrow">Browser support</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Flashing needs WebSerial and writing the drive needs the File System Access API: Chrome, Edge or Opera on desktop, over https or localhost. Safari and Firefox have neither, and there is no extension that adds them.</p>
         </aside>
       </div>
     </section>
@@ -835,15 +827,6 @@
     <!-- One name, four feeds. A5b sets this for you during setup; this field is
          the escape hatch for a device whose group was created elsewhere. -->
     <p class="hint">The device's Adafruit IO group. Its feeds are <span class="mono">{group}.bitmap</span>, <span class="mono">{group}.sleep</span>, <span class="mono">{group}.status</span> and <span class="mono">{group}.canvas-state</span>.</p>
-
-    <!-- The one host switch for the whole app. It used to be a "Publish to Prod"
-         checkbox in the publish dialog, which read as a per-publish decision and
-         was not one: every read and every write resolves through ioHost(), so a
-         box that lived beside a single button was silently
-         retargeting all of them. Off means io.adafruit.com, which is where real
-         accounts are. -->
-    <label class="check-row"><input type="checkbox" id="ioDev"> Developer mode — use <span class="mono">io.adafruit.us</span></label>
-    <p class="hint">Off, everything talks to <span class="mono">io.adafruit.com</span>. On, it all moves to the <span class="mono">.us</span> staging environment — feed reads, publishes, and the group A5b creates. The two are separate accounts with separate keys, so switching mid-setup will need different credentials.</p>
 
     <div class="hr"></div>
     <span class="label">Device identity</span>

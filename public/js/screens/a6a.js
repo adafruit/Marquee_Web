@@ -4,9 +4,9 @@
  * The last step of setup, and the one that turns a draft into a display. Three stages in one
  * screen, because they are one job with two hardware moments in it:
  *
- *   flash   fetch the latest release's merged-flash.bin for this board (device/firmware.js),
- *           or take one from disk; put the board in bootloader mode; write it over WebSerial
- *           (device/flash.js, esptool-js underneath).
+ *   flash   fetch the latest release's merged-flash.bin for this board (device/firmware.js);
+ *           put the board in bootloader mode; write it over WebSerial (device/flash.js,
+ *           esptool-js underneath).
  *   drive   press RESET; the firmware comes up as a USB drive named MARQUEE; pick that drive
  *           in the browser and we write cfg-marquee.json into it (device/drive.js).
  *   done    eject, press RESET again; the board reads the file at boot and is on its own.
@@ -21,14 +21,13 @@
  * something fails — while things are going right it is noise under the instruction, and when
  * they go wrong it is the evidence. Lines are collected either way.
  *
- * Two capability gates, checked separately — Web Serial for the flash, the File System Access
- * API for the drive — because a browser can have one without the other, and getting either
- * wrong is a user clicking a dead button.
+ * One capability gate, for the drive stage: the File System Access API. Web Serial is not
+ * checked up front — a browser without it gets flashDevice()'s own error when Connect is clicked.
  */
 
 import { navigate } from '../core/router.js';
 import {
-  flashDevice, serialSupported, firmwareFor, loadFirmware, validateFirmware, describeFlashError,
+  flashDevice, firmwareFor, loadFirmware, validateFirmware, describeFlashError,
   FIRMWARE_ARTIFACT,
 } from '../device/flash.js';
 import { fetchManifest, describeFirmwareError, RELEASES_URL } from '../device/firmware.js';
@@ -43,16 +42,13 @@ const STAGES = ['flash', 'drive', 'done'];
 
 let stage = 'flash';
 let running = false;
-/** The loaded image and its validation, or null until one is fetched or chosen. */
+/** The loaded image and its validation, or null until one is fetched. */
 let fw = null;
 let fwCheck = null;
-/** Where the image comes from: the latest release, or a file the user picks. */
-let fwMode = 'release';
 /**
  * The release fetch in flight, if any. `seq` is the real re-entrancy guard: the AbortController
  * stops the network, but the sha digest cannot be interrupted, so a stale run could still
- * resolve after Back or "Use a file" — every await in startReleaseFetch() re-checks `seq`
- * before touching state.
+ * resolve after Back — every await in startReleaseFetch() re-checks `seq` before touching state.
  */
 const fwFetch = { state: 'idle', ctrl: null, seq: 0, manifest: null, message: '' };
 
@@ -75,6 +71,25 @@ function revealLog() {
   show(plate, true);
   const el = $('a6aLog');
   if (el) el.scrollTop = el.scrollHeight;
+  syncLogToggle();
+}
+
+/** Flip the log plate on demand — the esptool output is in there from the first line of
+ *  a run, and this is how to watch it before anything has gone wrong. */
+function toggleLog() {
+  const plate = $('a6aLogPlate');
+  if (!plate) return;
+  const open = plate.classList.contains('hidden');
+  show(plate, open);
+  if (open) { const el = $('a6aLog'); if (el) el.scrollTop = el.scrollHeight; }
+  syncLogToggle();
+}
+
+/** The toggle button reports the plate's state, whichever path opened or closed it. */
+function syncLogToggle() {
+  const btn = $('a6aToggleLog');
+  const plate = $('a6aLogPlate');
+  if (btn && plate) btn.setAttribute('aria-pressed', String(!plate.classList.contains('hidden')));
 }
 
 // ---------- progress --------------------------------------------------------
@@ -130,20 +145,8 @@ function setStage(next) {
   });
   const lead = $('a6aLead');
   if (lead) lead.textContent = LEADS[stage];
-  // The lead is the flash stage's instruction, and the unsupported message REPLACES it there.
-  // On the other stages serial is not involved, so the instruction always shows.
-  if (stage !== 'flash') { show(lead, true); $('a6aUnsupported').hidden = true; } else { syncSerialGate(); }
 
   syncGates();
-}
-
-function syncSerialGate() {
-  const ok = serialSupported();
-  // The unsupported message REPLACES the instruction rather than joining it: telling someone
-  // how to connect and then that they cannot is two sentences where one will do, and the
-  // second one is the only one that matters.
-  show($('a6aLead'), ok);
-  $('a6aUnsupported').hidden = ok;
 }
 
 /**
@@ -152,9 +155,9 @@ function syncSerialGate() {
  * flipping the erase box after the erase decision was made would have the bars lie.
  */
 function syncGates() {
-  const canFlash = serialSupported() && !running && !!fw && !!fwCheck?.ok;
+  const canFlash = !running && !!fw && !!fwCheck?.ok;
   $('a6aConnect').disabled = !canFlash;
-  ['a6aFwPick', 'a6aFwUseFile', 'a6aFwUseRelease', 'a6aFwRetry', 'a6aEraseAll', 'a6aSkip', 'a6aBack',
+  ['a6aFwRetry', 'a6aEraseAll', 'a6aSkip', 'a6aBack',
     'a6aOpenDrive', 'a6aDriveSkip', 'a6aDone', 'a6aDriveContinue', 'a6aFlashAgain', 'a6aRewrite']
     .forEach((id) => { const el = $(id); if (el) el.disabled = running; });
 }
@@ -170,36 +173,21 @@ function releaseLabel(expect, m) {
 }
 
 /**
- * The firmware row, in whichever mode it is in. Release mode is a status line that fills in as
- * the manifest and then the image arrive; file mode is the old row — a button and a name.
+ * The firmware row: a status line that fills in as the manifest and then the image arrive.
  */
 function renderFirmwareRow() {
   const row = $('a6aFwRow');
-  if (row) { row.dataset.mode = fwMode; row.dataset.state = fwMode === 'release' ? fwFetch.state : 'idle'; }
-  const release = fwMode === 'release';
-  show($('a6aFwRelease'), release);
-  show($('a6aFwUseFile'), release);
-  show($('a6aFwRetry'), release && fwFetch.state === 'failed');
-  show($('a6aFwTrack'), release && fwFetch.state === 'fetching' && !!fwFetch.manifest);
-  show($('a6aFwName'), !release);
-  show($('a6aFwPick'), !release);
-  show($('a6aFwUseRelease'), !release);
+  if (row) row.dataset.state = fwFetch.state;
+  show($('a6aFwRetry'), fwFetch.state === 'failed');
+  show($('a6aFwTrack'), fwFetch.state === 'fetching' && !!fwFetch.manifest);
 
   const expect = expected();
-  if (release) {
-    const m = fwFetch.manifest;
-    if (fwFetch.state === 'failed') setCheck('a6aFwStatus', 'fail', fwFetch.message);
-    else if (fw && fwCheck?.ok) setCheck('a6aFwStatus', 'pass', `${releaseLabel(expect, m)} · ${fmtBytes(fw.size)}`);
-    else if (fw && fwCheck) setCheck('a6aFwStatus', 'fail', `${releaseLabel(expect, m)} — ${fwCheck.problems.join(' ')}`);
-    else if (m) setCheck('a6aFwStatus', 'wait', `${releaseLabel(expect, m)} · downloading…`);
-    else setCheck('a6aFwStatus', 'wait', fwFetch.state === 'fetching' ? 'Looking for the latest release…' : 'Latest release');
-  } else {
-    const name = $('a6aFwName');
-    if (name) {
-      name.textContent = fw ? `${fw.name} · ${fmtBytes(fw.size)}` : 'No file chosen';
-      name.dataset.state = fw ? (fwCheck?.ok ? 'ok' : 'bad') : 'empty';
-    }
-  }
+  const m = fwFetch.manifest;
+  if (fwFetch.state === 'failed') setCheck('a6aFwStatus', 'fail', fwFetch.message);
+  else if (fw && fwCheck?.ok) setCheck('a6aFwStatus', 'pass', `${releaseLabel(expect, m)} · ${fmtBytes(fw.size)}`);
+  else if (fw && fwCheck) setCheck('a6aFwStatus', 'fail', `${releaseLabel(expect, m)} — ${fwCheck.problems.join(' ')}`);
+  else if (m) setCheck('a6aFwStatus', 'wait', `${releaseLabel(expect, m)} · downloading…`);
+  else setCheck('a6aFwStatus', 'wait', fwFetch.state === 'fetching' ? 'Looking for the latest release…' : 'Latest release');
 
   const err = $('a6aFwError');
   if (err) {
@@ -235,10 +223,10 @@ function setFwHint(text) {
  * after a failure is the Retry.
  */
 async function startReleaseFetch() {
-  if (stage !== 'flash' || fwMode !== 'release' || running || !serialSupported()) return;
+  if (stage !== 'flash' || running) return;
   const expect = expected();
   if (!expect) {
-    enterFileMode('Panel set up by hand — there is no release build to pick, so choose merged-flash.bin for your board. The chip will not be checked.');
+    failRelease({ error: 'no-board', message: 'Panel set up by hand — there is no release build for it.' });
     return;
   }
   if (fwFetch.state === 'fetching') return;
@@ -261,8 +249,7 @@ async function startReleaseFetch() {
   renderFirmwareRow();
 
   if (!m.manifest.boards?.[expect.board]) {
-    log(`The ${m.manifest.tag} release has no build for the ${expect.label}.`);
-    enterFileMode(`The ${m.manifest.tag} release has no build for the ${expect.label} — choose merged-flash.bin for it instead.`);
+    failRelease({ error: 'no-build', message: `The ${m.manifest.tag} release has no build for the ${expect.label}.` });
     return;
   }
 
@@ -300,53 +287,11 @@ function failRelease(res) {
   syncGates();
 }
 
-/** Switch the row to the file picker. `hint` replaces the release hint under the row. */
-function enterFileMode(hint) {
-  abortReleaseFetch();
-  fwMode = 'file';
-  fw = null; fwCheck = null;
-  const input = $('a6aFwFile');
-  if (input) input.value = '';
-  setFwHint(hint || 'Choose merged-flash.bin from a CI artifact or an older release for this board.');
-  renderFirmwareRow();
-  syncGates();
-}
-
-function enterReleaseMode() {
-  fwMode = 'release';
-  fw = null; fwCheck = null;
-  fwFetch.state = 'idle';
-  setFwHint(releaseHint());
-  renderFirmwareRow();
-  syncGates();
-  startReleaseFetch();
-}
-
 function releaseHint() {
   const expect = expected();
   return expect
     ? `Built for the ${expect.label} (${expect.chip}) — the latest release from ${RELEASES_URL.replace('https://', '')}.`
     : '';
-}
-
-async function onFirmwarePicked(e) {
-  const file = e.currentTarget.files?.[0];
-  if (!file) return;
-  const loaded = await loadFirmware({ kind: 'file', file });
-  if (!loaded.ok) {
-    fw = null; fwCheck = null;
-    renderFirmwareRow();
-    log(`Could not read ${file.name}: ${loaded.message}`);
-    syncGates();
-    return;
-  }
-  fw = loaded;
-  fwCheck = validateFirmware(fw, expected());
-  renderFirmwareRow();
-  if (fwCheck.ok) log(`Loaded ${fw.name} (${fmtBytes(fw.size)}).`);
-  else log(`Rejected ${fw.name}: ${fwCheck.problems.join(' ')}`);
-  fwCheck.warnings.forEach((w) => log(`Note: ${w}`));
-  syncGates();
 }
 
 async function connect() {
@@ -367,7 +312,7 @@ async function connect() {
         firmware: {
           flashedAt: Date.now(), board: expect?.board ?? null, chip: res.chip,
           fileName: fw.name, bytes: fw.size, erased: eraseAll,
-          source: fw.source ?? fwMode, version: fw.version ?? null, tag: fw.tag ?? null, sha256: fw.sha256 ?? null,
+          source: fw.source ?? 'release', version: fw.version ?? null, tag: fw.tag ?? null, sha256: fw.sha256 ?? null,
         },
       });
       setCheck('a6aStatus', 'pass', `Flashed — ${res.chip}`);
@@ -471,14 +416,10 @@ function showCfg(trigger) {
 
 export function initA6a({ onEnter }) {
   // Stage: flash
-  $('a6aFwPick')?.addEventListener('click', () => $('a6aFwFile')?.click());
-  $('a6aFwFile')?.addEventListener('change', onFirmwarePicked);
-  // Same click, so the picker keeps the user's activation.
-  $('a6aFwUseFile')?.addEventListener('click', () => { enterFileMode(); $('a6aFwFile')?.click(); });
-  $('a6aFwUseRelease')?.addEventListener('click', enterReleaseMode);
   $('a6aFwRetry')?.addEventListener('click', () => { fwFetch.state = 'idle'; startReleaseFetch(); });
   $('a6aEraseAll')?.addEventListener('change', (e) => show($('a6aEraseWarn'), e.currentTarget.checked));
   $('a6aConnect')?.addEventListener('click', connect);
+  $('a6aToggleLog')?.addEventListener('click', toggleLog);
   $('a6aSkip')?.addEventListener('click', () => {
     abortReleaseFetch();
     log('Skipping the flash — the board is taken to be running the marquee firmware already.');
@@ -525,10 +466,7 @@ export function initA6a({ onEnter }) {
 
     abortReleaseFetch();
     fw = null; fwCheck = null; running = false;
-    fwMode = 'release';
     fwFetch.state = 'idle'; fwFetch.manifest = null; fwFetch.message = '';
-    const input = $('a6aFwFile');
-    if (input) input.value = '';
     setFwHint(releaseHint());
     renderFirmwareRow();
     const erase = $('a6aEraseAll');
@@ -549,6 +487,7 @@ export function initA6a({ onEnter }) {
     resetProgress();
     clearLog();
     show($('a6aLogPlate'), false);
+    syncLogToggle();
     if (rec?.firmware?.flashedAt) {
       const ver = rec.firmware.version ? ` v${rec.firmware.version}` : '';
       log(`Flashed ${fmtLocalSeconds(new Date(rec.firmware.flashedAt))} — ${rec.firmware.chip || 'chip unknown'} · ${rec.firmware.fileName || FIRMWARE_ARTIFACT}${ver}. "Flash again" redoes it.`);
