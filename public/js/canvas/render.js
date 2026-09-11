@@ -1,15 +1,16 @@
 /**
  * The render pipeline.
  *
- * The editor captures the canvas at exactly 1:1 and the BACKEND dithers and
- * palette-remaps it with real ImageMagick. That is the ONLY render path — there
- * is no in-browser fallback, because a JS dither would disagree with what the
- * device is handed and the preview would be a lie. So every action that needs a
- * render is disabled while /health is unreachable, and says why.
+ * The editor captures the canvas at exactly 1:1 and dithers + palette-remaps it
+ * right here, in the browser, with bitmap.js — a pure-JS port of the ImageMagick
+ * pipeline this app used to shell out to, byte-identical to what `magick` produced
+ * (see test/bitmap.test.js). There is no server: the same bytes go to the preview,
+ * the export and the panel.
  */
 
-import { BACKEND, BACKEND_METHOD, ioHost, ioLog, bitmapFeedKey, IO_MAX_NO_HISTORY } from '../core/api.js';
-import { display, logicalDims, ditherLabel } from './palette.js';
+import { ioHost, ioLog, bitmapFeedKey, IO_MAX_NO_HISTORY } from '../core/api.js';
+import { display, logicalDims, ditherLabel, PALETTES } from './palette.js';
+import { renderIndexedBmp, RENDER_METHOD } from './bitmap.js';
 import { captureClean } from './stage.js';
 import { selected, select } from './selection.js';
 import { refreshFeedElements } from '../device/feeds.js';
@@ -17,81 +18,75 @@ import {
   $, val, toast, fmtBytes, base64ToBlob, download, openModal, closeModal, wireModal,
 } from '../core/util.js';
 
-// ---------- backend health gating -------------------------------------------
-
-let backendOnline = false;
-const RENDER_BTN_IDS = ['btnPublish', 'sendBmpSleep', 'btnExport', 'btnRender', 'btnDitherPreview'];
-
-export function isBackendOnline() { return backendOnline; }
-
-function updateBackendUI() {
-  RENDER_BTN_IDS.forEach((id) => {
-    const el = $(id);
-    if (!el) return;
-    el.disabled = !backendOnline;
-    el.title = backendOnline ? '' : 'Render backend unreachable';
-  });
-  const banner = $('backendBanner');
-  if (banner) banner.dataset.offline = String(!backendOnline);
-}
-
-export function markBackendOffline() {
-  if (backendOnline) { backendOnline = false; updateBackendUI(); }
-}
-
-export async function pingBackend() {
-  try {
-    const res = await fetch(BACKEND + '/health');
-    backendOnline = res.ok;
-  } catch {
-    backendOnline = false;
-  }
-  updateBackendUI();
-}
-
 // ---------- the authoritative render ----------------------------------------
 
+function bytesToBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+}
+
 /**
- * Send the clean 1:1 PNG plus the current settings; get back
- * { bmp, png, bmpBytes, base64Bytes, fits* }. Throws if unreachable — callers
- * surface the error and abort rather than guessing.
+ * Render the clean 1:1 capture with the current display settings.
+ *
+ * Returns { bmp, png, bmpBytes, base64Bytes, fitsNoHistory, fitsHistory } — `bmp` is
+ * the base64 indexed BMP3 that ships to the panel, `png` a base64 PNG of the very
+ * same pixels for on-screen use. This is the shape the old /render endpoint
+ * answered with, kept so its callers did not have to change.
  *
  * Deselecting for the capture is done here rather than inside captureClean so
  * stage.js doesn't have to know selection exists. A dither refresh shouldn't
  * cost you your active element, so the selection is put straight back.
  */
-export async function backendRender() {
+export function renderBitmap() {
   const prev = selected;
   const canvas = captureClean({
     onDeselect: () => select(null),
     onReselect: () => { if (prev) select(prev); },
   });
-  const png = canvas.toDataURL('image/png');
-  const res = await fetch(BACKEND + '/render', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      png,
-      display: display.type,
-      method: BACKEND_METHOD[display.dither] || 'floyd',
-      diffusion: display.diffusion,
-      orderedMap: display.orderedMap,
-    }),
+  const w = canvas.width, h = canvas.height;
+  const rgba = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  const { bmp, indices, colormap } = renderIndexedBmp(rgba, w, h, PALETTES[display.type], {
+    method: RENDER_METHOD[display.dither] || 'floyd',
+    diffusion: display.diffusion,
+    orderedMap: display.orderedMap,
   });
-  if (!res.ok) throw new Error('backend /render ' + res.status);
-  return res.json();
+
+  // Preview: the indexed pixels painted back out as truecolor.
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  for (let i = 0; i < indices.length; i++) {
+    const c = colormap[indices[i]], o = i * 4;
+    img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const b64 = bytesToBase64(bmp);
+  return {
+    bmp: b64,
+    png: out.toDataURL('image/png').split(',')[1],
+    bmpBytes: bmp.length,
+    base64Bytes: b64.length,
+    fitsNoHistory: b64.length <= IO_MAX_NO_HISTORY,
+    fitsHistory: b64.length <= 1024,
+  };
 }
 
 /**
- * Render, or report why not. Wraps the offline bookkeeping and the toast so the
- * six callers that need a BMP don't each repeat it. Returns null on failure.
+ * Render, or report why not. Wraps the toast so the six callers that need a BMP
+ * don't each repeat it. Returns null on failure. Still async so callers that await
+ * it keep working; the render itself is synchronous and takes a few milliseconds.
  */
 export async function renderOrReport(what) {
   try {
-    return await backendRender();
-  } catch {
-    markBackendOffline();
-    toast(`Backend unreachable — cannot ${what}`);
+    return renderBitmap();
+  } catch (e) {
+    console.error('[render]', e);
+    toast(`Render failed — cannot ${what}`);
     return null;
   }
 }
@@ -123,7 +118,7 @@ export async function publishToIO(value, feed = bitmapFeedKey(), { quiet = false
   const say = (msg) => { if (!quiet) toast(msg); };
   const user = val('ioUser'), key = val('ioKey');
   if (!user || !key || !feed) {
-    say('An Adafruit IO account and a group key are both required — connect the account from the display list, and set the group under Settings');
+    say('An Adafruit IO account and a group key are both required — connect the account from the display list, and add the display so its group gets set up');
     return { ok: false, error: 'missing credentials' };
   }
   const host = ioHost();
@@ -172,10 +167,6 @@ export async function exportBMP() {
 // ---------- boot ------------------------------------------------------------
 
 export function initRender() {
-  updateBackendUI();          // start disabled until the first probe confirms online
-  pingBackend();
-  setInterval(pingBackend, 15000);
-
   $('btnExport')?.addEventListener('click', exportBMP);
 
   // Render preview modal.
@@ -234,12 +225,12 @@ async function updatePublishEstimate() {
   if (!dbg) return;
   let bytes;
   try {
-    bytes = (await backendRender()).base64Bytes;   // authoritative size
-  } catch {
-    markBackendOffline();
+    bytes = renderBitmap().base64Bytes;   // authoritative size: the real bytes
+  } catch (e) {
+    console.error('[render]', e);
     delete dbg.dataset.size;
     dbg.className = 'hint mono size-bad';
-    dbg.textContent = 'Backend unreachable — cannot estimate size';
+    dbg.textContent = 'Render failed — cannot estimate size';
     return;
   }
   dbg.className = 'hint mono size-' + (bytes <= IO_MAX_NO_HISTORY ? 'ok' : 'bad');

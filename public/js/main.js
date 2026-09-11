@@ -1,5 +1,10 @@
 /**
- * Boot, the settings modal, and the device-switch sequence.
+ * Boot, the settings field bank, and the device-switch sequence.
+ *
+ * "Settings" is no longer a screen anyone can open — the chrome button that was its
+ * only door is gone. #settingsModal stays mounted and hidden all the same, because it
+ * was never really a settings dialog: it is the DOM home of the app's live store, and
+ * config.js, api.js and devices.js all read straight out of it. See initSettings().
  *
  * Order matters in three places and nowhere else:
  *   - initDevices() runs FIRST. It migrates the pre-multi-device stores and decides
@@ -35,8 +40,9 @@ import { initA5c } from './screens/a5c.js';
 import { initA6a } from './screens/a6a.js';
 import { initA7 } from './screens/a7.js';
 import { initA8 } from './screens/a8.js';
-import { $, wireModal, openModal, closeModal, toast } from './core/util.js';
+import { $, wireModal, closeModal, toast } from './core/util.js';
 import { clearIoVerified, hasIoConfig, connectedUser } from './device/credentials.js';
+import { syncCfg } from './device/cfg.js';
 
 // ---------- settings persistence --------------------------------------------
 //
@@ -51,8 +57,9 @@ import { clearIoVerified, hasIoConfig, connectedUser } from './device/credential
 // moved into devices.js#migrate(), which is the last place the old flat blob is ever
 // read — so they now run once instead of on every boot forever.
 //
-// NOTE: the AIO key is stored here in plaintext. Acceptable for a local dev tool on
-// your own machine; it is also written onto the device at A6-A.
+// NOTE: the AIO key is stored here in plaintext, and so — per display, in `rec.cfg` —
+// are the Wi-Fi credentials A5C collects. Acceptable for a local dev tool on your own
+// machine; both are written onto the device at A6-A. See device/cfg.js.
 
 function saveSettings(id) {
   const scope = devices.SETTINGS_SCOPE[id];
@@ -64,6 +71,9 @@ function saveSettings(id) {
     if (id === 'ioUser' || id === 'ioKey' || id === 'ioDev') clearIoVerified();
     devices.saveAccount(devices.snapshotAccountFields());
   } else devices.flushActive();
+  // Account and group key both land in the board's config file, so it follows every
+  // settings write — including A5b's mirror into #ioGroup and A1-C's into #ioUser/#ioKey.
+  syncCfg();
 }
 
 function restoreSettings() {
@@ -87,12 +97,22 @@ function renderSettingsAccount() {
     ? 'Change account' : 'Connect your Adafruit IO account';
 }
 
+/**
+ * Wire the settings fields. NOTHING OPENS #settingsModal any more — the chrome button
+ * was its only entry point and it has been removed — so everything below is field
+ * persistence, and the handlers on the modal's own controls are inert.
+ *
+ * The markup stays mounted regardless, and that is the load-bearing part: those inputs
+ * ARE the store. api.js#ioHost() reads #ioDev to resolve every Adafruit IO request,
+ * feeds.js/credentials.js/canvasfeed.js read #ioUser and #ioKey, and config.js builds
+ * the display descriptor out of the advanced disclosure — several of those reads are
+ * not optional-chained, so deleting the markup throws during boot rather than degrading.
+ *
+ * The in-modal handlers are kept for the same reason the markup is: they cost one
+ * listener each, and giving the modal a door again is a single openModal() call.
+ */
 function initSettings() {
   wireModal('settingsModal', ['settingsClose', 'settingsDone']);
-  $('btnSettings')?.addEventListener('click', (e) => {
-    renderSettingsAccount();
-    openModal('settingsModal', { returnFocusTo: e.currentTarget });
-  });
 
   // Settings closes FIRST. The shared Escape handler dismisses every modal in the
   // open set, so leaving this one behind A1-C would mean one keypress taking both.
@@ -142,9 +162,9 @@ function initSettings() {
     const rec = devices.activeDevice();
     if (!rec) { toast('No display selected'); return; }
     const name = devices.deviceLabel(rec);
-    if (!confirm(`Remove "${name}" from this browser?\n\nIts dashboard and settings are `
-      + 'deleted here. Nothing on Adafruit IO is touched — the group and its feeds stay, '
-      + 'and the board keeps running whatever was last flashed onto it.')) return;
+    if (!confirm(`Remove "${name}"?\n\nIts dashboard and settings are deleted from this `
+      + 'browser, and its group and feeds are deleted from Adafruit IO. The board itself is '
+      + 'not touched — it keeps running whatever was last flashed onto it.')) return;
     closeModal('settingsModal');
     // The same path A1's Remove takes, and it does more than delete: this record is the
     // active one, so the canvas, the descriptor and the status watch in front of the user
@@ -198,7 +218,7 @@ async function boot() {
   initA7({ onEnter });
   initA8({ onEnter });
 
-  // Any flow-state change can move the rail, the badge or the device pill — and has to
+  // Any flow-state change can move the rail or the device pill — and has to
   // reach the active device's record.
   //
   // The mirror is not optional bookkeeping. state.js persists to its own single key, so

@@ -15,11 +15,11 @@
  * the tri-color card names its host board's PSRAM, which no panel descriptor knows
  * about.
  *
- * The photo slots are grey placeholders by design: real Adafruit product shots go there,
- * and the design system duotones them through the .duotone wrapper.
+ * The photo is the preset's product shot (presets.js `photo`, a file under
+ * public/img/panels/). A preset without one falls back to the grey placeholder.
  */
 
-import { FEATURED_KEYS, searchPresets, presetCardLabel, presetCardMeta } from '../device/presets.js';
+import { FEATURED_KEYS, searchPresets, presetCardLabel, presetCardMeta, presetCardPhoto } from '../device/presets.js';
 import { applyDisplayPreset } from '../core/config.js';
 import { getState, setState } from '../core/state.js';
 import { navigate } from '../core/router.js';
@@ -27,12 +27,14 @@ import { activeDeviceId, patchActive, setSetupStep } from '../device/devices.js'
 import { $, escapeHtml, escapeAttr, show, toast } from '../core/util.js';
 
 function cardHTML(key, selected) {
+  const photo = presetCardPhoto(key);
+  // The <img> is decorative: the card's name and spec already say what it is.
+  const photoHTML = photo
+    ? `<span class="photo"><img src="${escapeAttr(photo)}" alt="" loading="lazy" decoding="async"></span>`
+    : '<span class="photo">PHOTO</span>';
   return `<button type="button" class="panel-card card blueprint" data-preset="${escapeAttr(key)}" data-selected="${selected}">
     <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-    <!-- Placeholder only. The design system duotones content photography through
-         a .duotone wrapper, but washing a flat grey box in the accent just turns
-         it into a flat blue box — add .duotone here when real product shots go in. -->
-    <span class="photo">PHOTO</span>
+    ${photoHTML}
     <span class="body">
       <span class="name">${escapeHtml(presetCardLabel(key))}</span>
       <span class="spec">${escapeHtml(presetCardMeta(key))}</span>

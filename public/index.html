@@ -23,39 +23,18 @@
     <!-- Three levels, and only the last one is variable: the board this editor is
          pointed at. The trail is here to say WHICH board you are editing, which is the
          one fact the chrome could not answer while the title sat there alone. Written
-         by router.js, which reads the live name field rather than the stored record so
-         a rename in Settings lands while that dialog is still open. -->
+         by router.js, which reads the live name field rather than the stored record, so a
+         rename reaches the crumb the moment it is typed rather than on the next save. -->
     <span class="crumb">Adafruit IO</span>
     <span class="sep">/</span>
     <span class="crumb">Marquee</span>
     <span class="sep">/</span>
     <span class="crumb crumb-current" id="crumbBoard">magtag</span>
     <span class="spacer"></span>
-    <!-- The sleep clock in miniature. Written by a8.js's setClock(), and now the ONLY
-         clapperboard in the app: the full-size one used to sit in Showtime's dark bar,
-         which left A7 without a countdown and made the two able to drift.
-
-         In the chrome, but not on every screen the chrome is: it counts down ONE board's
-         cycle, so it appears on the editor and Showtime and stays hidden on the display
-         list and through setup. CLOCK_SCREENS in a8.js is where that is decided. -->
-    <div class="chrome-clapper" id="chromeClapper" hidden>
-      <span class="stripes"></span>
-      <span class="readout">
-        <span class="cap" id="chromeClapperCap">Next take in</span>
-        <span class="time" id="chromeClapperTime">--:--</span>
-      </span>
-    </div>
     <!-- The way out of the editor loop, and the only one. Setup does not get it. -->
     <button type="button" class="chrome-link hidden" id="crumbAllDisplays">‹ All displays</button>
-    <span class="pill chrome-badge" id="chromeBadge" hidden>WEBSERIAL</span>
     <span class="pill pill-asleep" id="devicePill" hidden><span class="dot"></span><span data-role="text">Asleep</span></span>
-    <button type="button" class="btn btn-sm btn-ghost" id="btnSettings" style="color:var(--color-chrome-text)">Settings</button>
   </header>
-
-  <div id="backendBanner">
-    <strong>Render backend unreachable.</strong>
-    <span>ImageMagick is the only render path — every render, push and export action is disabled until it answers <span class="mono">/health</span>.</span>
-  </div>
 
   <!-- ── editor rail ──────────────────────────────────────────────────────── -->
   <!-- Two cells, and it belongs to A7/A8 alone — the setup screens show no rail at
@@ -117,6 +96,15 @@
                  style="margin-left:auto; width:280px" autocomplete="off">
         </div>
 
+        <!-- The way out when the shortlist is not enough. A banner rather than a
+             footnote because "mine isn't here" is the first question a stranger to
+             the list asks, and both answers are one click away. -->
+        <aside class="a4-banner blueprint" id="a4Banner">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <p><strong>Don't see your device?</strong> Request a new board by <a href="https://github.com/adafruit/Adafruit_Marquee/issues/new?template=add-board.yml" target="_blank" rel="noopener">opening a new issue on GitHub</a>.</p>
+          <p><strong>Prefer to DIY?</strong> Marquee is open source — <a href="https://github.com/adafruit/Adafruit_Marquee/blob/main/README.md" target="_blank" rel="noopener">add your own board to the firmware</a>.</p>
+        </aside>
+
         <div class="panel-grid panel-grid-3" id="panelGrid"></div>
         <p class="empty-note hidden" id="panelEmpty">No device matches that search.</p>
 
@@ -137,7 +125,7 @@
         <div class="col-main">
           <div class="screen-head">
             <h3>Configure Adafruit IO</h3>
-            <p id="a5bSub">Your board reads its picture from Adafruit IO and reports back on the same account. This makes the feeds it needs.</p>
+            <p>Name this display. We'll create the Adafruit IO group and feeds it needs.</p>
           </div>
 
           <!-- The account, stated rather than asked for. It was settled once in
@@ -169,24 +157,19 @@
                do not move, they only change colour. -->
           <div class="feeds-plate blueprint">
             <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <p class="feeds-line" id="a5bGroupLine">Four feeds, under the group <span class="mono" id="a5bGroupKey">—</span></p>
+            <p class="feeds-line" id="a5bGroupLine">The following feeds will be created under the group <span class="mono" id="a5bGroupKey">—</span>, if they do not already exist:</p>
+            <!-- The feed key alone. What each one is FOR is in the rail, which says it
+                 once for all four; spelling it out per row said the same thing a second
+                 time, in the column the user is trying to act in. The row's text slot is
+                 also where the run writes its result ("bitmap — created"), so a resting
+                 label of any length is a prefix on every one of those. -->
             <div class="feeds-rows">
-              <div class="check" data-state="wait" id="a5bFeedBitmap"><span class="dot"></span><span data-role="text">bitmap — the picture your board draws</span></div>
-              <div class="check" data-state="wait" id="a5bFeedSleep"><span class="dot"></span><span data-role="text">sleep — how long it waits before waking</span></div>
-              <div class="check" data-state="wait" id="a5bFeedStatus"><span class="dot"></span><span data-role="text">status — what your board reports back</span></div>
-              <div class="check" data-state="wait" id="a5bFeedCanvas"><span class="dot"></span><span data-role="text">canvas-state — the editable scene, so any browser can open it</span></div>
+              <div class="check" data-state="wait" id="a5bFeedBitmap"><span class="dot"></span><span data-role="text">bitmap</span></div>
+              <div class="check" data-state="wait" id="a5bFeedSleep"><span class="dot"></span><span data-role="text">sleep</span></div>
+              <div class="check" data-state="wait" id="a5bFeedStatus"><span class="dot"></span><span data-role="text">status</span></div>
+              <div class="check" data-state="wait" id="a5bFeedCanvas"><span class="dot"></span><span data-role="text">canvas-state</span></div>
             </div>
             <p class="hint" id="a5bOutcome" hidden></p>
-            <p class="hint">Changing the key will change API URLs and MQTT subscription topics…</p>
-          </div>
-
-          <!-- The consequence of the name above, spelled out before it is committed.
-               Written by the same call that updates the group-key line, so the two
-               cannot disagree. -->
-          <div class="endpoints-plate blueprint">
-            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <span class="label">Where this lands</span>
-            <div id="a5bEndpoints"></div>
           </div>
 
           <div class="screen-foot">
@@ -196,23 +179,25 @@
           </div>
         </div>
 
+        <!-- Everything the screen has to SAY, said here. The main column is the
+             account, the one field, the four dots and the buttons; this rail is where
+             the four feed names above get their meaning, so the rows can stay bare. -->
         <aside class="col-rail">
           <div class="eyebrow">What a Group is</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">A Group is a folder for feeds on Adafruit IO. This display gets one, named after it, holding the four feeds it needs: the picture it draws, how long it sleeps, what it reports back, and the editable scene behind the picture.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">A Group is a folder for feeds on Adafruit IO. This display gets one, named after it, holding the four it needs: <span class="mono">bitmap</span>, the picture it draws; <span class="mono">sleep</span>, how long it waits before waking; <span class="mono">status</span>, what it reports back; and <span class="mono">canvas-state</span>, the editable scene behind the picture.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">If it already exists</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">We'll check to see if you already have a group and feeds configured for this device. If it's already configured, we'll do nothing and we'll let you know!</p>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Nothing here is destructive. An existing group is reused as it stands, and a feed that is already there is left alone — we only ever add what's missing.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Nothing here is destructive. We check first, and an existing group is reused as it stands — a feed that is already there is left alone, we only ever add what's missing, and we'll tell you if there was nothing to do.</p>
         </aside>
       </div>
     </section>
 
     <!-- ══ A5C · Wi-Fi credentials ═════════════════════════════════════════ -->
-    <!-- The one screen in the app that handles a secret it refuses to keep. The
-         promise in the plate below is not reassurance copy — a5c.js holds both fields
-         in a module-level object, hands them over exactly once, and clears them. They
-         are not in SETTINGS_SCOPE, not on the device record, and never leave the
-         browser. If you add persistence here, the plate becomes a lie. -->
+    <!-- Saved on this display's record as `cfg.network` (device/cfg.js) — the board's
+         cfg-marquee.json — so they survive a reload and prefill a re-run. The plate
+         below states exactly where they go: this browser's localStorage and the board
+         over USB. Not in SETTINGS_SCOPE, never on an Adafruit IO feed. If you add a
+         second store, update the plate first. -->
     <section class="screen" id="a5c" data-screen="a5c">
       <div class="screen-split" style="--rail-w:400px">
         <div class="col-main">
@@ -239,8 +224,8 @@
           <div class="promise-plate blueprint">
             <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
             <span class="label">What happens to these</span>
-            <p>The network name and password are used once, in this browser, to write credentials onto the device over USB.</p>
-            <p>They are not sent to Adafruit IO, not stored in your account, and not kept after this step. Leave this screen and you will be asked again.</p>
+            <p>The network name and password are saved with this display in this browser, and written onto the device over USB in the next step as part of its <span class="mono">cfg-marquee.json</span>.</p>
+            <p>They are never sent to Adafruit IO and never stored in your account. Come back to this screen and they are filled in for you.</p>
           </div>
 
           <div class="screen-foot">
@@ -254,7 +239,7 @@
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board is on its own once it is flashed. It wakes, joins your network, reads the picture you pushed from Adafruit IO, draws it and goes back to sleep — none of which it can do without these.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">Changing networks later</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Run this step again over USB. Because nothing is stored, moving a board to a new network means plugging it back in — there is no way to push credentials to a board that cannot reach the network yet.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Open Settings, choose "Start setup over", and change them here — then plug the board back in. Moving a board to a new network always means USB: there is no way to push credentials to a board that cannot reach the network yet.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">What won't work</div>
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Captive portals — hotel, campus and most guest networks — need a browser to accept terms before traffic passes. Your board has no browser, so it will associate and then fail to reach Adafruit IO.</p>
@@ -263,69 +248,196 @@
     </section>
 
     <!-- ══ A6-A · flash the device ═════════════════════════════════════════ -->
-    <!-- Browser-side esptool over WebSerial. No server involvement — which is also
-         why the browser gate below is real rather than advisory: on Safari or Firefox
-         there is no navigator.serial to fall back to.
+    <!-- Browser-side esptool over WebSerial, then the File System Access API. No server
+         involvement — which is also why the browser gates below are real rather than
+         advisory: on Safari or Firefox there is neither navigator.serial nor
+         showDirectoryPicker to fall back to.
 
-         THE WRITE PATH IS NOT IMPLEMENTED IN THIS BUILD. flash.js is a documented seam
-         holding the signature and nothing else. The states, the log and the progress
-         rows are built and correct; they simply are not reachable yet, and Connect
-         says so in the log rather than miming a result. -->
+         THREE STAGES IN ONE SCREEN, toggled by a6a.js: flash (fetch the latest release's
+         merged-flash.bin, or pick one, write it), drive (press RESET, pick the MARQUEE drive, we write cfg-marquee.json), done
+         (eject, press RESET). The rail changes with them; the foot does not. The log stays
+         hidden unless something fails, then shows everything so far. -->
     <section class="screen" id="a6a" data-screen="a6a">
       <div class="screen-split" style="--rail-w:400px">
         <div class="col-main">
           <div class="screen-head">
             <h3>Flash Device</h3>
-            <p>This writes the marquee firmware onto your board, along with everything it needs to run on its own.</p>
+            <p>This writes the marquee firmware onto your board, then hands it the configuration it needs to run on its own.</p>
           </div>
 
           <div class="flash-status">
             <div class="check" data-state="wait" id="a6aStatus"><span class="dot"></span><span data-role="text">Not connected</span></div>
-            <p class="hint" id="a6aLead">Connect an ESP32 or ESP8266 to your computer, then click Connect to start managing it.</p>
+            <p class="hint" id="a6aLead">Put the board in bootloader mode — hold BOOT, tap RESET, release BOOT — then, once the firmware has downloaded, click Connect and flash.</p>
             <p class="field-error" id="a6aUnsupported" hidden>This browser cannot talk to a serial port. Use Chrome, Edge or Opera on a desktop computer — Safari and Firefox do not implement WebSerial.</p>
           </div>
 
-          <div class="flash-actions" id="a6aConnectRow">
-            <button type="button" class="btn btn-primary blueprint" id="a6aConnect">Connect<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
-            <button type="button" class="btn btn-secondary" id="a6aSkip">Skip, my board is already flashed</button>
+          <!-- ── stage: flash ── -->
+          <div class="flash-stage" id="a6aStageFlash">
+            <!-- The image comes from the latest release on Adafruit_Marquee's firmware branch,
+                 downloaded here and checked against the manifest's sha256 — then the same
+                 structural checks a file from disk gets, BEFORE any port dialog opens. "Use a
+                 file instead…" is the fallback: a CI artifact, an older release, a panel set up
+                 by hand or a board the release has no build for. a6a.js drives data-mode and
+                 data-state. -->
+            <div class="fw-row" id="a6aFwRow" data-mode="release" data-state="idle">
+              <span class="label">Firmware</span>
+              <div class="fw-release" id="a6aFwRelease">
+                <div class="check" data-state="wait" id="a6aFwStatus"><span class="dot"></span><span data-role="text">Looking for the latest release…</span></div>
+                <span class="fw-track hidden" id="a6aFwTrack"><span class="fill" id="a6aFwFill"></span></span>
+              </div>
+              <span class="mono fw-name hidden" id="a6aFwName" data-state="empty">No file chosen</span>
+              <button type="button" class="btn btn-ghost btn-sm hidden" id="a6aFwRetry">Retry</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="a6aFwUseFile">Use a file instead…</button>
+              <button type="button" class="btn btn-secondary btn-sm hidden" id="a6aFwPick">Choose merged-flash.bin…</button>
+              <button type="button" class="btn btn-ghost btn-sm hidden" id="a6aFwUseRelease">Use the latest release</button>
+              <input type="file" id="a6aFwFile" accept=".bin" hidden>
+            </div>
+            <p class="hint" id="a6aFwExpect"></p>
+            <p class="field-error" id="a6aFwError" hidden></p>
+
+            <!-- Opt-in, default off. The firmware never formats its FAT partition, so a full
+                 erase takes the MARQUEE drive with it; on the X4 Pro it also takes the factory
+                 panel calibration in NVS. Writing the merged image alone leaves both alone. -->
+            <label class="check-row"><input type="checkbox" id="a6aEraseAll"> Erase the whole chip first</label>
+            <p class="warn-line hidden" id="a6aEraseWarn">This wipes the MARQUEE drive and everything on it — and on the Xteink X4 Pro, the factory display calibration. The drive comes back unformatted and has to be formatted FAT by hand before the next step can write to it. Leave this off unless the board is misbehaving.</p>
+
+            <div class="flash-actions" id="a6aConnectRow">
+              <button type="button" class="btn btn-primary blueprint" id="a6aConnect" disabled>Connect and flash<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+              <button type="button" class="btn btn-secondary" id="a6aSkip">Skip, my board is already flashed</button>
+            </div>
+
+            <!-- Replaces the connect row once a port is open. Two bars, because erase and
+                 write are separately slow and separately able to fail — and the erase row
+                 says "skipped" when the box above is off rather than sitting at 0%. -->
+            <div class="flash-progress hidden" id="a6aProgressRow">
+              <div class="flash-bar" id="a6aEraseRow" data-state="idle">
+                <span class="label">Erase</span>
+                <span class="track"><span class="fill" id="a6aEraseFill"></span></span>
+                <span class="mono pct" id="a6aErasePct">0%</span>
+              </div>
+              <div class="flash-bar" id="a6aWriteRow" data-state="idle">
+                <span class="label">Write</span>
+                <span class="track"><span class="fill" id="a6aWriteFill"></span></span>
+                <span class="mono pct" id="a6aWritePct">0%</span>
+              </div>
+            </div>
           </div>
 
-          <!-- Replaces the connect row once a port is open. Two bars, because erase and
-               write are separately slow and separately able to fail. -->
-          <div class="flash-progress hidden" id="a6aProgressRow">
-            <div class="flash-bar">
-              <span class="label">Erase</span>
-              <span class="track"><span class="fill" id="a6aEraseFill"></span></span>
-              <span class="mono pct" id="a6aErasePct">0%</span>
+          <!-- ── stage: drive ── -->
+          <!-- The config does not go over serial. The firmware mounts its FAT partition as a
+               USB drive named MARQUEE and reads cfg-marquee.json off it at boot; with no file
+               there it halts with the drive still mounted, which is the state this stage
+               writes into. See device/drive.js. -->
+          <div class="flash-stage hidden" id="a6aStageDrive">
+            <!-- The board's name is filled in by a6a.js from the firmware table (MagTag,
+                 Feather ESP32-S3, …); "board" when the panel was set up by hand. -->
+            <div class="promise-plate drive-plate blueprint">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span class="label">Next, reset the <span data-role="board">board</span></span>
+              <div class="rail-steps drive-steps">
+                <div><span class="n">1</span> Press the <strong>RESET</strong> button on the <span data-role="board">board</span> and give it a few seconds.</div>
+                <div><span class="n">2</span> A drive named <span class="mono">MARQUEE</span> should appear — in the Finder sidebar under Locations, or under This PC on Windows. If it is not named <span class="mono">MARQUEE</span>, it may be named <span class="mono">CIRCUITPY</span> or <span class="mono">WIPPER</span>.</div>
+                <div><span class="n">3</span> Click below and choose that drive when the browser asks. <span class="mono">cfg-marquee.json</span> is written into it and read back to check.</div>
+              </div>
+              <div class="flash-actions drive-plate-actions">
+                <button type="button" class="btn btn-primary blueprint" id="a6aOpenDrive">Select Drive<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+                <button type="button" class="btn btn-secondary" id="a6aDriveSkip" style="margin-left:auto">Skip, it's already configured</button>
+              </div>
             </div>
-            <div class="flash-bar">
-              <span class="label">Write</span>
-              <span class="track"><span class="fill" id="a6aWriteFill"></span></span>
-              <span class="mono pct" id="a6aWritePct">0%</span>
+            <!-- Empty and hidden until there is something to say: a failure, or a cancelled
+                 picker. a6a.js shows it with the text. -->
+            <div class="check hidden" data-state="wait" id="a6aDriveStatus"><span class="dot"></span><span data-role="text"></span></div>
+            <div class="flash-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="a6aFlashAgain" style="margin-left:auto">Flash again</button>
+            </div>
+            <!-- Shown when the browser has no directory picker, or when writing failed: the
+                 same file, by hand. -->
+            <div class="drive-fallback hidden" id="a6aDriveFallback">
+              <p class="hint">This browser cannot write to the drive directly. Download the file and copy it to the top level of <span class="mono">MARQUEE</span> yourself, then continue.</p>
+              <div class="flash-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="a6aDownloadCfg">Download cfg-marquee.json</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="a6aDriveContinue">I copied it — continue</button>
+              </div>
             </div>
           </div>
 
-          <div class="log-plate blueprint">
+          <!-- ── stage: done ── -->
+          <div class="flash-stage hidden" id="a6aStageDone">
+            <!-- Same plate as the drive stage: numbered steps, the board's name, and the
+                 button that finishes the job inside it. -->
+            <div class="promise-plate drive-plate blueprint">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span class="label">⏏ Eject, then press RESET</span>
+              <div class="rail-steps drive-steps">
+                <div><span class="n">1</span> Eject <span class="mono">MARQUEE</span> — the ⏏ next to it in the Finder sidebar, or "Safely remove" on Windows.</div>
+                <div><span class="n">2</span> Press the <strong>RESET</strong> button on the <span data-role="board">board</span>.</div>
+              </div>
+              <div class="flash-actions drive-plate-actions">
+                <button type="button" class="btn btn-primary blueprint" id="a6aDone">Done — open the editor<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
+              </div>
+            </div>
+            <div class="flash-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="a6aRewrite" style="margin-left:auto">Write the config again</button>
+            </div>
+          </div>
+
+          <!-- Hidden until the flow finishes or something fails; a6a.js reveals it. -->
+          <div class="log-plate blueprint hidden" id="a6aLogPlate">
             <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <span class="label">Serial log</span>
+            <span class="label">Log</span>
             <pre class="mono log-body" id="a6aLog"></pre>
+          </div>
+
+          <div class="screen-foot">
+            <button type="button" class="btn btn-secondary" id="a6aBack">Back</button>
           </div>
         </div>
 
         <aside class="col-rail">
-          <div class="eyebrow">Before you connect</div>
-          <div class="rail-steps">
-            <div><span class="n">1</span> Use a <strong>data</strong> cable. A charge-only USB cable powers the board and carries no serial — it is the single most common reason no port appears.</div>
-            <div><span class="n">2</span> Close anything else holding the port: the Arduino IDE's serial monitor, <span class="mono">screen</span>, Mu, Thonny.</div>
-            <div><span class="n">3</span> Pick your board in the browser's port dialog. On macOS it is usually a <span class="mono">usbmodem</span>; on Windows a COM port.</div>
-            <div><span class="n">4</span> If nothing is listed, put the board in bootloader mode: hold <strong>BOOT</strong>, tap <strong>RESET</strong>, release BOOT.</div>
+          <!-- One rail block per stage, toggled with the stage. -->
+          <div id="a6aRailFlash">
+            <div class="eyebrow">Before you connect</div>
+            <div class="rail-steps">
+              <div><span class="n">1</span> Put the board in <strong>bootloader mode</strong>: hold <strong>BOOT</strong>, tap <strong>RESET</strong>, release BOOT. A board already running Marquee shows up as a USB drive, not a serial port, until you do.</div>
+              <div><span class="n">2</span> Use a <strong>data</strong> cable. A charge-only USB cable powers the board and carries no serial — it is the single most common reason no port appears.</div>
+              <div><span class="n">3</span> Close anything else holding the port: the Arduino IDE's serial monitor, <span class="mono">screen</span>, Mu, Thonny.</div>
+              <div><span class="n">4</span> Pick your board in the browser's port dialog. On macOS it is usually a <span class="mono">usbmodem</span> or an "ESP32-S3"; on Windows a COM port.</div>
+            </div>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">Where the firmware comes from</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The latest <a href="https://github.com/adafruit/Adafruit_Marquee/releases" target="_blank" rel="noopener">Adafruit_Marquee release</a>, downloaded here for this display's board — the version is shown next to it. The download is checked against the release's checksum, the image is checked before anything is written, and the chip is checked against it before the write starts.</p>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">"Use a file instead…" takes a <span class="mono">merged-flash.bin</span> from a <a href="https://github.com/adafruit/Adafruit_Marquee/actions/workflows/build.yml" target="_blank" rel="noopener">CI build</a> artifact or an older release: <span class="mono">marquee-magtag</span>, <span class="mono">marquee-adafruit_feather_esp32s3</span> or <span class="mono">marquee-x4pro</span>, to match the board.</p>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">What gets written</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The image shown above, at the start of the flash. The <span class="mono">MARQUEE</span> drive and whatever is on it are kept unless you tick "Erase the whole chip first". The configuration is the next step, and goes onto that drive.</p>
           </div>
+
+          <div id="a6aRailDrive" class="hidden">
+            <div class="eyebrow">Why RESET</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board is still in bootloader mode from the flash. RESET starts the new firmware, which mounts the flash's filesystem and presents it to your computer as a USB drive named <span class="mono">MARQUEE</span>.</p>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">What goes onto it</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">One file, <span class="mono">cfg-marquee.json</span>, at the top level of the drive: your Adafruit IO account, the group key, the network from the Wi-Fi step, and the panel and its pins. It holds the Wi-Fi password and the Adafruit IO key in plain text — this drive is the board's, not a place to leave things.</p>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">If no drive appears</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Unplug and replug, then RESET once more. A drive that mounts but reads as unformatted means the filesystem was erased — format it as FAT (MS-DOS) named <span class="mono">MARQUEE</span> with Disk Utility or Explorer, then come back here.</p>
+          </div>
+
+          <div id="a6aRailDone" class="hidden">
+            <div class="eyebrow">Eject first</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Your computer may still be holding part of the file in a write cache. Ejecting flushes it to the board; resetting first can leave a truncated file and a warning about an improperly removed disk.</p>
+            <div class="hr" style="margin:6px 0"></div>
+            <div class="eyebrow">What happens on boot</div>
+            <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board reads the file, drives the panel, joins your Wi-Fi and fetches its picture from Adafruit IO. If nothing draws after a minute, open a serial monitor at 115200 — the firmware prints why it stopped.</p>
+          </div>
+
           <div class="hr" style="margin:6px 0"></div>
-          <div class="eyebrow">What gets written</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The marquee firmware for your board, your Adafruit IO configuration, the network configuration from the last step, and the panel configuration. <strong>Existing files on the board are erased.</strong></p>
+          <div class="eyebrow">Debug</div>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The configuration file exactly as it will be written, filled in from the previous steps. Includes the Wi-Fi password and the Adafruit IO key in plain text.</p>
+          <button type="button" class="btn btn-ghost btn-sm" id="a6aShowCfg">Show JSON config</button>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">Browser support</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Flashing needs WebSerial: Chrome, Edge or Opera on desktop. Safari and Firefox cannot connect to a serial port at all, and there is no extension that adds it.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Flashing needs WebSerial and writing the drive needs the File System Access API: Chrome, Edge or Opera on desktop, over https or localhost. Safari and Firefox have neither, and there is no extension that adds them.</p>
         </aside>
       </div>
     </section>
@@ -397,7 +509,13 @@
               <option value="1800">Every 30 minutes — deep sleep</option>
               <option value="2700">Every 45 minutes — deep sleep</option>
               <option value="3600">Every hour — deep sleep</option>
-              <option value="custom">Custom…</option>
+              <!-- Not pickable, and deliberately so: it is a READOUT. There is no longer
+                   anywhere to type an arbitrary interval — the Settings modal this used
+                   to point at has no door — but a record migrated from an older build can
+                   still carry one, and syncIntervalFromField() selects this to name it
+                   rather than leave the select blank. `hidden` keeps it out of the list
+                   while leaving it selectable programmatically. -->
+              <option value="custom" hidden>Custom…</option>
             </select>
           </label>
 
@@ -496,7 +614,7 @@
               </button>
 
               <!-- Dithering lives with the scene, not with the wiring: the device is
-                   handed a BMP that has already been dithered by the render backend,
+                   handed a BMP that has already been dithered by the editor,
                    so this is an authoring decision about how the artwork survives a
                    1-bit panel — made while looking at the artwork. -->
               <div class="dither-pop blueprint elev-md hidden" id="ditherPop" role="dialog"
@@ -650,13 +768,30 @@
   </div>
 </div>
 
+<!-- The board's cfg-marquee.json, as A6-A would write it. A debug view: a plain <pre>
+     with Copy and Download, opened from the rail on A6-A. See device/cfg.js. -->
+<div class="modal-backdrop hidden" id="cfgModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Device configuration JSON">
+    <div class="modal-head">
+      <h4>cfg-marquee.json</h4>
+      <button type="button" class="modal-close" id="cfgClose" aria-label="Close configuration view">✕</button>
+    </div>
+    <pre class="json-view"><code id="cfgJson"></code></pre>
+    <div class="modal-actions">
+      <span class="hint" style="flex:1; text-align:left">Contains the Wi-Fi password and the Adafruit IO key.</span>
+      <button type="button" class="btn btn-sm" id="cfgCopy">Copy</button>
+      <button type="button" class="btn btn-sm btn-primary" id="cfgDownload">Download cfg-marquee.json</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop hidden" id="publishModal">
   <div class="modal" role="dialog" aria-modal="true" aria-label="Publish to Adafruit IO">
     <div class="modal-head">
       <h4>Publish to IO feed</h4>
       <button type="button" class="modal-close" id="publishClose" aria-label="Close publish dialog">✕</button>
     </div>
-    <p class="hint">Connect your Adafruit IO account from the display list, and set the group under <strong>Settings</strong>.</p>
+    <p class="hint">Connect your Adafruit IO account from the display list. The group is set up when you add the display.</p>
     <div class="modal-actions">
       <span class="hint mono" id="publishDebug" style="flex:1; text-align:left"></span>
       <button type="button" class="btn btn-primary" id="publishSend">Publish</button>
@@ -711,7 +846,7 @@
 
     <div class="hr"></div>
     <span class="label">Device identity</span>
-    <p class="hint">Written into the panel descriptor that <span class="mono">data/canvas.json</span> carries alongside the layout.</p>
+    <p class="hint">Written into the panel descriptor that the saved layout (<span class="mono">canvas.json</span>) carries alongside the elements.</p>
     <div class="grid-3">
       <label class="field"><span class="label">User</span><input type="text" id="pmUser" value="test_user" autocomplete="off"></label>
       <label class="field"><span class="label">Device</span><input type="text" id="pmDevice" value="magtag" autocomplete="off"></label>
@@ -748,7 +883,7 @@
     </div>
     <!-- These fields used to live inside A5, which the new flow does not visit. They
          have to stay mounted regardless — config.js reads them from A7 and A8 to build
-         every /display request — so they moved to the one container that is mounted AND
+         the display descriptor — so they moved to the one container that is mounted AND
          reachable from every screen rather than being stranded on a parked one.
 
          Picking a device on A4 fills all of this in. It is here for a panel someone
@@ -788,7 +923,7 @@
                 </select>
               </label>
               <label class="field"><span class="label">Panel</span>
-                <input type="text" id="pmPanel" value="adafruit-magtag" autocomplete="off">
+                <input type="text" id="pmPanel" value="magtag-2025" autocomplete="off">
               </label>
               <label class="field"><span class="label">Display name</span>
                 <input type="text" id="pmName" value="epd0" autocomplete="off">
@@ -809,10 +944,10 @@
               </label>
               <label class="field"><span class="label">Rotation</span>
                 <select id="rotSel">
-                  <option value="0">0° — native</option>
+                  <option value="0" selected>0° — native</option>
                   <option value="90">90°</option>
                   <option value="180">180°</option>
-                  <option value="270" selected>270°</option>
+                  <option value="270">270°</option>
                 </select>
               </label>
               <label class="field"><span class="label">Mode</span>
@@ -832,7 +967,7 @@
               </label>
             </div>
 
-            <p class="hint">Column offset shifts the framebuffer against the controller's column RAM, in pixels — leave it blank unless the panel has a dead zone at one edge. The 2.13" Tri-Color FeatherWing needs <span class="mono">8</span>; the SSD1680Z breakout needs <span class="mono">-8</span>. Blank or <span class="mono">0</span> is left out of the descriptor, where absent means no shift.</p>
+            <p class="hint">Column offset shifts the framebuffer against the controller's column RAM, in pixels — leave it blank unless the panel has a dead zone at one edge. The 2.13" SSD1680Z breakout needs <span class="mono">-8</span>; the 2.13" Tri-Color FeatherWing needs nothing here, because its firmware panel entry applies the offset itself. Blank or <span class="mono">0</span> is left out of the descriptor, where absent means no shift.</p>
 
             <div class="prop-row hidden" id="customRes">
               <span class="label">Custom</span>
@@ -850,8 +985,8 @@
                 <label class="field"><span class="label">Reset</span><input type="text" id="pinRst" value="D6" autocomplete="off"></label>
                 <label class="field"><span class="label">CS (EPD)</span><input type="text" id="pinCs" value="D8" autocomplete="off"></label>
                 <label class="field"><span class="label">SRAM CS</span><input type="text" id="pinSramCs" value="" placeholder="if required" autocomplete="off"></label>
-                <label class="field"><span class="label">MOSI</span><input type="text" id="pinMosi" value="D35" autocomplete="off"></label>
-                <label class="field"><span class="label">SCK</span><input type="text" id="pinSck" value="D36" autocomplete="off"></label>
+                <label class="field"><span class="label">MOSI</span><input type="text" id="pinMosi" value="-1" autocomplete="off"></label>
+                <label class="field"><span class="label">SCK</span><input type="text" id="pinSck" value="-1" autocomplete="off"></label>
                 <label class="field"><span class="label">SPI bus</span><input type="number" id="spiBus" value="0" min="0"></label>
               </div>
             </div>
@@ -864,7 +999,7 @@
 
     <div class="hr"></div>
     <span class="label">Setup</span>
-    <p class="hint">"Start setup over" runs this display through the flow again — pick the device, its Adafruit IO group, its Wi-Fi. Its panel settings, credentials and dashboard are kept. "Remove" forgets it in this browser only: nothing on Adafruit IO is touched, and the board keeps running whatever was last flashed onto it.</p>
+    <p class="hint">"Start setup over" runs this display through the flow again — pick the device, its Adafruit IO group, its Wi-Fi. Its panel settings, credentials and dashboard are kept. "Remove" deletes it here and deletes its group and feeds on Adafruit IO; the board itself is not touched and keeps running whatever was last flashed onto it.</p>
     <div style="display:flex; gap:10px">
       <button type="button" class="btn btn-secondary btn-sm" id="restartSetup">Start setup over</button>
       <button type="button" class="btn btn-danger btn-sm" id="removeDisplay">Remove this display</button>

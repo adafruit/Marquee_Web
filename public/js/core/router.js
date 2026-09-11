@@ -32,7 +32,7 @@ import { $, $$, val, show } from './util.js';
  *
  *   chrome  'list'   A1 — above the flow. No device identity, because the list is
  *                    about all of them and the active one is an implementation detail.
- *           'setup'  the setup run. A badge slot, no device state.
+ *           'setup'  the setup run. No device state.
  *           'device' A7/A8 — the full set: countdown, ALL DISPLAYS, the state lamp.
  *   rail    which of the two editor cells is current, or null for no rail at all.
  */
@@ -47,7 +47,6 @@ const SCREENS = {
 };
 
 let current = null;
-let badge = null;
 const enterHooks = new Map();
 
 /** Register a callback run every time `screen` becomes visible. */
@@ -77,11 +76,6 @@ export function deviceEntry(rec) { return rec?.setupStep || 'a7'; }
 export function navigate(screen) {
   if (!SCREENS[screen]) return;
   current = screen;
-  // The badge belongs to the screen that set it, so it is dropped on the way out rather
-  // than left for the next setup screen to inherit. A6-A re-sets it from its enter hook,
-  // which runs a frame later — so arriving there shows one frame without it, which is
-  // the right way round: a stale badge is a lie, a late one is a flicker.
-  badge = null;
   $$('.screen').forEach((el) => { el.dataset.active = String(el.dataset.screen === screen); });
   // Remembered so a reload lands where the user left off. Safe to do before the
   // sync below: the subscriber this wakes only re-renders nav, it never navigates.
@@ -121,16 +115,6 @@ function syncRail() {
 
 // ---------- the chrome bar --------------------------------------------------
 
-/**
- * The setup-run badge — `WEBSERIAL` on A6-A. Held in a module-level variable rather
- * than written straight to the DOM so it survives the syncChrome() that every
- * setState() triggers; the screen sets it once on enter.
- */
-export function setChromeBadge(text) {
-  badge = text || null;
-  syncChrome();
-}
-
 function syncChrome() {
   const st = getState();
   const kind = SCREENS[current]?.chrome || 'setup';
@@ -140,20 +124,15 @@ function syncChrome() {
   // should be a decision, not a stray click in the chrome.
   show($('crumbAllDisplays'), kind === 'device');
 
-  const badgeEl = $('chromeBadge');
-  if (badgeEl) {
-    const showBadge = kind === 'setup' && !!badge;
-    badgeEl.hidden = !showBadge;
-    if (showBadge) badgeEl.textContent = badge;
-  }
-
-  // The device status pill. Hidden on A1: the list is about every device, and a lamp
-  // up here would be reporting on whichever one happens to be active behind it.
+  // The device status pill. Editor screens only. Hidden on A1 because the list is about
+  // every device, and a lamp up here would be reporting on whichever one happens to be
+  // active behind it; hidden during setup because a board being re-run through the flow
+  // is being reconfigured, and what it was last doing is not the point of those screens.
   //
-  // Otherwise shown whenever there is ANYTHING to say — a write of our own, or a
+  // On A7/A8, shown whenever there is ANYTHING to say — a write of our own, or a
   // report from the board.
   const pill = $('devicePill');
-  const showDevice = kind !== 'list' && !!(st.lastWriteAt || st.lastWokeAt || st.lastSleptAt);
+  const showDevice = kind === 'device' && !!(st.lastWriteAt || st.lastWokeAt || st.lastSleptAt);
   pill.hidden = !showDevice;
 
   if (showDevice) {

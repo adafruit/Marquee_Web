@@ -52,7 +52,10 @@ export function escapeAttr(s) {
 
 export function fmtBytes(n) {
   if (!Number.isFinite(n)) return '—';
-  return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024) return `${n} B`;
+  // MB from a megabyte up: a 1.27 MB firmware image as "1300.4 KB" is the wrong unit.
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 // ---------- numbers, for the data-driven widgets ----------------------------
@@ -118,16 +121,6 @@ export function scaleUnit(v, lo, hi, log = false) {
     return h === l ? 0 : (Math.log10(v) - l) / (h - l);
   }
   return hi === lo ? 0 : (v - lo) / (hi - lo);
-}
-
-/** mm:ss for the clapperboard countdown; hh:mm:ss once past an hour. */
-export function fmtClock(totalSeconds) {
-  const s = Math.max(0, Math.floor(totalSeconds || 0));
-  const hh = Math.floor(s / 3600);
-  const mm = Math.floor((s % 3600) / 60);
-  const ss = s % 60;
-  const pad = (n) => String(n).padStart(2, '0');
-  return hh > 0 ? `${hh}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
 }
 
 /** "5 minutes" / "1 hour" — the human form of a refresh interval. */

@@ -23,7 +23,6 @@ The document had two homes and neither of them travelled:
 | where | written by | who can read it |
 |---|---|---|
 | `marquee.canvas.<id>` in localStorage | `saveCanvas()` in `devices.js`, every 400ms | one browser profile on one machine |
-| `canvas.json` on the render backend | `persistCanvas()` in `doc.js` | whoever can `cat` the file on the bench |
 
 So opening a display on a laptop that had never edited it showed an **empty canvas**
 for a board that was, at that moment, drawing a dashboard. The bitmap feed had the
@@ -105,11 +104,11 @@ In order, all of it guarded on the active device not having changed underneath:
 3. `deserialize(doc, { keepDisplay: true })` — the panel descriptor is **this** bench's.
    The `display` block inside a document authored elsewhere describes that machine's
    idea of the panel, not the pins in front of the user.
-4. `saveCanvasNow()` — localStorage, the `canvas.json` mirror, and the timestamp.
+4. `saveCanvasNow()` — localStorage and the timestamp.
 5. `whenCanvasSettled()` — images decode asynchronously, and photographing the canvas
    early caches a panel with holes where the artwork goes.
-6. `capturePanelFromCanvas()` in `screens/a8.js` — renders the scene through the
-   backend and files the BMP under `marquee.panelNow.<id>`, so the A1 tile shows the
+6. `capturePanelFromCanvas()` in `screens/a8.js` — renders the scene in the browser
+   (`render.js` -> `bitmap.js`) and files the BMP under `marquee.panelNow.<id>`, so the A1 tile shows the
    display instead of "Nothing drawn yet" and A8's left-hand glass is not empty.
 
 Step 6 is the one place that cache is written from something other than a feed datum,

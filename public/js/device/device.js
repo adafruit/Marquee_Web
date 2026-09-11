@@ -5,13 +5,13 @@
  * The shape of this module is dictated by one fact — a deep-sleeping e-paper
  * device is unreachable between wakes, and it pipelines its replies with no gap
  * (checkin.complete, then the next cycle's goodnight microseconds later). So
- * nothing here latches on "the last event seen": the backend keeps an
- * append-only log with a monotonic seq, we pull with a cursor into a local
- * queue, and each stage CONSUMES the event it cares about while leaving the
- * others queued in order for whoever owns them.
+ * nothing here latches on "the last event seen": the board's reports are read
+ * as an ordered log, pulled with a cursor into a local queue, and each stage
+ * CONSUMES the event it cares about while leaving the others queued in order
+ * for whoever owns them.
  */
 
-import { BACKEND, sleepFeedKey, statusFeedKey } from '../core/api.js';
+import { sleepFeedKey, statusFeedKey } from '../core/api.js';
 import { navigate } from '../core/router.js';
 import { layer, hideDitherPreview } from '../canvas/stage.js';
 import { select } from '../canvas/selection.js';
@@ -22,7 +22,7 @@ import {
 } from '../core/doc.js';
 import { renderOrReport, tooLargeForIO, publishToIO } from '../canvas/render.js';
 import { refreshFeedElements, readFeedData } from './feeds.js';
-import { takeInFlight } from './cycle.js';
+import { takeInFlight, parseStatus, readReport, TAKE_CEILING_MS, REPORT_GRACE_MS } from './cycle.js';
 import {
   getState, setState, setPublished, clearPublished,
   getQueued, setQueued, clearQueued, subscribe,
@@ -112,8 +112,10 @@ function currentSleepPayload() {
 let sleepCountdownTimer = null;
 
 /**
- * `wakesAt` in flow state is what the chrome clapperboard ticks off, so the countdown
- * survives navigating away from the screen and back.
+ * `wakesAt` in flow state is the armed wake time, and it outlives this timer: Showtime's
+ * headline reads it as "sleeping until 9:47 AM", and A1 reads each display's own out of
+ * its status feed. Nothing counts it DOWN any more — the clapperboard that did was the
+ * last per-second readout in the app and is gone.
  *
  * `since` is when the sleep actually BEGAN. It defaults to now, which is right for
  * the caller that just sent the command — but a status feed datum is read up to a
@@ -334,9 +336,6 @@ function dropQueuedWrite() {
 // Payload contract: docs/marquee-status.md.
 
 const STATUS_POLL_MS = 5000;
-/** How far past the modelled awake window to keep looking before calling it offline.
- *  A slow WiFi associate or one retry has to fit inside this. */
-const STATUS_GRACE_MS = 60000;
 /** Data points per poll. More than one so a poll that lands after both transitions
  *  can still see the 'awake' that the 'sleeping' needs to be judged against. */
 const STATUS_BATCH = 4;
@@ -380,26 +379,6 @@ function statusLog(line) {
 export const boardReportsState = () => statusSeen;
 
 /**
- * Read the status value as an object, whatever shape it arrived in.
- *
- * A bare "awake" is accepted as {state: "awake"} so the device half can ship in
- * stages, and unknown keys are simply carried — the contract is additive, so a
- * reader that rejects what it does not recognise would break on the next field
- * anyone adds.
- */
-function parseStatus(value) {
-  if (typeof value !== 'string') return null;
-  const text = value.trim();
-  if (!text) return null;
-  try {
-    const obj = JSON.parse(text);
-    return obj && typeof obj === 'object' ? obj : { state: String(obj) };
-  } catch {
-    return { state: text };
-  }
-}
-
-/**
  * Start a cycle from whatever is already on the feed, without acting on it — a
  * status left behind by a previous bench run would otherwise drive this one.
  */
@@ -440,37 +419,37 @@ async function resetStatusWatch() {
  * below from asserting a sleep on top of it.
  */
 function adoptReportedState(data) {
-  const seen = data
-    .map((d) => ({ at: Number.isFinite(d.createdAt) ? d.createdAt : Date.now(), s: parseStatus(d.value) }))
-    .filter((x) => x.s && (x.s.state === 'awake' || x.s.state === 'sleeping'));
-  if (!seen.length) return;
+  // The READING is cycle.js's, shared with A1 so the wall of tiles and the chrome pill
+  // cannot answer this differently. What stays here is everything that reading MEANS to
+  // the active board: the evidence flag, the open bracket, and the ticking countdown.
+  //
+  // BOTH ENDS of the last bracket come back, not just the head. The head alone says what
+  // the board is doing; the pair says what it has already done, and Act III needs that to
+  // tell the take on the glass from the take still waiting on the feed. Adopting only the
+  // head left `lastWokeAt` null for a board found asleep — so a board that had demonstrably
+  // woken, drawn and gone back to sleep was reported as having confirmed nothing.
+  const r = readReport(data, { fallbackSleepSecs: refreshInterval() });
+  if (!r) return;
   statusSeen = true;
 
-  // BOTH ENDS of the last bracket, not just the head. The head alone says what the board is
-  // doing; the pair says what it has already done, and Act III needs that to tell the take
-  // on the glass from the take still waiting on the feed. Adopting only the head left
-  // `lastWokeAt` null for a board found asleep — so a board that had demonstrably woken,
-  // drawn and gone back to sleep was reported as having confirmed nothing.
-  const newestAwake = seen.find((x) => x.s.state === 'awake');
-  const newestSleep = seen.find((x) => x.s.state === 'sleeping');
-  if (newestAwake) { lastAwakeAt = newestAwake.at; setState({ lastWokeAt: newestAwake.at }); }
-  if (newestSleep) setState({ lastSleptAt: newestSleep.at });
+  if (r.lastWokeAt) { lastAwakeAt = r.lastWokeAt; setState({ lastWokeAt: r.lastWokeAt }); }
+  if (r.lastSleptAt) setState({ lastSleptAt: r.lastSleptAt });
 
-  const head = seen[0];
-  if (head.s.state === 'awake') {
+  if (r.deviceState === 'online-awake') {
     setState({ deviceState: 'online-awake', wakesAt: null });
-    statusLog(`board is mid-take — adopting the awake at ${logClock(head.at)} as the open bracket`);
+    statusLog(`board is mid-take — adopting the awake at ${logClock(r.reportedAt)} as the open bracket`);
     return;
   }
 
-  // Asleep, and it said for how long.
-  const secs = Number.isFinite(head.s.sleep_time) ? head.s.sleep_time : refreshInterval();
-  setState({ wakeSource: head.s.alarm_type || 'timer' });
-  if (head.s.alarm_type === 'pin') setState({ deviceState: 'asleep', wakesAt: null, sleepSeconds: null });
-  else startSleepCountdown(secs, { since: head.at });
-  statusLog(`board is asleep — adopting the sleeping at ${logClock(head.at)} (${secs}s on `
-    + `${head.s.alarm_type || 'timer'})`
-    + `${newestAwake ? `, woke ${logClock(newestAwake.at)}` : ', no wake in this batch'}`);
+  // Asleep. startSleepCountdown() rather than r.wakesAt directly: it writes the same
+  // three fields and then TICKS, which is the half a pure reading cannot carry.
+  setState({ wakeSource: r.wakeSource });
+  if (r.wakeSource === 'pin') setState({ deviceState: 'asleep', wakesAt: null, sleepSeconds: null });
+  else startSleepCountdown(r.sleepSeconds, { since: r.reportedAt });
+  statusLog(`board is asleep — adopting the sleeping at ${logClock(r.reportedAt)} `
+    // A pin alarm has no duration to name; everything else does.
+    + `(${r.sleepSeconds == null ? 'until the button' : `${r.sleepSeconds}s`} on ${r.wakeSource})`
+    + `${r.lastWokeAt ? `, woke ${logClock(r.lastWokeAt)}` : ', no wake in this batch'}`);
 }
 
 let watchStarting = false;
@@ -606,14 +585,11 @@ function applyStatus(datum) {
   emit('slept');
 }
 
-/**
- * How long the board gets to say something before it is called offline.
- *
- * ONE number, generously over the worst take this hardware can produce: a 180s frame
- * cooldown plus a 40s BUSY-less redraw plus the round trip. Not fitted per panel, because
- * fitting it per panel is what produced a deadline of 86s for a 123s take.
- */
-const STATUS_TAKE_CEILING_MS = 300000;
+// The offline ceiling and its grace are cycle.js#TAKE_CEILING_MS / REPORT_GRACE_MS —
+// ONE number each, shared with A1, which makes the same judgement about a report it read
+// off another display's feed. Generously over the worst take this hardware can produce: a
+// 180s frame cooldown plus a 40s BUSY-less redraw plus the round trip. Not fitted per
+// panel, because fitting it per panel is what produced a deadline of 86s for a 123s take.
 
 /** The slow cadence, for when the board is not expected to say anything soon. */
 const STATUS_IDLE_MS = 60000;
@@ -646,7 +622,7 @@ function statusWindow(st) {
   // the watch (re)starts, the board gets a full ceiling from then.
   const due = takeInFlight(st) ? st.lastWokeAt : (st.wakesAt || lastReportAt || Date.now());
   const from = Math.max(due, watchStartedAt ?? 0);
-  return { deadline: from + STATUS_TAKE_CEILING_MS + STATUS_GRACE_MS };
+  return { deadline: from + TAKE_CEILING_MS + REPORT_GRACE_MS };
 }
 
 /**
@@ -768,7 +744,7 @@ function stopStatusWatch() {
  *                           promoted when the modelled redraw lands, which is when
  *                           the panel actually changes — scheduleQueuedWrite.
  *   startSleepCountdown() — writing to a feed does not move the board's wake time.
- *                           The clapperboard belongs to the sleep already running.
+ *                           `wakesAt` belongs to the sleep already running.
  *   lastWriteAt/wakeSource — nothing was written, and the alarm the board is
  *                           running is the one it armed before it slept; the new
  *                           window only takes effect after the next wake.
@@ -824,7 +800,7 @@ async function queueForNextTake() {
  * touching the world outside the browser.
  *
  * This is resetState()'s steps 1–3 and nothing else: no confirm(), no button chrome,
- * no /reset POST, no canvas wipe, no toast. The board is not being reset — it is
+ * no canvas wipe, no toast. The board is not being reset — it is
  * still out there running, and its autoresponders and wake response must survive
  * being looked away from. Only THIS PAGE's view of it is dropped.
  *
@@ -849,12 +825,11 @@ export function stopDeviceRuntime() {
 // ---------- reset -----------------------------------------------------------
 
 /**
- * One button back to a known-empty world. Three kinds of state accumulate:
+ * One button back to a known-empty world. Two kinds of state accumulate:
  *
- *   1. the canvas — the elements plus the persisted canvas.json behind them
+ *   1. the canvas — the elements plus the persisted document behind them
  *   2. this page's cycle state — the queued take, the published snapshot, the
  *      status watch and the countdown
- *   3. state living OUTSIDE the browser — the backend's copy of canvas.json
  *
  * Deliberately KEPT: the display descriptor, sleep settings and IO credentials.
  * Those are the bench setup, not device state. Nothing here touches the Adafruit
@@ -895,17 +870,8 @@ async function resetState() {
     resetCounter();               // element ids start over from el1
     layer.draw();
 
-    // 5) The backend's copy of canvas.json.
-    let cleared = false;
-    try {
-      const res = await fetch(BACKEND + '/reset', { method: 'POST' });
-      const r = await res.json().catch(() => null);
-      cleared = !!(res.ok && r && r.canvas && r.canvas.cleared);
-    } catch { /* backend down — reported below */ }
-
-    // 6) Re-baseline the local view of canvas.json. The backend just rewrote the
-    // file underneath us, so the de-dupe baseline has to be dropped or the empty
-    // canvas would never be persisted.
+    // 5) Re-baseline the saved document: the de-dupe baseline still holds the old
+    // scene, so drop it or the empty canvas would never be persisted.
     invalidateCanvasBaseline();
     saveCanvasNow();
 
@@ -913,10 +879,7 @@ async function resetState() {
     debugLine('');
     emit('reset');
 
-    toast(cleared
-      ? 'State reset — canvas cleared and the watch stopped'
-      : 'Canvas and editor state reset — but the backend was unreachable, so its '
-        + 'copy of canvas.json may still hold the old scene');
+    toast('State reset — canvas cleared and the watch stopped');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Reset state';

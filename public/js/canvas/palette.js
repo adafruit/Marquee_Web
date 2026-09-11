@@ -3,8 +3,7 @@
  * palettes it quantizes to.
  *
  * `display` is mutable shared state on purpose: it is the one object that the
- * editor, the config form, the render backend call and the /display/add
- * descriptor all agree on. Everything that changes it also has to re-fit the
+ * editor, the config form and the render call all agree on. Everything that changes it also has to re-fit the
  * canvas and invalidate any dither preview — see config.js, which owns the form
  * bindings that do exactly that.
  */
@@ -12,14 +11,17 @@
 /**
  * Seeded with the MagTag, matching the DISPLAY_PRESETS entry and the HTML
  * defaults in index.html. width/height are the panel's NATIVE scan geometry —
- * the 2.9" is a portrait 128×296 buffer — and `rotation` is what turns it into
- * the 296×128 landscape the product is used in. logicalDims() below is the one
- * that answers "how big is the canvas".
+ * the 2.9" is a portrait 128×296 buffer — and `rotation` is the 90° step the
+ * config asks the firmware to apply on top of it. `panel` is the firmware's panel
+ * id, carried here because for some panels it changes what rotation 0 LOOKS like
+ * (see LANDSCAPE_AT_ZERO_PANELS). logicalDims() below is the one that answers
+ * "how big is the canvas".
  */
 export const display = {
   width: 128,        // physical panel width, before rotation
   height: 296,       // physical panel height, before rotation
-  rotation: 270,     // 0 | 90 | 180 | 270 (degrees)
+  rotation: 0,       // 0 | 90 | 180 | 270 (degrees)
+  panel: 'magtag-2025',
   type: 'mono',      // mono | gray4 | tricolor | quadcolor
   dither: 'FloydSteinberg',
   diffusion: 85,
@@ -27,9 +29,12 @@ export const display = {
 };
 
 /**
- * Extracted from the committed remap PNGs (palettes/*.png). These must stay in
- * sync with what `magick -remap` quantizes to, or the editor shows colors the
- * panel cannot produce.
+ * The colours each panel type can show — the single source of truth the renderer
+ * (canvas/bitmap.js) quantizes to. Originally extracted from the ImageMagick
+ * `-remap` PNGs now kept under test/fixtures/palettes/ as provenance.
+ *
+ * Order here is for the editor's swatches only: the BMP palette that reaches the
+ * panel is in the renderer's octree order, exactly as ImageMagick emitted it.
  */
 export const PAPER = '#F2F4EF';
 
@@ -41,14 +46,6 @@ export const PALETTES = {
   quadcolor: ['#2F2429', '#F2F4EF', '#FD2A00', '#FFFF03'],
 };
 
-/** Display type -> ImageMagick -remap palette file. The backend contract. */
-export const REMAP_FILES = {
-  mono:      'eink-2color.png',
-  tricolor:  'eink-3color.png',
-  gray4:     'eink-4gray.png',
-  quadcolor: 'eink-4color.png',
-};
-
 export const MODE_LABELS = {
   mono: 'mono',
   gray4: '4 grays',
@@ -56,9 +53,21 @@ export const MODE_LABELS = {
   quadcolor: 'black/white/red/yellow',
 };
 
-/** Logical canvas dimensions once rotation is applied. */
+/**
+ * Panels whose firmware entry already turns the portrait scan buffer on its side, so
+ * rotation 0 is LANDSCAPE on the glass. The MagTag's 128×296 buffer is presented as
+ * 296×128 at rotation 0; the editor's canvas has to agree or the bitmap it ships is
+ * the wrong way round. Every other catalogued panel shows its buffer as-is at 0.
+ */
+export const LANDSCAPE_AT_ZERO_PANELS = new Set(['magtag-2025']);
+
+export function landscapeAtZero(panel = display.panel) {
+  return LANDSCAPE_AT_ZERO_PANELS.has(String(panel || '').trim());
+}
+
+/** Logical canvas dimensions once rotation (and the firmware's own step) is applied. */
 export function logicalDims() {
-  const swap = display.rotation % 180 !== 0;
+  const swap = (display.rotation % 180 !== 0) !== landscapeAtZero();
   return {
     w: swap ? display.height : display.width,
     h: swap ? display.width : display.height,
@@ -102,9 +111,9 @@ export function neutralShades() {
  *   tricolor   2.9" ≈ 14s    7.5" ≈ 25s
  *   quadcolor  2.9" ≈ 19s    7.5" ≈ 30s
  *
- * An estimate, and used only where being EARLY is the failure — see A8's
- * clapperboard, which would otherwise call a redraw overdue while the panel is
- * still visibly flashing.
+ * An estimate, and used only where being EARLY is the failure — a take promoted onto
+ * "on the panel now" before the panel has finished flashing is claiming a redraw that
+ * has not happened yet.
  */
 const REFRESH_FIT = {
   mono:      { base: 1.5, perMpx: 8 },

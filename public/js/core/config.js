@@ -1,6 +1,6 @@
 /**
- * The display descriptor: the A5 form, its persistence, and the request body
- * every device call is built from.
+ * The display descriptor: the panel form, its persistence, and the presets that
+ * fill it. The firmware-facing assembly of these fields is device/cfg.js.
  *
  * These fields physically live inside A5's advanced disclosure, but they are
  * read from A7 and A8 too — which is why every screen stays mounted. Nothing
@@ -8,13 +8,14 @@
  * assumes A5 is visible.
  */
 
-import { display, logicalDims, ditherLabel, ditherChipLabel } from '../canvas/palette.js';
+import { display, logicalDims, landscapeAtZero, ditherLabel, ditherChipLabel } from '../canvas/palette.js';
 import { fitZoom, updateDims, suspendDitherPreview, scheduleDitherRefresh } from '../canvas/stage.js';
 import { remapColorsToPalette } from '../canvas/elements.js';
 import { refreshProps } from '../canvas/selection.js';
 import { DISPLAY_PRESETS, PRESET_KEYS } from '../device/presets.js';
 import { getState, setState } from './state.js';
 import { patchActive } from '../device/devices.js';
+import { syncCfg } from '../device/cfg.js';
 import { $, $$, val, segValue, setSegValue, show, toast, fmtInterval } from './util.js';
 
 const DISPLAY_CONFIG_KEY = 'marquee.displayConfig';
@@ -36,53 +37,6 @@ const DITHER_HINTS = {
   ordered: 'Structured Bayer pattern. Not ideal for photos — it tends to lose edge detail — but gives a clean look for flat artwork and diagrams. Smaller maps give a coarser texture.',
   none: 'No dithering — each pixel snaps to the nearest palette colour. Good for text, high-contrast line art and bold flat graphics.',
 };
-
-// ---------- the descriptor --------------------------------------------------
-
-/**
- * The display descriptor as the live form describes it — geometry, colour mode,
- * identity, and the full SPI/EPD pinout.
- *
- * NO CALLERS RIGHT NOW, and kept deliberately. This is the assembled "panel
- * configuration" payload A6-A promises to write to the board; `device/flash.js`
- * names it as the builder for that, and the seam is the only thing missing. Note
- * that it is NOT what canvas.json carries: serialize() in doc.js writes the
- * `display` object from palette.js, which is geometry and dither only — the pinout
- * has no other assembled form.
- */
-export function buildDisplayBody() {
-  // Reconstruct the interfaceType object from the individual pin fields.
-  const iface = {
-    spiEpd: {
-      pinBusy: val('pinBusy'),
-      spi: {
-        bus: Number($('spiBus')?.value) || 0,
-        pinMosi: val('pinMosi'),
-        pinSck: val('pinSck'),
-        pinCs: val('pinCs'),        // EPD chip select, not the SRAM one
-      },
-      pinDc: val('pinDc'),
-      pinRst: val('pinRst'),
-      pinSramCs: val('pinSramCs'),  // SRAM chip select, if the EPD requires one
-    },
-  };
-
-  return {
-    width: display.width,
-    height: display.height,
-    // display.rotation is degrees; ws_display_DisplayProperties.rotation is the
-    // clockwise 90° step index the device passes to setRotation():
-    //   0 -> 0°, 1 -> 90°, 2 -> 180°, 3 -> 270°
-    rotation: Math.round((display.rotation || 0) / 90) % 4,
-    mode: display.type,
-    name: val('pmName') || 'epd0',
-    driver: val('pmDriver') || 'SSD1680',
-    panel: val('pmPanel') || 'adafruit-magtag',
-    user: val('pmUser') || 'test_user',
-    device: val('pmDevice') || 'magtag',
-    interface: iface,
-  };
-}
 
 /** The sleep timer, in seconds. The design calls this the refresh interval. */
 export function refreshInterval() {
@@ -224,6 +178,7 @@ export function applyDisplayPreset(key, { silent = false } = {}) {
   $('pmName').value = p.name;
   $('pmDriver').value = p.driver;
   $('pmPanel').value = p.panel;
+  display.panel = p.panel;
   // Blanked, not zeroed, for a preset with no offset — see colstartField().
   $('pmColstart').value = colstartField(p);
 
@@ -285,6 +240,10 @@ export function snapshotConfig() {
 function saveConfig() {
   const data = snapshotConfig();
   patchActive({ displayConfig: data });
+  // The descriptor just changed, so the file the board will read has too. cfg.js
+  // rebuilds it from these same fields; this is the call that keeps rec.cfg current
+  // through A4's preset click and every re-pin in Settings.
+  syncCfg();
   try { localStorage.setItem(DISPLAY_CONFIG_KEY, JSON.stringify(data)); } catch { /* storage disabled/full */ }
 }
 
@@ -295,6 +254,7 @@ function saveConfig() {
 export function applyDisplayToForm() {
   if ($('dtype')) $('dtype').value = display.type;
   if ($('rotSel')) $('rotSel').value = String(display.rotation);
+  if ($('pmPanel') && typeof display.panel === 'string' && display.panel) $('pmPanel').value = display.panel;
   if ($('diffusion')) $('diffusion').value = display.diffusion;
   if ($('orderedMap')) $('orderedMap').value = String(display.orderedMap);
   setSegValue('ditherSeg', display.dither);
@@ -318,6 +278,7 @@ function applyRestoredConfig() {
   display.width = +$('resW').value || display.width;
   display.height = +$('resH').value || display.height;
   display.rotation = +$('rotSel').value || 0;
+  display.panel = $('pmPanel')?.value || '';
   display.type = $('dtype').value;
   display.dither = segValue('ditherSeg') || 'FloydSteinberg';
   display.diffusion = +$('diffusion').value;
@@ -343,11 +304,17 @@ function applyRestoredConfig() {
  * every element's fill against the CURRENT palette — run it after the deserialize and
  * the incoming artwork gets remapped against the outgoing board's colour space.
  */
+/** Panel ids this editor used to write, and what the firmware's EPD factory calls them
+ *  now. Applied on load so a record saved under the old name does not hand the board a
+ *  panel it rejects (ERR_EPD_PANEL_UNSUPPORTED). */
+const PANEL_RENAMES = { 'adafruit-magtag': 'magtag-2025' };
+
 export function loadConfig(data) {
   if (!data || typeof data !== 'object') { applyRestoredConfig(); return; }
   CONFIG_FIELDS.forEach((id) => {
     if ($(id) && typeof data[id] === 'string') $(id).value = data[id];
   });
+  if (PANEL_RENAMES[$('pmPanel')?.value]) $('pmPanel').value = PANEL_RENAMES[$('pmPanel').value];
   if (typeof data.dmode === 'string') setSegValue('ditherSeg', data.dmode);
   applyRestoredConfig();
 }
@@ -479,6 +446,14 @@ export function initConfig() {
   });
 
   restoreConfig();
+
+  // The panel id decides what rotation 0 looks like (palette.js
+  // LANDSCAPE_AT_ZERO_PANELS), so retyping it can turn the canvas on its side.
+  $('pmPanel')?.addEventListener('change', () => {
+    const was = landscapeAtZero();
+    display.panel = val('pmPanel');
+    if (landscapeAtZero() !== was) { afterGeometryChange(); updateDims(); }
+  });
 
   // One persistence hook across every descriptor field.
   [...CONFIG_FIELDS, 'ditherSeg'].forEach((id) => {

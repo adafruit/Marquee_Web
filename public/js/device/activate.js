@@ -14,48 +14,24 @@
  * where its reason puts it, not at the end.
  */
 
-import { BACKEND } from '../core/api.js';
 import { snapshotConfig, loadConfig, syncDerivedUI } from '../core/config.js';
 import {
   deserialize, serialize, saveCanvasNow, cancelCanvasSave, invalidateCanvasBaseline,
   whenCanvasSettled,
 } from '../core/doc.js';
 import { readCanvasState, noteCanvasStateSeen } from './canvasfeed.js';
-import { isBackendOnline } from '../canvas/render.js';
 import { resetCounter } from '../canvas/elements.js';
 import { stopDeviceRuntime, ensureStatusWatch } from './device.js';
 import { hideDitherPreview } from '../canvas/stage.js';
 import { syncNav } from '../core/router.js';
 import { getState, replaceFlow } from '../core/state.js';
 import * as devices from './devices.js';
+import { syncCfg } from './cfg.js';
+import { deleteGroupFeeds } from './provision.js';
+import { hasIoConfig, connectedUser } from './credentials.js';
+import { ioGroupKey } from '../core/api.js';
 import { syncPushBlock, syncIntervalFromField } from '../screens/a7.js';
 import { resetDrawnCache, capturePanelFromCanvas } from '../screens/a8.js';
-
-/**
- * Pull a document out of canvas.json, once, for a device migrated from the build that
- * kept it there.
- *
- * This used to be the boot-time restore for every load. It is not any more: the canvas
- * is per-device and lives in localStorage, and the backend copy is a bench-inspection
- * mirror written by doc.js. The only record that still needs this is the one migration
- * minted, which has a real document sitting on a server and no local copy of it yet.
- *
- * A failure is not fatal: an empty canvas is a valid starting state, a corrupt file
- * should not stop the editor opening, and on GitHub Pages there is no server to ask.
- */
-async function seedCanvasFromServer(id) {
-  try {
-    const res = await fetch(BACKEND + '/canvas');
-    if (!res.ok) return null;
-    const body = await res.json().catch(() => null);
-    const doc = body?.doc ?? body;
-    if (!doc || !Array.isArray(doc.elements) || doc.elements.length === 0) return null;
-    devices.markCanvasSeeded(id, doc);
-    return doc;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Adopt the scene from {group}.canvas-state, if that is the newer one.
@@ -146,19 +122,25 @@ export async function rehydrateFor(rec) {
   // every element's fill against the CURRENT palette — run it after the artwork lands
   // and the incoming design gets remapped into the outgoing board's colour space.
   loadConfig(rec.displayConfig);
+  // The descriptor and the settings fields are both in place now, so the board's config
+  // file can be rebuilt from them. This is also how a record minted before `cfg` existed
+  // gets one: the first time it is opened, not by a migration pass.
+  syncCfg();
 
   // keepDisplay because the descriptor loaded a line above is the authority, not
   // whatever display block the stored document happens to carry.
   resetCounter();
-  const doc = devices.loadCanvas(rec.id)
-    ?? (devices.activeNeedsCanvasSeed() ? await seedCanvasFromServer(rec.id) : null);
+  // A record minted by the migration with no local copy simply starts empty: the
+  // server-side canvas.json it used to be seeded from no longer exists.
+  const doc = devices.loadCanvas(rec.id);
+  if (!doc && devices.activeNeedsCanvasSeed()) devices.markCanvasSeeded(rec.id, null);
   deserialize(doc || { version: 1, elements: [] }, { keepDisplay: true });
 
   // deserialize() fires 'draw' for every element it destroys and re-adds, and the
   // de-dupe baseline still holds the outgoing document. Drop it, or a first edit that
   // happens to serialize identically is swallowed as a no-op.
   invalidateCanvasBaseline();
-  if (isBackendOnline()) saveCanvasNow();
+  saveCanvasNow();
 
   // The action bar reads sleepDuration, which just changed under it with no input event
   // to notice.
@@ -176,6 +158,29 @@ export async function rehydrateFor(rec) {
   // Last, and NOT awaited: the display is fully shown by this point, and what follows
   // is a second opinion from Adafruit IO about which scene that should have been.
   hydrateFromCanvasFeed(rec.id).catch(() => { /* the local scene is up and stays up */ });
+}
+
+/**
+ * Delete the removed display's group and feeds on Adafruit IO — silently, best-effort.
+ *
+ * Skipped when there is no verified account to do it with, when the record never got a
+ * group (a draft abandoned before A5b), and when another display in this browser still
+ * uses the same group key: that one's feeds are not this one's to delete.
+ */
+function cleanupFeeds(rec, wasActive) {
+  const groupKey = ((wasActive ? ioGroupKey() : '') || rec.settings?.ioGroup || '').trim();
+  if (!groupKey || !hasIoConfig()) return;
+  if (devices.groupKeyTaken(groupKey, rec.id)) {
+    console.log(`[io] delete ${groupKey} skipped — another display in this browser uses it`);
+    return;
+  }
+  const user = connectedUser();
+  const key = document.getElementById('ioKey')?.value || '';
+  deleteGroupFeeds(user, key, groupKey)
+    .then((out) => {
+      if (!out.ok) console.warn(`[io] some of ${groupKey}'s feeds could not be deleted:`, out.failed);
+    })
+    .catch((err) => console.warn(`[io] feed cleanup for ${groupKey} threw`, err));
 }
 
 /**
@@ -197,8 +202,15 @@ export async function rehydrateFor(rec) {
  * editor is emptied by hand — the same end state, reached without a record to load.
  */
 export async function removeDevice(id) {
-  if (!id || !devices.getDevice(id)) return;
+  const rec = devices.getDevice(id);
+  if (!id || !rec) return;
   const wasActive = id === devices.activeDeviceId();
+
+  // The board's feeds go with the record. Started BEFORE the delete, because the group key
+  // and the credentials are read from the record and the live fields that are about to be
+  // cleared; not awaited, because four requests to Adafruit IO must not hold up a local
+  // removal, and a failure there is a console line, not a reason to keep the tile.
+  cleanupFeeds(rec, wasActive);
 
   if (wasActive) {
     // The 400ms autosave debounce must not fire after activeId moves — the same hazard

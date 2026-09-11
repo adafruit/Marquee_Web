@@ -12,7 +12,7 @@
 import { Konva } from './konva.js';
 import { display, logicalDims, PAPER, MODE_LABELS } from './palette.js';
 import { $, toast } from '../core/util.js';
-import { backendRender, markBackendOffline } from './render.js';
+import { renderBitmap } from './render.js';
 
 /** Resolve a design token to a concrete value — the canvas can't use var(). */
 function cssVar(name, fallback) {
@@ -132,8 +132,8 @@ export function updateDims() {
 
 // ---------- live dither preview overlay -------------------------------------
 //
-// The overlay renders through the BACKEND (real ImageMagick) via the
-// authoritative 1:1 capture, so what you see is what ships. It is a flat bitmap
+// The overlay is rendered from the authoritative 1:1 capture by the same code that
+// produces the panel BMP (render.js -> bitmap.js), so what you see is what ships. It is a flat bitmap
 // sitting on top of the stage, so it can't follow live edits: while you drag or
 // transform we hide it (revealing the real objects underneath) and re-render
 // once the gesture ends.
@@ -155,21 +155,21 @@ export async function showDitherPreview() {
   const seq = ++ditherRenderSeq;
   let im;
   try {
-    const r = await backendRender();
+    const r = renderBitmap();
     im = new Image();
     await new Promise((resolve, reject) => {
       im.onload = resolve;
       im.onerror = reject;
       im.src = 'data:image/png;base64,' + r.png;
     });
-  } catch {
-    markBackendOffline();
-    toast('Backend unreachable — cannot render the dithered preview');
+  } catch (e) {
+    console.error('[render]', e);
+    toast('Render failed — cannot show the dithered preview');
     hideDitherPreview();  // don't leave the button claiming a preview is up
     return;
   }
-  // A newer edit or render started while we were waiting — that one owns the
-  // overlay now, so don't paint this stale bitmap over it.
+  // A newer edit or render started while the image was decoding — that one owns
+  // the overlay now, so don't paint this stale bitmap over it.
   if (seq !== ditherRenderSeq) return;
   const { w, h } = logicalDims();
   previewEl.width = w;
@@ -205,7 +205,7 @@ export function suspendDitherPreview() {
 
 /**
  * Re-dither the current layout. Debounced so a flurry of nudges, drags or slider
- * ticks collapses into one backend round-trip; pass a longer delay for
+ * ticks collapses into one render; pass a longer delay for
  * continuous inputs (a range slider fires on every pixel of travel).
  */
 export function scheduleDitherRefresh(delay = 200) {

@@ -1,6 +1,6 @@
 /**
- * Creating the device's Adafruit IO group and feeds — the write half of the IO
- * integration, used only by A5b.
+ * Creating — and, when a display is removed, deleting — the device's Adafruit IO group
+ * and feeds: the write half of the IO integration. A5b creates; removeDevice() deletes.
  *
  * Separate from feeds.js, which is the READ half: that module pulls Konva in for
  * the element picker, and a setup screen that runs before the editor exists has no
@@ -205,6 +205,44 @@ export async function createGroupFeed(user, key, groupKey, feed) {
   ioLog('create ', fullKey, out.ok
     ? `feed created as "${feedName}", history ${history ? 'on' : 'OFF'}`
     : `feed creation failed (${out.status}) ${out.error}`);
+  return out;
+}
+
+/**
+ * Tear down what A5b built, when a display is removed from this browser.
+ *
+ * The four feeds first, each by its full `{group}.{feed}` key, then the group — but ONLY if
+ * it is empty afterwards. A5b reuses an existing group rather than insisting on its own, so
+ * a group someone made by hand may hold feeds that are not ours, and deleting the group
+ * would take those with it. An empty group is ours to remove; a non-empty one is left.
+ *
+ * Every step is best-effort and none of them throws: a 404 means the thing was already gone,
+ * which is the outcome wanted, and a failure is reported in the result rather than stopping
+ * the local removal that is already under way. Nothing here prompts — the confirm the user
+ * already answered named this as part of the deal.
+ */
+export async function deleteGroupFeeds(user, key, groupKey) {
+  const out = { ok: true, deleted: [], failed: [], groupDeleted: false };
+  for (const feed of MARQUEE_FEEDS) {
+    const fullKey = `${groupKey}.${feed.key}`;
+    const res = await ioFetch(`/api/v2/${enc(user)}/feeds/${enc(fullKey)}`, key, { method: 'DELETE' });
+    const gone = res.ok || res.status === 404;
+    ioLog('delete ', fullKey, gone ? (res.ok ? 'feed deleted' : 'already gone') : `delete failed (${res.status}) ${res.error}`);
+    (gone ? out.deleted : out.failed).push(fullKey);
+    if (!gone) out.ok = false;
+  }
+
+  const group = await getGroup(user, key, groupKey);
+  if (group.ok && group.data) {
+    if (feedsIn(group.data).size === 0) {
+      const res = await ioFetch(`/api/v2/${enc(user)}/groups/${enc(groupKey)}`, key, { method: 'DELETE' });
+      out.groupDeleted = res.ok || res.status === 404;
+      ioLog('delete ', groupKey, out.groupDeleted ? 'group deleted' : `group delete failed (${res.status}) ${res.error}`);
+      if (!out.groupDeleted) out.ok = false;
+    } else {
+      ioLog('delete ', groupKey, 'group still holds other feeds — left in place');
+    }
+  }
   return out;
 }
 

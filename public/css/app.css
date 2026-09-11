@@ -40,8 +40,9 @@
 .chrome .crumb-current { color: var(--color-accent-300); }
 .chrome .sep { opacity: 0.4; }
 /* The way back to the device list. A link rather than a button shape: it sits in a
-   trail of crumbs and is the same KIND of move as one, and giving it a border would
-   make it compete with Settings at the other end of the bar. */
+   trail of crumbs and is the same KIND of move as one. It kept that shape after the
+   Settings button it used to sit opposite was removed: a bordered button alone in the
+   chrome would read as the bar's primary action, which navigating back is not. */
 .chrome-link {
   flex: none;
   border: 0;
@@ -64,44 +65,6 @@
   border: 1px solid var(--color-chrome-hairline);
   color: var(--color-chrome-text);
   background: none;
-}
-
-/* The clapperboard at chrome scale: 28px against Showtime's 64. Deliberately the same two
-   parts — stripes, then a captioned readout — rather than a simplification of them, because
-   shrinking it whole is what makes it read as the sleep bar in miniature instead of as one
-   more status field. The stripe bands scale with the face: 16px/32px over 140px becomes
-   5px/10px over 30px, so the diagonal keeps its pitch rather than becoming two wide wedges. */
-.chrome-clapper {
-  display: flex;
-  align-items: stretch;
-  flex: none;
-  height: 28px;
-  border: 1px solid var(--color-chrome-hairline);
-}
-.chrome-clapper .stripes {
-  width: 30px;
-  border-right: 1px solid var(--color-chrome-text);
-  background: repeating-linear-gradient(115deg,
-    var(--color-chrome-text) 0 5px,
-    var(--color-accent-500) 5px 10px);
-}
-.chrome-clapper .readout { display: flex; align-items: center; gap: 8px; padding: 0 10px; }
-.chrome-clapper .cap {
-  font-size: 9.5px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  opacity: 0.7;
-  white-space: nowrap;
-}
-/* Tabular figures for the same reason the big one has them: a countdown whose digits change
-   width jitters the whole bar once a second. */
-.chrome-clapper .time {
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  font-size: 16px;
-  line-height: 1;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
 }
 
 /* The device pill is the only LIVE thing in the chrome, and it now says so in the
@@ -401,6 +364,21 @@
 
 /* ---- A4 · pick the device ------------------------------------------------ */
 
+/* The "not on the list?" banner across the top of A4. Always two lines, one per way
+   out, on the accent's palest tint so it reads as a notice and not as a fourth card. */
+.a4-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  margin: 14px 0 18px;
+  background: var(--color-accent-100);
+  border-color: var(--color-accent-300);
+}
+.a4-banner p { margin: 0; font-size: 13px; line-height: 1.5; text-wrap: pretty; }
+.a4-banner a { color: var(--color-accent-700); text-decoration: underline; text-underline-offset: 2px; }
+.a4-banner a:hover { color: var(--color-accent-900); }
+
 #a4 .panel-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -430,6 +408,18 @@
   color: var(--color-neutral-700);
   font-size: 11px;
   letter-spacing: 0.14em;
+  overflow: hidden;
+}
+/* Product shots are white-ground catalogue photos, so the slot goes white and taller
+   and the whole product is shown (contain), rather than cropping a 4:3 shot down to a
+   strip of its middle. */
+.panel-card .photo:has(img) { height: 190px; background: #fff; }
+.panel-card .photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 .panel-card .body {
   display: flex;
@@ -483,29 +473,24 @@
 .preset-chip[data-active="true"] { border-color: var(--color-accent); color: var(--color-accent-text); }
 
 /* ---- A5b · configure Adafruit IO ----------------------------------------- */
-/* The endpoints box. Label/value rows rather than a table: three rows do not need
-   column alignment, and the URLs are long enough that a fixed first column would leave
-   them wrapping in a narrow gutter. */
-.endpoints-plate { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
-.endpoint { display: flex; gap: 12px; align-items: baseline; font-size: 12px; }
-.endpoint .k {
-  flex: none;
-  width: 46px;
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.7;
-}
-.endpoint .v { min-width: 0; word-break: break-all; opacity: 0.85; }
-
+/* The one field on the screen, at the size of the sentence under it. Everywhere else a
+   .field is one of a row of them and 13px is right; here it is the entire question the
+   screen asks, so it is scaled to match the feeds plate rather than the Settings form
+   it inherits from. Scoped to #a5b — the shared metrics in base.css stay put. */
+#a5b .field > .label { font-size: 12px; letter-spacing: 0.14em; }
+#a5b .field > input { min-height: 40px; padding: 9px 12px; font-size: 15px; }
 
 /* One box in two roles: a preview of the feeds that will be created, and then the
    progress display for creating them. Sized off its own content in both, so the
    layout does not shift when the action fires. */
 .feeds-plate { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
-.feeds-plate .feeds-line { margin: 0; font-size: 13px; }
-.feeds-plate .feeds-rows { display: flex; flex-direction: column; gap: 9px; }
+.feeds-plate .feeds-line { margin: 0; font-size: 15px; }
+/* Read at body size rather than the 13px .check wears elsewhere: on A6-A a check row is
+   a progress tick beside the thing it describes, and here the four rows ARE the content
+   of the box — the feed keys this display is about to own. */
+.feeds-plate .feeds-rows { display: flex; flex-direction: column; gap: 10px; }
+.feeds-plate .check { font-size: 15px; }
+.feeds-plate .check .dot { width: 8px; height: 8px; }
 .feeds-plate .hint { margin: 0; }
 /* The failure text sits after the feed's own name on the same row. */
 .feeds-plate .check .why { margin-left: auto; padding-left: 12px; text-align: right; }
@@ -539,7 +524,52 @@
   border: 1px solid var(--color-divider);
 }
 .flash-bar .fill { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width 0.15s linear; }
-.flash-bar .pct { flex: none; width: 40px; font-size: 11px; text-align: right; }
+.flash-bar .pct { flex: none; width: 52px; font-size: 11px; text-align: right; }
+/* The erase row says what it is doing rather than inventing a number: a full-chip erase
+   reports no progress, and an erase that was not asked for is not "0%" of anything. */
+.flash-bar[data-state="skipped"] { opacity: 0.5; }
+.flash-bar[data-state="busy"] .track { position: relative; overflow: hidden; }
+.flash-bar[data-state="busy"] .fill { width: 30%; transition: none; animation: flash-busy 1.1s ease-in-out infinite alternate; }
+@keyframes flash-busy { from { transform: translateX(-10%); } to { transform: translateX(240%); } }
+@media (prefers-reduced-motion: reduce) {
+  .flash-bar[data-state="busy"] .fill { animation: none; width: 100%; opacity: 0.35; }
+}
+
+/* The three stages share the column's rhythm; only one is shown at a time. */
+.flash-stage { display: flex; flex-direction: column; gap: 14px; }
+
+.fw-row { display: flex; align-items: center; gap: 10px; }
+.fw-row .label { flex: none; width: 52px; }   /* lines up with .flash-bar .label */
+.fw-row .fw-name { font-size: 12px; opacity: 0.8; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-row .fw-name[data-state="ok"] { opacity: 1; }
+.fw-row .fw-name[data-state="bad"] { color: var(--color-danger); opacity: 1; }
+/* Release mode: the status line says which release and how far along; the track under it
+   fills while the image downloads. File mode swaps this block for the old file row. */
+.fw-release { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.fw-release .check { font-size: 12.5px; min-width: 0; }
+.fw-release .check [data-role="text"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-track { display: block; height: 4px; background: var(--color-neutral-200); border: 1px solid var(--color-divider); }
+.fw-track .fill { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width 0.15s linear; }
+.fw-row[data-state="fetching"] .check .dot { animation: fw-pulse 1.1s ease-in-out infinite alternate; }
+@keyframes fw-pulse { from { opacity: 0.35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .fw-row[data-state="fetching"] .check .dot { animation: none; } }
+.fw-row[data-mode="file"] .fw-release { display: none; }
+
+.drive-steps { font-size: 13px; }
+/* The drive stage's plate is the whole instruction — the steps AND the button that acts
+   on them — so it is bigger and darker than the A5C promise plate it borrows from, and
+   reads as the one thing to look at rather than a note beside the actions. */
+.drive-plate {
+  gap: 14px;
+  padding: 22px 24px 24px;
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-neutral-200));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-divider));
+}
+.drive-plate .label { font-size: 12px; color: var(--color-text); }
+.drive-plate .drive-steps { font-size: 14px; gap: 10px; line-height: 1.5; }
+.drive-plate .drive-steps .n { width: 16px; opacity: 0.7; }
+.drive-plate-actions { margin-top: 6px; }
+.drive-fallback { display: flex; flex-direction: column; gap: 10px; }
 
 .log-plate { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; flex: 1; min-height: 0; }
 /* Fixed height rather than growing: the log is the thing on this screen most likely to
@@ -883,6 +913,22 @@
   white-space: pre;
 }
 
+/* A JSON readout inside a modal — the cfg-marquee.json view on A6-A. Same face as the
+   canvas.json panel above, sized to the dialog rather than the editor column. */
+.json-view {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 60vh;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  white-space: pre;
+}
+.json-view:empty::before { content: 'Nothing yet.'; opacity: 0.45; }
+
 /* ---- A8 · showtime ------------------------------------------------------- */
 
 /* The context bar of A8's chrome stack — A7's act rail in the other key, and set to
@@ -903,7 +949,8 @@
 
 /* The headline is now the largest thing on this bar, which is the point: the sleep
    state IS the content of Showtime's context band, and it used to be a 18px caption
-   beside a 44px clapperboard that has since moved to the app bar. */
+   beside a 44px clapperboard. Both clapperboards are gone — the big one first, then the
+   chrome miniature that replaced it — so the prose is the whole of it. */
 .sleep-bar .message { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .sleep-bar .message .headline {
   font-family: var(--font-heading);
@@ -1023,20 +1070,6 @@
 
 .size-ok { color: var(--color-check-pass); }
 .size-bad { color: var(--color-danger); }
-
-/* The render backend is the only render path, so its absence has to be loud —
-   every render action disables when it goes away. */
-#backendBanner {
-  display: none;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-  padding: 7px 18px;
-  font-size: 12.5px;
-  color: var(--color-chrome-text);
-  background: var(--color-danger);
-}
-#backendBanner[data-offline="true"] { display: flex; }
 
 /* ---- panel thumbnails ---------------------------------------------------- */
 /* Small renderings of what a panel is showing, used in A8's captions and A1's
