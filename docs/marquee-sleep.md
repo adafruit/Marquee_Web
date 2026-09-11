@@ -1,7 +1,7 @@
 # The sleep feed — `{group}.sleep`
 
-How the editor tells the board how long to sleep and what to wake on. Three fields
-on an Adafruit IO feed, and nothing else.
+How the editor tells the board how long to sleep. Three fields on an Adafruit IO
+feed, and nothing else.
 
 - **Producer:** `pushToDisplay()` in `public/js/device/device.js`, via
   `currentSleepPayload()`. Fired by "Push to display" in Act II.
@@ -31,7 +31,7 @@ is what creates them, which is why it runs before the board is flashed.
 ## Worked example
 
 ```json
-{"alarm_type": "timer+pin", "sleep_mode": "deep", "sleep_time": 900}
+{"alarm_type": "timer", "sleep_mode": "deep", "sleep_time": 900}
 ```
 
 Published as the feed's `value`, so the consumer reads a **string** and parses it:
@@ -43,24 +43,16 @@ cfg = json.loads(resp.json()["value"])
 
 ## Fields
 
-### `alarm_type` — `"timer"` | `"pin"` | `"timer+pin"`
+### `alarm_type` — `"timer"`
 
-What the board arms before it sleeps.
+What the board arms before it sleeps. **The editor always sends `"timer"`:** one
+time alarm at `sleep_time` seconds. There is no wake-on-button choice in the UI any
+more — the interval is the only sleep control — so the field is a constant on the
+producer side. It stays in the payload so the feed keeps one shape for a consumer
+that already parses it, and so a future value has a slot to land in.
 
-| value | arm |
-|---|---|
-| `timer` | one time alarm at `sleep_time` seconds |
-| `pin` | one pin alarm |
-| `timer+pin` | one of each — whichever fires first wakes the board |
-
-**At most one alarm of each kind.** The combination is deliberately not a list:
-one timer and one pin covers "redraw on a schedule, but let me force it", and
-anything richer is a config format nobody asked for.
-
-`pin` also fixes `sleep_mode` at `deep`, because it is the one value with no timer
-to derive a mode from — see below.
-
-Comes from the "Wake on" select in A7's inspector.
+A consumer should still treat the field as a string it may not recognise (see
+Fallbacks) rather than assuming the constant.
 
 ### `sleep_mode` — `"light"` | `"deep"`
 
@@ -82,16 +74,6 @@ directly so the label a user sees and the value the board gets cannot drift. The
 60 s row is the reasoning, not a value read from anywhere: nothing in the editor
 reads a keepalive off the board.
 
-**`alarm_type: "pin"` is the one exception, and is always `deep`.** A pin-only alarm
-ignores `sleep_time` (see below), so there is nothing to derive from and it keeps the
-default it always had. `timer+pin` has a time alarm making exactly the same trade as
-a bare timer, so it follows the table.
-
-That exception is worth knowing about rather than trusting: deep-sleep pin alarms
-need an RTC-capable GPIO (see Known gaps), and pin-only has no timer to recover with.
-The answer is the fallback this file already specifies — drop the pin and arm a
-timer alarm at the firmware's own default interval, never deep-sleep with no alarm.
-
 The two are not interchangeable for the consumer: a deep sleep never returns, while
 a light sleep resumes in place — so firmware that supports `light` needs its take
 wrapped in a loop. Both spellings are reachable from the
@@ -104,10 +86,8 @@ The timer duration. Same value as the editor's refresh interval — the
 `#sleepDuration` field, surfaced as "Wake and redraw" in A7 and read through
 `refreshInterval()`.
 
-**Always present, and ignored when `alarm_type` is `"pin"`.** Sending it
-unconditionally keeps the payload one shape, and a pin-only alarm has no duration
-to express. `0` means a time alarm in the past, so a consumer should treat it as
-"do not sleep on the timer" rather than passing it through.
+**Always present.** `0` means a time alarm in the past, so a consumer should treat
+it as "do not sleep on the timer" rather than passing it through.
 
 It now carries two facts rather than one — the duration *and*, through the table
 above, the mode. `0` lands in the light band, which is the harmless answer for a
@@ -115,15 +95,11 @@ timer that is not going to be slept on anyway.
 
 ## What is deliberately not here
 
-**The wake pin.** A pin alarm needs to know which pin, and that is a fact about
-how the board is wired rather than about this take — so it belongs on the board
-with the rest of its configuration. Re-sending it with every push would also mean
-the editor had to know each board's button pins, which the panel catalog does not
-carry.
-
-The practical consequence: `alarm_type` can ask for a pin the board has no pin
-for. That is the consumer's call to make, and the answer is to say so and fall
-back to the timer, not to refuse to sleep.
+**A wake pin, or any wake-on-button option.** The editor used to offer "Button
+press" and "Timer or button" alarms; both are gone, and with them any question of
+which pin a board wakes on. If a pin alarm ever comes back, the pin itself is a
+fact about how the board is wired rather than about this take, so it belongs on
+the board with the rest of its configuration, not on this feed.
 
 **Credentials and the group key itself** — written to the board at flash time
 (A1-C collects the account, A5b the group, A5C the network, A6-A writes them), as with the image feed.
@@ -140,8 +116,8 @@ an error worth bricking a take over.
 
 - No value, or one that will not parse → fall back to the firmware's own default
   interval and a plain timer.
-- `alarm_type` asks for a pin the board does not define → drop the pin, keep
-  whatever else was asked for.
+- `alarm_type` is a value the firmware does not recognise → ignore it and arm a
+  timer at `sleep_time`, which is the only thing the editor ever asks for.
 - Nothing left to arm → arm a timer alarm at the default interval anyway. **Never
   deep-sleep with no alarm**; a board with no way back is a board that needs a
   USB cable.
@@ -160,9 +136,9 @@ an error worth bricking a take over.
 It does not wait for anything, and there is nothing it could wait for — this feed
 carries no acknowledgement. Act III's countdown is therefore a client-side estimate
 of the window that was published, not a report of the board's state, until the
-sibling `{group}.status` feed says otherwise. When `alarm_type` is `pin` there is no
-wake time to estimate, so A8 says "sleeping until the button is pressed" and runs no
-clock (`wakeSource` in `state.js`).
+sibling `{group}.status` feed says otherwise. (That feed can still report a `pin`
+alarm the firmware armed on its own; `wakeSource` in `state.js` carries it, and A8
+then runs no clock — see `marquee-status.md`.)
 
 ## Known gaps
 
@@ -172,14 +148,6 @@ clock (`wakeSource` in `state.js`).
   for whoever writes the consumer.
 - **Nothing configures a sleep-feed key on the board.** Whether the consumer wants
   the key from its own configuration or derived from the group key is its call.
-- **Deep-sleep pin alarms are not available on every pin.** On the ESP32-S2/S3
-  only RTC-capable GPIOs survive deep sleep. A board whose only button is on a
-  non-RTC pin can honour `pin` under `light` but not under `deep`.
-
-  The editor leans on this: `alarm_type: "pin"` is sent as `deep`, so such a board
-  has to take the documented fallback and arm a time alarm instead of the pin. Under
-  `timer+pin` the same mistake degrades to timer-only and recovers on the next
-  interval rather than hanging.
 - **Nothing reports the board's real state — yet.** `deviceState` goes to `asleep`
   because we published a sleep window, not because a board said so. The answer is
   the sibling `{group}.status` feed (`docs/marquee-status.md`), which the editor

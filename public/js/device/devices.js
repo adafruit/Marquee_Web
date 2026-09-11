@@ -68,7 +68,6 @@ export const SETTINGS_SCOPE = {
   pmDevice: 'device',
   ioGroup: 'device',
   sleepDuration: 'device',
-  wakeAlarm: 'device',
 };
 
 export const ACCOUNT_FIELDS = Object.keys(SETTINGS_SCOPE).filter((k) => SETTINGS_SCOPE[k] === 'account');
@@ -185,7 +184,7 @@ export function createDraft() {
     updatedAt: Date.now(),
     status: 'draft',
     setupStep: 'a4',
-    settings: { pmDevice: '', ioGroup: '', sleepDuration: '300', wakeAlarm: 'timer' },
+    settings: { pmDevice: '', ioGroup: '', sleepDuration: '300' },
     flow: {},
     displayConfig: null,
     /** The board's cfg-marquee.json, filled in by cfg.js as setup advances. */

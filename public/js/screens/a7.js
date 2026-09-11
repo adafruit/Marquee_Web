@@ -126,22 +126,17 @@ function intervalPhrase(secs) {
 
 /**
  * The chip's resting text: what the board will do, in one line, without opening
- * anything. Read from the two selects rather than from state, because they are the
- * controls the popover edits and this has to be true the instant one changes.
+ * anything. Read from the interval select rather than from state, because it is the
+ * control the popover edits and this has to be true the instant it changes.
  *
- * A PIN-ONLY alarm gets no cadence, and this is the case worth being careful about.
- * `sleep_time` is ignored entirely for a bare PinAlarm (docs/marquee-sleep.md), so
- * "Button press · every 5 minutes" would be the chip stating an interval the board
- * is provably not keeping. The alarm is the whole answer there.
+ * The wake source is always the timer — the editor publishes `alarm_type: "timer"`
+ * unconditionally (device.js#currentSleepPayload) — so the chip names it as a fixed
+ * word and the cadence is the whole variable part.
  */
 function syncSleepChip() {
   const el = $('sleepChipValue');
   if (!el) return;
-  const alarm = $('wakeAlarm');
-  const source = alarm?.selectedOptions[0]?.textContent || 'Timer';
-  el.textContent = alarm?.value === 'pin'
-    ? source
-    : `${source} · ${intervalPhrase(refreshInterval())}`;
+  el.textContent = `Timer · ${intervalPhrase(refreshInterval())}`;
 }
 
 // ---------- the popovers ------------------------------------------------------
@@ -244,8 +239,6 @@ export function initA7({ onEnter }) {
     field.dispatchEvent(new Event('input', { bubbles: true }));
   });
   $('sleepDuration').addEventListener('input', syncIntervalFromField);
-  // main.js owns persisting this one; the chip only needs to hear that it moved.
-  $('wakeAlarm').addEventListener('change', syncSleepChip);
 
   // ---- the popovers ----
   POPOVERS.forEach((p) => $(p.chipId).addEventListener('click', () => togglePopover(p)));

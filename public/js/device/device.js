@@ -82,27 +82,16 @@ function currentSleepConfig() {
 /**
  * The sleep window as it goes onto the feed. Three fields and no more.
  *
- * The wake PIN is deliberately absent: it is a fact about how the board is wired,
- * not about this take, so it lives on the board with the rest of its configuration
- * rather than being re-sent with every push. `sleep_time` is always included and is
- * ignored by the consumer when `alarm_type` is "pin". See docs/marquee-sleep.md.
+ * `alarm_type` is always "timer": the editor no longer offers a wake-on-button
+ * choice, and the interval is the only sleep control left. The field stays in the
+ * payload so the feed keeps one shape for any consumer already parsing it. The mode
+ * derives from the interval (currentSleepConfig). See docs/marquee-sleep.md.
  */
 function currentSleepPayload() {
   const { mode, durSeconds } = currentSleepConfig();
-  const alarm = $('wakeAlarm')?.value || 'timer';
-  // The interval picks the mode wherever there IS a timer — which includes
-  // "timer+pin", whose TimeAlarm makes the same light-vs-deep trade as a bare timer.
-  // A pin-only alarm ignores sleep_time entirely (docs/marquee-sleep.md), so there
-  // is nothing to derive from and it keeps the deep default it always had.
-  //
-  // That default is the one case worth knowing about: deep-sleep PinAlarms need an
-  // RTC-capable GPIO on the ESP32-S2/S3, so a board whose only button is on a
-  // non-RTC pin cannot honour "pin" under "deep" — and pin-only has no timer to
-  // recover with. The consumer's answer is the fallback the doc already specifies:
-  // drop the pin and arm a TimeAlarm rather than deep-sleeping with no alarm.
   return {
-    alarm_type: alarm,
-    sleep_mode: alarm === 'pin' ? 'deep' : mode,
+    alarm_type: 'timer',
+    sleep_mode: mode,
     sleep_time: durSeconds,
   };
 }
@@ -212,9 +201,8 @@ async function pushToDisplay() {
     const armed = sio.ok ? payload.alarm_type : null;
     setState({ lastWriteAt: Date.now(), wakeSource: armed });
 
-    // 3) The countdown, but only when there is a time to count to. A pin-only
-    // alarm has none, and neither does an unpublished window — showing a clock in
-    // either case would be inventing a wake time.
+    // 3) The countdown, but only when there is a time to count to. An unpublished
+    // window has none — showing a clock for it would be inventing a wake time.
     //
     // Nor does a board that narrates its own cycle. What was just published is a REQUEST:
     // it takes effect at the board's next fetch, and the board then says what it actually
@@ -225,14 +213,12 @@ async function pushToDisplay() {
     if (boardReportsState()) {
       stopSleepCountdown();
       status('📨 Sleep window published — waiting for the board to say what it armed');
-    } else if (armed === 'timer' || armed === 'timer+pin') {
+    } else if (armed === 'timer') {
       startSleepCountdown(payload.sleep_time);
     } else {
       stopSleepCountdown();
       setState({ deviceState: 'asleep', wakesAt: null });
-      status(armed === 'pin'
-        ? '💤 Sleeping until the wake button is pressed'
-        : '⚠️ Dashboard published, but the sleep window did not reach the feed');
+      status('⚠️ Dashboard published, but the sleep window did not reach the feed');
     }
 
     toast(sio.ok

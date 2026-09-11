@@ -466,17 +466,6 @@
           <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
           <span class="label">Wake and redraw</span>
 
-          <!-- The alarm the board arms before it sleeps. Published on the sleep
-               feed alongside the window, so the board knows what to wake on. -->
-          <label class="field" id="wakeAlarmField">
-            <span class="pop-label">Wake on</span>
-            <select class="input" id="wakeAlarm">
-              <option value="timer" selected>Timer</option>
-              <option value="pin">Button press</option>
-              <option value="timer+pin">Timer or button</option>
-            </select>
-          </label>
-
           <!-- A minute at a time up to the deep-sleep line, then coarsening: the four
                light-sleep options are one minute apart because that is the range where
                a minute is the whole difference, and past five minutes nobody is

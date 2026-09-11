@@ -54,10 +54,12 @@ const DEFAULTS = {
   lastWokeAt: null,
   lastSleptAt: null,
 
-  /** What the last published sleep window wakes on:
-   *  'timer' | 'pin' | 'timer+pin' | null. A pin-only alarm has no wake TIME, so
-   *  A8 has to say "until you press the button" rather than tick a countdown at
-   *  a `wakesAt` that would be a fiction. */
+  /** What the current sleep wakes on: 'timer' | 'pin' | 'timer+pin' | null.
+   *  The editor only ever publishes 'timer' (device.js#currentSleepPayload); the
+   *  other two arrive from the board's own status feed, which reports what it
+   *  actually armed. A pin-only alarm has no wake TIME, so A8 has to say "until you
+   *  press the button" rather than tick a countdown at a `wakesAt` that would be a
+   *  fiction. */
   wakeSource: null,
 
   /** Last screen visited, so a reload lands where the user left off. Per-device,
