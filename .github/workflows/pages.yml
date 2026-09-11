@@ -24,7 +24,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 21+ : the test script relies on node expanding the --test globs itself
+          node-version: '24'
       # No install step: the repo has no runtime or dev dependencies.
       - run: npm test
 
