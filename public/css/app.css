@@ -473,29 +473,24 @@
 .preset-chip[data-active="true"] { border-color: var(--color-accent); color: var(--color-accent-text); }
 
 /* ---- A5b · configure Adafruit IO ----------------------------------------- */
-/* The endpoints box. Label/value rows rather than a table: three rows do not need
-   column alignment, and the URLs are long enough that a fixed first column would leave
-   them wrapping in a narrow gutter. */
-.endpoints-plate { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
-.endpoint { display: flex; gap: 12px; align-items: baseline; font-size: 12px; }
-.endpoint .k {
-  flex: none;
-  width: 46px;
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.7;
-}
-.endpoint .v { min-width: 0; word-break: break-all; opacity: 0.85; }
-
+/* The one field on the screen, at the size of the sentence under it. Everywhere else a
+   .field is one of a row of them and 13px is right; here it is the entire question the
+   screen asks, so it is scaled to match the feeds plate rather than the Settings form
+   it inherits from. Scoped to #a5b — the shared metrics in base.css stay put. */
+#a5b .field > .label { font-size: 12px; letter-spacing: 0.14em; }
+#a5b .field > input { min-height: 40px; padding: 9px 12px; font-size: 15px; }
 
 /* One box in two roles: a preview of the feeds that will be created, and then the
    progress display for creating them. Sized off its own content in both, so the
    layout does not shift when the action fires. */
 .feeds-plate { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
-.feeds-plate .feeds-line { margin: 0; font-size: 13px; }
-.feeds-plate .feeds-rows { display: flex; flex-direction: column; gap: 9px; }
+.feeds-plate .feeds-line { margin: 0; font-size: 15px; }
+/* Read at body size rather than the 13px .check wears elsewhere: on A6-A a check row is
+   a progress tick beside the thing it describes, and here the four rows ARE the content
+   of the box — the feed keys this display is about to own. */
+.feeds-plate .feeds-rows { display: flex; flex-direction: column; gap: 10px; }
+.feeds-plate .check { font-size: 15px; }
+.feeds-plate .check .dot { width: 8px; height: 8px; }
 .feeds-plate .hint { margin: 0; }
 /* The failure text sits after the feed's own name on the same row. */
 .feeds-plate .check .why { margin-left: auto; padding-left: 12px; text-align: right; }

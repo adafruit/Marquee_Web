@@ -7,20 +7,25 @@
  * draws nothing, and there is no error anywhere to tell you why — which is the failure
  * this screen exists to prevent.
  *
- * ONE field and one action. The Adafruit IO account is not asked for here — it was
- * settled once in A1-C, before the first display was ever added, and this screen
- * reads it (see the plate at the top). The device name becomes the group's name, its slug
- * becomes the group key, and it is also what this display is called everywhere else in
- * the app — the tile on A1, the crumb in the chrome. The feeds box below is a preview of
- * what will be created, and then the progress display for creating it. The endpoints box
- * under it resolves the URLs that key implies, so the consequence of the name is visible
- * before it is committed rather than in the IO web UI afterwards.
+ * ONE field and one action, and the screen is built to look like it. The Adafruit IO
+ * account is not asked for here — it was settled once in A1-C, before the first display
+ * was ever added, and this screen reads it (see the plate at the top). The device name
+ * becomes the group's name, its slug becomes the group key, and it is also what this
+ * display is called everywhere else in the app — the tile on A1, the crumb in the
+ * chrome. The feeds box below is a preview of what will be created, and then the
+ * progress display for creating it.
+ *
+ * WHAT THIS SCREEN SAYS, IT SAYS IN THE RAIL. The main column is the account, the field,
+ * the four dots and the buttons; every standing explanation is in the aside. The group
+ * key line is the exception, and only because it is a readout of what was typed rather
+ * than prose: "Kitchen Board" creating `kitchen-board` is a consequence the user should
+ * meet here rather than in the IO web UI afterwards.
  *
  * REUSE OVER REPLACE, always. An existing group is used as it stands and an existing
  * feed is left alone — this screen never renames or deletes anything on the account.
  */
 
-import { ioGroupKey, ioHost } from '../core/api.js';
+import { ioGroupKey } from '../core/api.js';
 import {
   MARQUEE_FEEDS, getGroup, createGroup, createGroupFeed, feedsIn,
 } from '../device/provision.js';
@@ -29,16 +34,7 @@ import { navigate } from '../core/router.js';
 import { activeDeviceId, groupKeyTaken, setSetupStep } from '../device/devices.js';
 import { hasIoConfig, connectedUser, clearIoVerified } from '../device/credentials.js';
 import { openCredentialsGate } from './a1c.js';
-import { $, val, toast, setCheck, slugifyKey, setFieldValue, escapeHtml } from '../core/util.js';
-
-/** What each feed is for, in the user's terms. The row's resting label, and the
- *  thing it goes back to saying if a retry clears an error. */
-const PURPOSE = {
-  bitmap: 'bitmap — the picture your board draws',
-  sleep: 'sleep — how long it waits before waking',
-  status: 'status — what your board reports back',
-  'canvas-state': 'canvas-state — the editable scene, so any browser can open it',
-};
+import { $, val, toast, setCheck, slugifyKey, setFieldValue } from '../core/util.js';
 
 /** The label the primary button wears while requests are in flight. Named because
  *  the finally block reads it back to tell "nothing else set a label" from "a branch
@@ -112,45 +108,6 @@ function syncForm() {
 function renderGroupLine() {
   const el = $('a5bGroupKey');
   if (el) el.textContent = ioGroupKey() || '—';
-  renderEndpoints();
-}
-
-/**
- * Where this group will actually live.
- *
- * Rendered from the same call as the group-key line, deliberately: two readouts of one
- * value updated by two paths is how they end up disagreeing, and the whole point of
- * showing the URLs is that they are the consequence of the key above them.
- *
- * The host comes from ioHost(), not a literal — this app defaults to io.adafruit.us and
- * the Settings toggle moves the whole account, so hardcoding io.adafruit.com here would
- * print URLs for feeds that are not the ones being created.
- *
- * TO CONFIRM against Adafruit IO's MQTT docs before shipping: the group-topic spelling.
- * The web and API forms are the documented group routes and are certain; the MQTT
- * by-key topic is the one line here that could not be verified from inside this repo.
- */
-function renderEndpoints() {
-  const box = $('a5bEndpoints');
-  if (!box) return;
-  const host = ioHost();
-  // The STORED username, so these URLs follow an account changed mid-flow rather
-  // than freezing at whatever was typed on a form that no longer exists.
-  const user = connectedUser();
-  const group = ioGroupKey();
-
-  if (!user || !group) {
-    box.innerHTML = '<p class="hint">Connect your Adafruit IO account and name this device to see where this lands.</p>';
-    return;
-  }
-
-  const rows = [
-    ['Web', `https://${host}/${user}/groups/${group}`],
-    ['API', `https://${host}/api/v2/${user}/groups/${group}`],
-    ['MQTT', `${user}/groups/${group} — on ${host}:8883`],
-  ];
-  box.innerHTML = rows.map(([k, v]) =>
-    `<div class="endpoint"><span class="k">${k}</span><span class="mono v">${escapeHtml(v)}</span></div>`).join('');
 }
 
 /**
@@ -203,9 +160,11 @@ function renderAccountBlock() {
 
 // ---------- the feeds box --------------------------------------------------
 
-/** Reset the feed rows to pending, and clear whatever the last run concluded. */
+/** Reset the feed rows to pending, and clear whatever the last run concluded.
+ *  The bare feed key is the row's resting label and the prefix every result is written
+ *  onto — what the feed is FOR is said once, in the rail. */
 function resetRows() {
-  MARQUEE_FEEDS.forEach((f) => setCheck(f.rowId, 'wait', PURPOSE[f.key]));
+  MARQUEE_FEEDS.forEach((f) => setCheck(f.rowId, 'wait', f.key));
   setOutcome('');
 }
 
@@ -219,8 +178,10 @@ function resetRows() {
  */
 function renderRestingState() {
   if (alreadyConfirmed()) {
-    MARQUEE_FEEDS.forEach((f) => setCheck(f.rowId, 'pass', `${PURPOSE[f.key]} — ready`));
-    setOutcome(`${ioGroupKey()} and its ${MARQUEE_FEEDS.length} feeds are configured on Adafruit IO.`);
+    // The row says the feed's name and the dot says its state — a "ready" after each
+    // one, under a line that already claims all four, was the same fact three times.
+    MARQUEE_FEEDS.forEach((f) => setCheck(f.rowId, 'pass', f.key));
+    setOutcome('');
     setActionLabel('Continue');
     return;
   }
@@ -240,7 +201,7 @@ function setOutcome(text, tone = '') {
 /** A row that failed says why on the row itself, because "something went wrong"
  *  four feeds deep is not an answer anyone can act on. */
 function failRow(feed, why) {
-  setCheck(feed.rowId, 'fail', `${PURPOSE[feed.key]} — ${why}`);
+  setCheck(feed.rowId, 'fail', `${feed.key} — ${why}`);
 }
 
 // ---------- the run --------------------------------------------------------
@@ -356,17 +317,17 @@ async function createGroupAndFeeds() {
         // bitmap feed with history on rejects every publish — so it is said out
         // loud rather than discovered as a 422 two screens later.
         if (!feed.history && existing.history === true) {
-          setCheck(feed.rowId, 'warn', `${PURPOSE[feed.key]} — already there, but its history is ON`);
+          setCheck(feed.rowId, 'warn', `${feed.key} — already there, but its history is ON`);
           historyWarning = true;
         } else {
-          setCheck(feed.rowId, 'pass', `${PURPOSE[feed.key]} — already there`);
+          setCheck(feed.rowId, 'pass', `${feed.key} — already there`);
         }
         continue;
       }
       const out = await createGroupFeed(user, key, groupKey, feed);
       if (out.ok) {
         setCheck(feed.rowId, 'pass',
-          `${PURPOSE[feed.key]} — created${feed.history ? '' : ', history off'}`);
+          `${feed.key} — created${feed.history ? '' : ', history off'}`);
         created++;
       } else {
         failRow(feed, out.status === 403 ? 'feed limit reached' : out.error);
@@ -492,7 +453,7 @@ export function initA5b({ onEnter }) {
         setState({ ioSetup: 'pending' });
       }
       renderRestingState();
-      renderGroupLine();   // -> renderEndpoints(), so the URLs follow the new account
+      renderGroupLine();
       syncForm();
     } });
   });

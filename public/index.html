@@ -125,7 +125,7 @@
         <div class="col-main">
           <div class="screen-head">
             <h3>Configure Adafruit IO</h3>
-            <p id="a5bSub">Your board reads its picture from Adafruit IO and reports back on the same account. This makes the feeds it needs.</p>
+            <p>Name this display. We'll create the Adafruit IO group and feeds it needs.</p>
           </div>
 
           <!-- The account, stated rather than asked for. It was settled once in
@@ -157,24 +157,19 @@
                do not move, they only change colour. -->
           <div class="feeds-plate blueprint">
             <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <p class="feeds-line" id="a5bGroupLine">Four feeds, under the group <span class="mono" id="a5bGroupKey">—</span></p>
+            <p class="feeds-line" id="a5bGroupLine">The following feeds will be created under the group <span class="mono" id="a5bGroupKey">—</span>, if they do not already exist:</p>
+            <!-- The feed key alone. What each one is FOR is in the rail, which says it
+                 once for all four; spelling it out per row said the same thing a second
+                 time, in the column the user is trying to act in. The row's text slot is
+                 also where the run writes its result ("bitmap — created"), so a resting
+                 label of any length is a prefix on every one of those. -->
             <div class="feeds-rows">
-              <div class="check" data-state="wait" id="a5bFeedBitmap"><span class="dot"></span><span data-role="text">bitmap — the picture your board draws</span></div>
-              <div class="check" data-state="wait" id="a5bFeedSleep"><span class="dot"></span><span data-role="text">sleep — how long it waits before waking</span></div>
-              <div class="check" data-state="wait" id="a5bFeedStatus"><span class="dot"></span><span data-role="text">status — what your board reports back</span></div>
-              <div class="check" data-state="wait" id="a5bFeedCanvas"><span class="dot"></span><span data-role="text">canvas-state — the editable scene, so any browser can open it</span></div>
+              <div class="check" data-state="wait" id="a5bFeedBitmap"><span class="dot"></span><span data-role="text">bitmap</span></div>
+              <div class="check" data-state="wait" id="a5bFeedSleep"><span class="dot"></span><span data-role="text">sleep</span></div>
+              <div class="check" data-state="wait" id="a5bFeedStatus"><span class="dot"></span><span data-role="text">status</span></div>
+              <div class="check" data-state="wait" id="a5bFeedCanvas"><span class="dot"></span><span data-role="text">canvas-state</span></div>
             </div>
             <p class="hint" id="a5bOutcome" hidden></p>
-            <p class="hint">Changing the key will change API URLs and MQTT subscription topics…</p>
-          </div>
-
-          <!-- The consequence of the name above, spelled out before it is committed.
-               Written by the same call that updates the group-key line, so the two
-               cannot disagree. -->
-          <div class="endpoints-plate blueprint">
-            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-            <span class="label">Where this lands</span>
-            <div id="a5bEndpoints"></div>
           </div>
 
           <div class="screen-foot">
@@ -184,13 +179,15 @@
           </div>
         </div>
 
+        <!-- Everything the screen has to SAY, said here. The main column is the
+             account, the one field, the four dots and the buttons; this rail is where
+             the four feed names above get their meaning, so the rows can stay bare. -->
         <aside class="col-rail">
           <div class="eyebrow">What a Group is</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">A Group is a folder for feeds on Adafruit IO. This display gets one, named after it, holding the four feeds it needs: the picture it draws, how long it sleeps, what it reports back, and the editable scene behind the picture.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">A Group is a folder for feeds on Adafruit IO. This display gets one, named after it, holding the four it needs: <span class="mono">bitmap</span>, the picture it draws; <span class="mono">sleep</span>, how long it waits before waking; <span class="mono">status</span>, what it reports back; and <span class="mono">canvas-state</span>, the editable scene behind the picture.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">If it already exists</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">We'll check to see if you already have a group and feeds configured for this device. If it's already configured, we'll do nothing and we'll let you know!</p>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Nothing here is destructive. An existing group is reused as it stands, and a feed that is already there is left alone — we only ever add what's missing.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Nothing here is destructive. We check first, and an existing group is reused as it stands — a feed that is already there is left alone, we only ever add what's missing, and we'll tell you if there was nothing to do.</p>
         </aside>
       </div>
     </section>
