@@ -20,3 +20,7 @@ yarn-error.log*
 public/__fixture/
 
 *.log
+
+# --- Local secrets -----------------------------------------------------------
+# Holds IO_USERNAME / IO_KEY for local testing. Never committed.
+.env
