@@ -1,5 +1,5 @@
 # Publishes public/ to the gh-pages branch, which GitHub Pages serves at
-# https://adafruit.github.io/Marquee_Web/
+# https://marquee.adafruit-playground.com/
 #
 # The site is plain static files with no build step, so "deploying" is just
 # copying public/ to a branch root. It cannot be served from main directly:
@@ -48,6 +48,9 @@ jobs:
           # Branch-served Pages runs Jekyll, which would drop underscore-prefixed
           # paths and Liquid-template the HTML. Lives in the deploy only.
           touch .nojekyll
+          # Custom domain. Must live in the deploy, not public/, for the same
+          # reason as .nojekyll: gh-pages is rebuilt from scratch on every push.
+          echo "marquee.adafruit-playground.com" > CNAME
           git init -q
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
