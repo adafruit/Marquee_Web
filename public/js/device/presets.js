@@ -172,7 +172,8 @@ export const DISPLAY_PRESETS = {
   //     other entry shares. D<n> here is GPIO n — the only spelling parsePin()
   //     accepts — so EPD_SCLK=12 becomes 'D12' and so on. The panel is write-only
   //     (EPD_MISO = -1) and there is no external SRAM chip (EPD_SRCS = -1); MISO
-  //     has no field in either serialiser, so only sramCs is stated as '-1'.
+  //     has no field in either serialiser, so only sramCs is stated as '-1'. Keep it
+  //     that way: any miso value in the file gets claimed as an input.
   //   * the panel id is 'xteink-x4-pro' — the {vendor}-{product} form the
   //     'adafruit-{product_id}' entries use, because like them this names a
   //     product, and unlike the ThinkInk entries there is no part suffix to name.

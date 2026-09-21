@@ -87,7 +87,7 @@ function buildInterface() {
       busy: pinToInt(val('pinBusy')),
       sram_cs: pinToInt(val('pinSramCs')),
       mosi: pinToInt(val('pinMosi')),
-      sck: pinToInt(val('pinSck')),
+      sclk: pinToInt(val('pinSck')),
     },
   };
 }

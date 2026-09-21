@@ -35,7 +35,7 @@ A MagTag on the group `kitchen-board`:
   "interface": {
     "type": "spi_epd",
     "spi_bus": 0,
-    "pins": { "cs": 8, "dc": 7, "reset": 6, "busy": 5, "sram_cs": -1, "mosi": -1, "sck": -1 }
+    "pins": { "cs": 8, "dc": 7, "reset": 6, "busy": 5, "sram_cs": -1, "mosi": -1, "sclk": -1 }
   },
   "network": { "wifi_ssid": "Transit", "wifi_password": "BigWindows" },
   "adafruit_io": { "username": "brentrubell", "key": "aio_XXXXXXXXXXXXXXXXXXXXXXXXXXXX" }
@@ -81,7 +81,7 @@ Empty until A5b has run.
 | `pins.reset` | integer | |
 | `pins.busy` | integer | |
 | `pins.sram_cs` | integer | the frame-buffer SRAM's chip select, if the panel carries one |
-| `pins.mosi`, `pins.sck` | integer | the SPI bus pins; `-1` when the panel sits on the board's own bus and the firmware already knows them (the MagTag) |
+| `pins.mosi`, `pins.sclk` | integer | the SPI bus pins; `-1` when the panel sits on the board's own bus and the firmware already knows them (the MagTag) |
 
 **Pins are bare GPIO numbers.** The editor's form spells them the way the device's
 `parsePin()` reads them — `D8` — and this file strips the prefix: `D8` → `8`. A blank
@@ -174,7 +174,7 @@ bench tool on your own machine, and said on screen at A5C and A6-A.
         "spi_bus": { "type": "integer", "minimum": 0 },
         "pins": {
           "type": "object",
-          "required": ["cs", "dc", "reset", "busy", "sram_cs", "mosi", "sck"],
+          "required": ["cs", "dc", "reset", "busy", "sram_cs", "mosi", "sclk"],
           "additionalProperties": { "type": "integer", "minimum": -1 }
         }
       }

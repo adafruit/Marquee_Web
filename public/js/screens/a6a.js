@@ -6,7 +6,8 @@
  *
  *   flash   fetch the latest release's merged-flash.bin for this board (device/firmware.js);
  *           put the board in bootloader mode; write it over WebSerial (device/flash.js,
- *           esptool-js underneath).
+ *           esptool-js underneath). The X4 Pro gets only the app slice, at 0x10000, and so
+ *           never sees the erase option — see flash.js's board table.
  *   drive   press RESET; the firmware comes up as a USB drive named MARQUEE; pick that drive
  *           in the browser and we write cfg-marquee.json into it (device/drive.js).
  *   done    eject, press RESET again; the board reads the file at boot and is on its own.
@@ -27,7 +28,7 @@
 
 import { navigate } from '../core/router.js';
 import {
-  flashDevice, firmwareFor, loadFirmware, validateFirmware, describeFlashError,
+  flashDevice, firmwareFor, loadFirmware, validateFirmware, describeFlashError, imageToWrite,
   FIRMWARE_ARTIFACT,
 } from '../device/flash.js';
 import { fetchManifest, describeFirmwareError, RELEASES_URL } from '../device/firmware.js';
@@ -149,6 +150,37 @@ function setStage(next) {
   syncGates();
 }
 
+const hex = (n) => `0x${Number(n).toString(16)}`;
+
+/**
+ * The erase checkbox exists only for boards that get the whole image. A board written at an
+ * offset (the X4 Pro) keeps its bootloader and partition table, and a full erase would take them
+ * — flashDevice() refuses it too, this just keeps the choice off the screen.
+ */
+function syncEraseOption(expect) {
+  const allowed = !expect?.writeOffset;
+  show($('a6aEraseOpt'), allowed);
+  if (!allowed) {
+    const erase = $('a6aEraseAll');
+    if (erase) erase.checked = false;
+    show($('a6aEraseWarn'), false);
+  }
+  syncRailWritten(expect);
+}
+
+/** The rail's "What gets written" paragraph. The markup carries the whole-image sentence;
+ *  a board written at an offset gets its own, since it has no erase box to tick. */
+function syncRailWritten(expect) {
+  const el = $('a6aRailWritten');
+  if (!el) return;
+  if (!el.dataset.whole) el.dataset.whole = el.innerHTML;
+  if (expect?.writeOffset) {
+    el.innerHTML = `Only the app, at <span class="mono">${hex(expect.writeOffset)}</span>. The ${expect.label}'s bootloader, partition table and factory panel calibration are not touched, and neither is the <span class="mono">${DRIVE_VOLUME}</span> drive. The configuration is the next step, and goes onto that drive.`;
+  } else {
+    el.innerHTML = el.dataset.whole;
+  }
+}
+
 /**
  * Every enable/disable rule on the screen, in one place, re-run after anything changes.
  * During a run EVERYTHING is locked: a second port dialog mid-write breaks the transport, and
@@ -265,6 +297,10 @@ async function startReleaseFetch() {
   fwFetch.ctrl = null;
   if (fwCheck.ok) {
     log(`Downloaded ${fw.name} v${fw.version} for the ${expect.label} (${fmtBytes(fw.size)}), checksum verified.`);
+    if (expect.writeOffset) {
+      const { data } = imageToWrite(fw, expect);
+      log(`The ${expect.label} gets only the app from this file — ${fmtBytes(data.length)} written at ${hex(expect.writeOffset)}. Bootloader, partition table and panel calibration are left as they are.`);
+    }
   } else {
     fwFetch.message = fwCheck.problems.join(' ');
     log(`Rejected the release image: ${fwFetch.message}`);
@@ -289,9 +325,11 @@ function failRelease(res) {
 
 function releaseHint() {
   const expect = expected();
-  return expect
-    ? `Built for the ${expect.label} (${expect.chip}) — the latest release from ${RELEASES_URL.replace('https://', '')}.`
-    : '';
+  if (!expect) return '';
+  const base = `Built for the ${expect.label} (${expect.chip}) — the latest release from ${RELEASES_URL.replace('https://', '')}.`;
+  return expect.writeOffset
+    ? `${base} Only the app is written, at ${hex(expect.writeOffset)}; the bootloader and partition table stay.`
+    : base;
 }
 
 async function connect() {
@@ -311,7 +349,7 @@ async function connect() {
       devices.patchActive({
         firmware: {
           flashedAt: Date.now(), board: expect?.board ?? null, chip: res.chip,
-          fileName: fw.name, bytes: fw.size, erased: eraseAll,
+          fileName: fw.name, bytes: res.written ?? fw.size, offset: res.address ?? 0, erased: eraseAll,
           source: fw.source ?? 'release', version: fw.version ?? null, tag: fw.tag ?? null, sha256: fw.sha256 ?? null,
         },
       });
@@ -472,6 +510,7 @@ export function initA6a({ onEnter }) {
     const erase = $('a6aEraseAll');
     if (erase) erase.checked = false;
     show($('a6aEraseWarn'), false);
+    syncEraseOption(expect);
 
     // The drive and done plates name the board they are talking about — "reset the MagTag" —
     // from the same table the flash checks against. A hand-configured panel has no name; "board" is it.
@@ -490,7 +529,8 @@ export function initA6a({ onEnter }) {
     syncLogToggle();
     if (rec?.firmware?.flashedAt) {
       const ver = rec.firmware.version ? ` v${rec.firmware.version}` : '';
-      log(`Flashed ${fmtLocalSeconds(new Date(rec.firmware.flashedAt))} — ${rec.firmware.chip || 'chip unknown'} · ${rec.firmware.fileName || FIRMWARE_ARTIFACT}${ver}. "Flash again" redoes it.`);
+      const at = rec.firmware.offset ? ` at ${hex(rec.firmware.offset)}` : '';
+      log(`Flashed ${fmtLocalSeconds(new Date(rec.firmware.flashedAt))} — ${rec.firmware.chip || 'chip unknown'} · ${rec.firmware.fileName || FIRMWARE_ARTIFACT}${ver}${at}. "Flash again" redoes it.`);
     }
     setStage(rec?.firmware?.flashedAt ? 'drive' : 'flash');
     // The download starts on its own; a board that was already flashed lands on the drive stage

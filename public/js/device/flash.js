@@ -6,11 +6,20 @@
  * clicks Connect, so the 218 KB never ships to a user who only edits. No server is involved,
  * which is what lets the whole flow work from a static host.
  *
- * WHAT GETS WRITTEN. One file, `merged-flash.bin`, at address 0x0. The Adafruit_Marquee CI
- * produces it with `esptool merge-bin --format raw`: bootloader, partition table, boot_app0
- * and the app laid out at their real offsets with 0xFF in the gaps, so a single write at 0
- * is the whole flash image. The MagTag's bootloader sits at 0x1000, so its image starts with
- * 0x1000 bytes of padding; the two ESP32-S3 boards start with the bootloader itself.
+ * WHAT GETS WRITTEN. One file, `merged-flash.bin`. The Adafruit_Marquee CI produces it with
+ * `esptool merge-bin --format raw`: bootloader, partition table, boot_app0 and the app laid out
+ * at their real offsets with 0xFF in the gaps, so a single write at 0 is the whole flash image.
+ * The MagTag's bootloader sits at 0x1000, so its image starts with 0x1000 bytes of padding; the
+ * two ESP32-S3 boards start with the bootloader itself.
+ *
+ * The Xteink X4 Pro is the exception, and the reason the board table carries `writeOffset`.
+ * Xteink firmware is flashed as the app alone — `esptool write_flash 0x10000 firmware.bin` —
+ * leaving the stock bootloader, partition table and the NVS that holds the factory panel
+ * calibration untouched. The same merged image is downloaded (it is what the manifest
+ * checksums), and imageToWrite() takes the bytes from 0x10000 to the end and writes them at
+ * 0x10000. Those bytes ARE firmware.bin: the app is the last thing merge-bin lays down, so the
+ * merged image ends where the app ends. For every other board `writeOffset` is 0 and the
+ * slice is the whole file.
  *
  * WHERE IT COMES FROM. The latest release, by default: firmware.js fetches the manifest CI
  * commits to the `firmware` branch of Adafruit_Marquee and downloads the board's merged image
@@ -26,7 +35,7 @@
  * THE CONTRACT
  *
  *   flashDevice({ firmware, expect, eraseAll, onLog, onProgress })
- *     -> Promise<{ ok: true, chip, chipDesc } | { ok: false, error, message, chip? }>
+ *     -> Promise<{ ok: true, chip, chipDesc, address, written } | { ok: false, error, message, chip? }>
  *
  * Resolves rather than throws, for the reason provision.js does: the caller has to tell "no
  * port chosen" from "wrong chip" from "write failed halfway", because each wants a different
@@ -55,16 +64,22 @@ export const FIRMWARE_ARTIFACT = 'merged-flash.bin';
  * a MagTag image on a Feather would brick the Feather, and the chip is the one thing the two
  * disagree on that we can check. `bootloaderOffset` is where the 0xE9 image header has to be;
  * `flashSize` bounds the file. The partition table is at 0x8000 on every layout.
+ *
+ * `writeOffset` is where the write starts, in both the file and the flash: the bytes from
+ * `writeOffset` to the end of the merged image go to that same address. 0 means the whole
+ * image, bootloader first. The X4 Pro's 0x10000 is its `ota_0` partition — the app alone,
+ * the way Xteink firmware is flashed — and validateFirmware() checks the image's own
+ * partition table agrees before anything is written there.
  */
 const BOARDS = {
   magtag: {
-    board: 'magtag', label: 'MagTag', chip: 'ESP32-S2', bootloaderOffset: 0x1000, flashSize: 4 << 20,
+    board: 'magtag', label: 'MagTag', chip: 'ESP32-S2', bootloaderOffset: 0x1000, flashSize: 4 << 20, writeOffset: 0,
   },
   adafruit_feather_esp32s3: {
-    board: 'adafruit_feather_esp32s3', label: 'Feather ESP32-S3', chip: 'ESP32-S3', bootloaderOffset: 0x0, flashSize: 4 << 20,
+    board: 'adafruit_feather_esp32s3', label: 'Feather ESP32-S3', chip: 'ESP32-S3', bootloaderOffset: 0x0, flashSize: 4 << 20, writeOffset: 0,
   },
   x4pro: {
-    board: 'x4pro', label: 'Xteink X4 Pro', chip: 'ESP32-S3', bootloaderOffset: 0x0, flashSize: 16 << 20,
+    board: 'x4pro', label: 'Xteink X4 Pro', chip: 'ESP32-S3', bootloaderOffset: 0x0, flashSize: 16 << 20, writeOffset: 0x10000,
   },
 };
 
@@ -127,6 +142,40 @@ const PARTITION_TABLE_OFFSET = 0x8000;
 const PARTITION_MAGIC = [0xaa, 0x50];
 /** A merged image is at least bootloader + table + boot_app0 + an app; a bare app is smaller. */
 const MIN_MERGED_BYTES = 256 * 1024;
+/** ESP-IDF partition table: 32-byte entries, at most 95 of them (0xC00 bytes) before the md5 row. */
+const PARTITION_ENTRY_BYTES = 32;
+const PARTITION_TABLE_MAX_ENTRIES = 95;
+const PARTITION_TYPE_APP = 0x00;
+
+/**
+ * The partition table entry that starts at `offset`, read out of the merged image itself, or
+ * null. Entry layout: magic(2) type(1) subtype(1) offset(4 LE) size(4 LE) label(16) flags(4).
+ * Iteration stops at the first entry without the magic — that is the md5 row or the 0xFF fill.
+ */
+export function findPartitionAt(bytes, offset) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let i = 0; i < PARTITION_TABLE_MAX_ENTRIES; i++) {
+    const at = PARTITION_TABLE_OFFSET + i * PARTITION_ENTRY_BYTES;
+    if (at + PARTITION_ENTRY_BYTES > bytes.length) return null;
+    if (bytes[at] !== PARTITION_MAGIC[0] || bytes[at + 1] !== PARTITION_MAGIC[1]) return null;
+    const start = view.getUint32(at + 4, true);
+    if (start !== offset) continue;
+    const label = new TextDecoder().decode(bytes.subarray(at + 12, at + 28)).replace(/\0.*$/, '');
+    return { type: bytes[at + 2], subtype: bytes[at + 3], offset: start, size: view.getUint32(at + 8, true), label };
+  }
+  return null;
+}
+
+/**
+ * The bytes that go on the chip, and where. For a board with `writeOffset` 0 that is the whole
+ * merged image at 0; for the X4 Pro it is the tail from 0x10000 — the app — at 0x10000.
+ */
+export function imageToWrite(fw, expect) {
+  const address = expect?.writeOffset || 0;
+  const bytes = fw?.bytes;
+  if (!bytes) return { data: null, address };
+  return { data: address ? bytes.subarray(address) : bytes, address };
+}
 
 /**
  * Is this file the merged image for this board? Run before any port dialog, so a wrong file
@@ -135,7 +184,8 @@ const MIN_MERGED_BYTES = 256 * 1024;
  * The partition-table check is the load-bearing one: `firmware.bin` ALSO starts with 0xE9, and
  * writing it at 0x0 would "succeed" and leave a board with no bootloader. Only the merged image
  * has a table at 0x8000. The MagTag gets one more: its image starts with padding, so an 0xE9 at
- * byte 0 means a Feather or X4 build was picked.
+ * byte 0 means a Feather or X4 build was picked. A board with a `writeOffset` (the X4 Pro)
+ * gets its slice checked too: an app header there, and the table naming it an app partition.
  */
 export function validateFirmware(fw, expect) {
   const problems = [];
@@ -159,6 +209,20 @@ export function validateFirmware(fw, expect) {
     }
     if (expect.board === 'magtag' && b[0] === ESP_IMAGE_MAGIC) {
       problems.push('This looks like a Feather or X4 Pro image, not the MagTag build.');
+    }
+    if (expect.writeOffset) {
+      // Only the app slice is written, so the slice has to be an app: an image header where the
+      // write starts, and the image's own partition table calling that address an app partition.
+      // Anything else and we would be overwriting a partition the board still depends on.
+      const hex = `0x${expect.writeOffset.toString(16)}`;
+      if (b.length <= expect.writeOffset || b[expect.writeOffset] !== ESP_IMAGE_MAGIC) {
+        problems.push(`No app image at ${hex}, where the ${expect.label}'s firmware is written.`);
+      } else {
+        const part = findPartitionAt(b, expect.writeOffset);
+        if (!part) problems.push(`The image's partition table has nothing starting at ${hex}.`);
+        else if (part.type !== PARTITION_TYPE_APP) problems.push(`The partition at ${hex} is "${part.label}", not an app partition.`);
+        else if (b.length - expect.writeOffset > part.size) problems.push(`The app is larger than the "${part.label}" partition at ${hex}.`);
+      }
     }
   } else if (b[0] !== ESP_IMAGE_MAGIC && b[0x1000] !== ESP_IMAGE_MAGIC) {
     problems.push('No ESP image header at 0x0 or 0x1000.');
@@ -267,6 +331,7 @@ export function describeFlashError(res) {
     case 'no-sync': return 'The board did not answer. Put it in bootloader mode — hold BOOT, tap RESET, release BOOT — then Connect again.';
     case 'unknown-chip': return 'That is not a chip this firmware supports.';
     case 'chip-mismatch': return res.message || 'The board is not the chip this firmware was built for.';
+    case 'erase-unsafe': return res.message || 'A full erase is not possible on this board — only its app partition is written, and erasing would take the bootloader with it.';
     case 'write-failed': return 'Writing stopped partway — the board is not bootable. Power-cycle it, re-enter bootloader mode and flash again.';
     case 'load-failed': return res?.message ? `Could not start the flasher: ${res.message}` : 'Could not load the flasher module.';
     default: return res?.message || 'Flashing failed.';
@@ -280,7 +345,9 @@ export function describeFlashError(res) {
  *   expect     firmwareFor(device), or null to skip the chip check
  *   eraseAll   full-chip erase before the write. OFF by default and opt-in on screen: the
  *              firmware never formats its FAT partition, so an erase takes the MARQUEE drive
- *              with it, and on the X4 Pro also the factory panel calibration in NVS.
+ *              with it. Refused outright for a board with a `writeOffset` (the X4 Pro): only
+ *              its app is written, so an erase would leave it with no bootloader — and take the
+ *              factory panel calibration in NVS besides. A6-A hides the option for those.
  *   baud       the rate after the stub is running. 460800 rather than 921600 — nominal over
  *              native USB, but the change-baud handshake is where a flaky link shows itself.
  */
@@ -289,6 +356,10 @@ export async function flashDevice({
 } = {}) {
   if (!serialSupported()) return { ok: false, error: 'unsupported' };
   if (!firmware?.bytes) return { ok: false, error: 'load-failed', message: 'No firmware loaded.' };
+  const { data, address } = imageToWrite(firmware, expect);
+  const addressHex = `0x${address.toString(16)}`;
+  if (!data?.length) return { ok: false, error: 'load-failed', message: `Nothing to write at ${addressHex}.` };
+  if (eraseAll && address !== 0) return { ok: false, error: 'erase-unsafe' };
 
   let mod;
   try {
@@ -313,7 +384,9 @@ export async function flashDevice({
   let chip = null;
   let phase = 'connect';
   try {
-    onLog?.(`Connecting… (${firmware.name}, ${firmware.size} bytes)`);
+    onLog?.(address
+      ? `Connecting… (${firmware.name}, writing ${data.length} of ${firmware.size} bytes — the app — at ${addressHex})`
+      : `Connecting… (${firmware.name}, ${firmware.size} bytes)`);
     const chipDesc = await loader.main();
     terminal.flush();
     chip = loader.chip?.CHIP_NAME || chipDesc;
@@ -334,7 +407,7 @@ export async function flashDevice({
 
     let first = true;
     await loader.writeFlash({
-      fileArray: [{ data: firmware.bytes, address: 0 }],
+      fileArray: [{ data, address }],
       flashSize: 'keep',
       flashMode: 'keep',
       flashFreq: 'keep',
@@ -352,7 +425,7 @@ export async function flashDevice({
     });
     terminal.flush();
     onProgress?.({ phase: 'write', state: 'done', pct: 100 });
-    onLog?.(`Wrote ${firmware.size} bytes at 0x0.`);
+    onLog?.(`Wrote ${data.length} bytes at ${addressHex}.`);
 
     // The S2 ROM talks USB-OTG CDC; the S3 ROM talks USB-Serial/JTAG. Either way the port is
     // about to vanish as the board comes up as its TinyUSB self, so a throw here is news, not
@@ -363,7 +436,7 @@ export async function flashDevice({
     } catch {
       onLog?.('Reset sent; the port closed as the board restarted.');
     }
-    return { ok: true, chip, chipDesc };
+    return { ok: true, chip, chipDesc, address, written: data.length };
   } catch (err) {
     terminal.flush();
     const out = classify(err, phase);
