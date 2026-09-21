@@ -6,8 +6,9 @@
  *
  *   flash   fetch the latest release's merged-flash.bin for this board (device/firmware.js);
  *           put the board in bootloader mode; write it over WebSerial (device/flash.js,
- *           esptool-js underneath). The X4 Pro gets only the app slice, at 0x10000, and so
- *           never sees the erase option — see flash.js's board table.
+ *           esptool-js underneath, the image written in pieces around its blank NVS
+ *           partition). The X4 Pro never sees the erase option: its factory panel
+ *           calibration is in that NVS — see flash.js's board table.
  *   drive   press RESET; the firmware comes up as a USB drive named MARQUEE; pick that drive
  *           in the browser and we write cfg-marquee.json into it (device/drive.js).
  *   done    eject, press RESET again; the board reads the file at boot and is on its own.
@@ -153,12 +154,12 @@ function setStage(next) {
 const hex = (n) => `0x${Number(n).toString(16)}`;
 
 /**
- * The erase checkbox exists only for boards that get the whole image. A board written at an
- * offset (the X4 Pro) keeps its bootloader and partition table, and a full erase would take them
- * — flashDevice() refuses it too, this just keeps the choice off the screen.
+ * The erase checkbox is hidden for a board with `allowErase: false` (the X4 Pro): the write
+ * steps around its NVS partition, where the factory panel calibration is, and a full erase
+ * would not — flashDevice() refuses it too, this just keeps the choice off the screen.
  */
 function syncEraseOption(expect) {
-  const allowed = !expect?.writeOffset;
+  const allowed = expect?.allowErase !== false;
   show($('a6aEraseOpt'), allowed);
   if (!allowed) {
     const erase = $('a6aEraseAll');
@@ -168,14 +169,14 @@ function syncEraseOption(expect) {
   syncRailWritten(expect);
 }
 
-/** The rail's "What gets written" paragraph. The markup carries the whole-image sentence;
- *  a board written at an offset gets its own, since it has no erase box to tick. */
+/** The rail's "What gets written" paragraph. The markup carries the usual sentence; a board
+ *  with no erase box to tick (the X4 Pro) gets its own. */
 function syncRailWritten(expect) {
   const el = $('a6aRailWritten');
   if (!el) return;
   if (!el.dataset.whole) el.dataset.whole = el.innerHTML;
-  if (expect?.writeOffset) {
-    el.innerHTML = `Only the app, at <span class="mono">${hex(expect.writeOffset)}</span>. The ${expect.label}'s bootloader, partition table and factory panel calibration are not touched, and neither is the <span class="mono">${DRIVE_VOLUME}</span> drive. The configuration is the next step, and goes onto that drive.`;
+  if (expect && expect.allowErase === false) {
+    el.innerHTML = `The image shown above — bootloader, partition table and app — written around the ${expect.label}'s factory panel calibration, which is kept. There is no erase option for this board because an erase would wipe that calibration. The <span class="mono">${DRIVE_VOLUME}</span> drive is kept too. The configuration is the next step, and goes onto that drive.`;
   } else {
     el.innerHTML = el.dataset.whole;
   }
@@ -297,10 +298,9 @@ async function startReleaseFetch() {
   fwFetch.ctrl = null;
   if (fwCheck.ok) {
     log(`Downloaded ${fw.name} v${fw.version} for the ${expect.label} (${fmtBytes(fw.size)}), checksum verified.`);
-    if (expect.writeOffset) {
-      const { data } = imageToWrite(fw, expect);
-      log(`The ${expect.label} gets only the app from this file — ${fmtBytes(data.length)} written at ${hex(expect.writeOffset)}. Bootloader, partition table and panel calibration are left as they are.`);
-    }
+    const { segments, skipped } = imageToWrite(fw);
+    const kept = skipped.map((s) => `${s.label} at ${hex(s.address)}`).join(', ');
+    log(`Written in ${segments.length} pieces at their own addresses${kept ? `, leaving ${kept} as it is` : ''}.`);
   } else {
     fwFetch.message = fwCheck.problems.join(' ');
     log(`Rejected the release image: ${fwFetch.message}`);
@@ -327,8 +327,8 @@ function releaseHint() {
   const expect = expected();
   if (!expect) return '';
   const base = `Built for the ${expect.label} (${expect.chip}) — the latest release from ${RELEASES_URL.replace('https://', '')}.`;
-  return expect.writeOffset
-    ? `${base} Only the app is written, at ${hex(expect.writeOffset)}; the bootloader and partition table stay.`
+  return expect.allowErase === false
+    ? `${base} Written around the NVS partition, so the factory panel calibration is kept.`
     : base;
 }
 

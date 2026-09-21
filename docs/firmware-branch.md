@@ -28,7 +28,7 @@ previous release for a few minutes, whose files still exist at their tag-scoped 
 ```
 manifest.json                                    the LATEST release — overwritten each publish
 <tag>/manifest.json                              the same, kept per tag
-<tag>/marquee-<env>/merged-flash.bin             what the editor downloads; flashed at 0x0 (X4 Pro: see below)
+<tag>/marquee-<env>/merged-flash.bin             what the editor downloads; written in pieces (see below)
 <tag>/marquee-<env>/bootloader.bin
 <tag>/marquee-<env>/partitions.bin
 <tag>/marquee-<env>/boot_app0.bin
@@ -81,16 +81,24 @@ MagTag → `magtag`, X4 Pro → `x4pro`, every bare panel → `adafruit_feather_
 4. Compare the byte count and SHA-256 with the manifest. A mismatch is refused, never flashed.
 5. The same `validateFirmware()` checks a file from disk gets (partition table at `0x8000`,
    `0xE9` header at the board's bootloader offset), then the chip check before the write.
-6. **X4 Pro only:** Xteink firmware is flashed as the app alone, the way
-   `esptool write_flash 0x10000 firmware.bin` does it, so the stock bootloader, partition table
-   and the NVS holding the factory panel calibration survive. The editor still downloads the
-   checksummed `merged-flash.bin`, then writes only the bytes from `0x10000` to the end, at
-   `0x10000`. Those bytes are `firmware.bin`: the app is the last thing `merge-bin` lays down,
-   so the merged image ends where the app ends. Before the write, `validateFirmware()` also
-   requires an `0xE9` header at `0x10000` and an app-type entry starting at `0x10000` in the
-   image's own partition table (`ota_0`). The "erase the whole chip" option is hidden for this
-   board and refused by `flashDevice()`. The board table's `writeOffset` in
-   `public/js/device/flash.js` is what selects this; every other board has `0`.
+6. The image is written in pieces, the way `pio run -t upload` writes bootloader, partition
+   table, `boot_app0` and app separately. A write erases every sector it covers, so writing the
+   raw file straight through would also erase the blank stretches in it — including `nvs` at
+   `0x9000`. `imageToWrite()` reads the image's own partition table and leaves out every data
+   partition whose bytes in the file are all `0xFF`; the rest goes to its own address. On the
+   X4 Pro `nvs` is where the factory stores the panel calibration, and that is why the "erase
+   the whole chip" option is hidden for that board (`allowErase: false` in the board table in
+   `public/js/device/flash.js`) and refused by `flashDevice()`.
+7. `validateFirmware()` also compares the flash size stamped in the bootloader header with the
+   board's: the two ESP32-S3 builds (4 MB Feather, 16 MB X4 Pro) pass every other check
+   for each other's board and would not boot.
+
+The X4 Pro used to get only the app, at `0x10000`, Xteink style, so the chip's own bootloader
+and partition table survived. That is wrong for this firmware: it needs the table above (its
+`ffat` partition is where the `MARQUEE` drive lives) and `ota_0` selected in `otadata`, and a
+chip carrying the OEM table, or one that had OTA'd to `ota_1`, came up without a drive or kept
+running the old app. Writing all four pieces is what makes a flash from the editor and a
+PlatformIO upload leave the chip in the same state.
 
 Developers can point the editor at a local copy of this layout with
 `localStorage.setItem('marquee.firmwareBase', 'http://localhost:3000/__fixture/')`

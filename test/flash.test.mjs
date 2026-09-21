@@ -1,11 +1,12 @@
-// flash.js's board table, validation and write-slice logic. Nothing here touches a serial port:
+// flash.js's board table, validation and write-piece logic. Nothing here touches a serial port:
 // flashDevice() is not exercised (it needs navigator.serial and the esptool bundle), the pure
 // parts around it are. Run with `npm test`.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  firmwareFor, validateFirmware, imageToWrite, findPartitionAt, describeFlashError, FIRMWARE_ARTIFACT,
+  firmwareFor, validateFirmware, imageToWrite, readPartitions, findPartitionAt, headerFlashSize,
+  describeFlashError, FIRMWARE_ARTIFACT,
 } from '../public/js/device/flash.js';
 
 const APP_OFFSET = 0x10000;
@@ -26,16 +27,21 @@ const X4_TABLE = [
   partition(0x01, 0x00, 0xe000, 0x2000, 'otadata'),
   partition(0x00, 0x10, 0x10000, 0x400000, 'ota_0'),
   partition(0x00, 0x11, 0x410000, 0x400000, 'ota_1'),
+  partition(0x00, 0x00, 0x810000, 0x40000, 'uf2'),
+  partition(0x01, 0x81, 0x850000, 0x7b0000, 'ffat'),
 ];
 
 /**
- * A merged image: 0xE9 at `bootloaderOffset`, the table at 0x8000, an app (0xE9 then a byte
- * pattern) from 0x10000 to the end.
+ * A merged image the way merge-bin lays one down: bootloader header at `bootloaderOffset`
+ * (with the flash-size nibble, or none), the table at 0x8000, boot_app0's first bytes at
+ * 0xE000, an app (0xE9 then a byte pattern) from 0x10000 to the end, 0xFF everywhere else.
  */
-function mergedImage({ bootloaderOffset = 0, table = X4_TABLE, appBytes = 4096 } = {}) {
+function mergedImage({ bootloaderOffset = 0, table = X4_TABLE, appBytes = 300 * 1024, sizeNibble = null, bootApp0 = true } = {}) {
   const b = new Uint8Array(APP_OFFSET + appBytes).fill(0xff);
   b[bootloaderOffset] = 0xe9;
+  if (sizeNibble !== null) b[bootloaderOffset + 3] = (sizeNibble << 4) | 0x0f;
   table.forEach((e, i) => b.set(e, 0x8000 + i * 32));
+  if (bootApp0) b.set([0x01, 0x00, 0x00, 0x00], 0xe000);
   b[APP_OFFSET] = 0xe9;
   for (let i = APP_OFFSET + 1; i < b.length; i++) b[i] = i & 0xff;
   return b;
@@ -44,77 +50,121 @@ function mergedImage({ bootloaderOffset = 0, table = X4_TABLE, appBytes = 4096 }
 const fw = (bytes, name = FIRMWARE_ARTIFACT) => ({ name, size: bytes.length, bytes });
 const x4 = () => firmwareFor({ flow: { selectedPanel: 'x4pro' } });
 const magtag = () => firmwareFor({ flow: { selectedPanel: 'magtag' } });
+const feather = () => firmwareFor({ flow: { selectedPanel: 'tricolorFW' } });
 
-test('firmwareFor: only the X4 Pro is written at an offset', () => {
-  assert.equal(x4().writeOffset, APP_OFFSET);
+test('firmwareFor: every board gets the whole image; only the X4 Pro forbids the erase', () => {
+  assert.equal(x4().allowErase, false);
   assert.equal(x4().chip, 'ESP32-S3');
-  assert.equal(magtag().writeOffset, 0);
-  assert.equal(firmwareFor({ flow: { selectedPanel: 'tricolorFW' } }).writeOffset, 0);
-  assert.equal(firmwareFor({ flow: { selectedPanel: 'tricolorFW' } }).board, 'adafruit_feather_esp32s3');
+  assert.equal(x4().flashSize, 16 << 20);
+  assert.equal(magtag().allowErase, true);
+  assert.equal(feather().allowErase, true);
+  assert.equal(feather().board, 'adafruit_feather_esp32s3');
+  assert.equal('writeOffset' in x4(), false);
   assert.equal(firmwareFor({}), null);
 });
 
-test('imageToWrite: whole image at 0 for the MagTag, the tail at 0x10000 for the X4 Pro', () => {
-  const bytes = mergedImage({ bootloaderOffset: 0x1000 });
-  const whole = imageToWrite(fw(bytes), magtag());
-  assert.equal(whole.address, 0);
-  assert.equal(whole.data, bytes);
-
-  const bytes2 = mergedImage();
-  const slice = imageToWrite(fw(bytes2), x4());
-  assert.equal(slice.address, APP_OFFSET);
-  assert.equal(slice.data.length, bytes2.length - APP_OFFSET);
-  assert.deepEqual(slice.data, bytes2.subarray(APP_OFFSET));
-  assert.equal(slice.data[0], 0xe9);
-
-  assert.equal(imageToWrite(fw(bytes2), null).address, 0);
-  assert.equal(imageToWrite({ bytes: null }, x4()).data, null);
-});
-
-test('findPartitionAt: reads the entry back out of the image', () => {
+test('readPartitions / findPartitionAt: read the table back out of the image', () => {
   const b = mergedImage();
+  assert.equal(readPartitions(b).length, X4_TABLE.length);
+  assert.deepEqual(readPartitions(b).map((p) => p.label), ['nvs', 'otadata', 'ota_0', 'ota_1', 'uf2', 'ffat']);
   const p = findPartitionAt(b, APP_OFFSET);
   assert.deepEqual(p, { type: 0, subtype: 0x10, offset: APP_OFFSET, size: 0x400000, label: 'ota_0' });
   assert.equal(findPartitionAt(b, 0x9000).label, 'nvs');
   assert.equal(findPartitionAt(b, 0x12345), null);
 });
 
-test('validateFirmware: accepts the X4 Pro merged image and the app slice within it', () => {
-  // MIN_MERGED_BYTES is 256 KB, so give the app enough room.
-  const res = validateFirmware(fw(mergedImage({ appBytes: 300 * 1024 })), x4());
+test('imageToWrite: skips the blank nvs partition and writes everything else at its address', () => {
+  const b = mergedImage();
+  const { segments, skipped, written } = imageToWrite(fw(b));
+  assert.deepEqual(skipped, [{ address: 0x9000, length: 0x5000, label: 'nvs' }]);
+  assert.deepEqual(segments.map((s) => [s.address, s.data.length]), [
+    [0x0, 0x9000],                // bootloader + table
+    [0xe000, b.length - 0xe000],  // boot_app0 + app, contiguous
+  ]);
+  assert.equal(written, b.length - 0x5000);
+  // The bytes are views into the image, not copies.
+  assert.equal(segments[1].data[APP_OFFSET - 0xe000], 0xe9);
+  assert.equal(segments[1].data.buffer, b.buffer);
+});
+
+test('imageToWrite: a blank otadata is skipped too; a blank APP partition is not', () => {
+  // No boot_app0: otadata is all 0xFF, so two gaps and three pieces.
+  const noOta = mergedImage({ bootApp0: false });
+  const r = imageToWrite(fw(noOta));
+  assert.deepEqual(r.skipped.map((s) => s.label), ['nvs', 'otadata']);
+  assert.deepEqual(r.segments.map((s) => s.address), [0x0, APP_OFFSET]);
+
+  // An app partition that is all 0xFF in the file still gets written (the table says app).
+  const table = [partition(0x00, 0x10, 0x9000, 0x5000, 'ota_0'), ...X4_TABLE.slice(1)];
+  const appBlank = mergedImage({ table });
+  assert.deepEqual(imageToWrite(fw(appBlank)).skipped, []);
+  assert.equal(imageToWrite(fw(appBlank)).segments.length, 1);
+});
+
+test('imageToWrite: partitions past the end of the file are ignored; no bytes, no pieces', () => {
+  const b = mergedImage();                       // ota_1, uf2, ffat all start past the end
+  assert.equal(imageToWrite(fw(b)).skipped.length, 1);
+  assert.deepEqual(imageToWrite({ bytes: null }), { segments: [], skipped: [], written: 0 });
+  assert.deepEqual(imageToWrite(null), { segments: [], skipped: [], written: 0 });
+});
+
+test('imageToWrite: a file with no partition table is one piece at 0', () => {
+  const b = new Uint8Array(0x20000).fill(0xff);
+  b[0] = 0xe9;
+  const r = imageToWrite(fw(b));
+  assert.deepEqual(r.segments.map((s) => [s.address, s.data.length]), [[0, b.length]]);
+  assert.equal(r.written, b.length);
+});
+
+test('headerFlashSize: reads the nibble merge-bin stamps, 0 when absent', () => {
+  assert.equal(headerFlashSize(mergedImage({ sizeNibble: 0x4 }), 0), 16 << 20);
+  assert.equal(headerFlashSize(mergedImage({ sizeNibble: 0x2 }), 0), 4 << 20);
+  assert.equal(headerFlashSize(mergedImage(), 0), 0);                     // 0xFF nibble: unknown
+  assert.equal(headerFlashSize(mergedImage({ bootloaderOffset: 0x1000, sizeNibble: 0x2 }), 0x1000), 4 << 20);
+  assert.equal(headerFlashSize(mergedImage({ bootloaderOffset: 0x1000 }), 0), 0);  // no 0xE9 at 0
+});
+
+test('validateFirmware: accepts the X4 Pro merged image', () => {
+  const res = validateFirmware(fw(mergedImage({ sizeNibble: 0x4 })), x4());
   assert.deepEqual(res.problems, []);
   assert.equal(res.ok, true);
+  // An image with no size stamped is not rejected for it.
+  assert.equal(validateFirmware(fw(mergedImage()), x4()).ok, true);
 });
 
-test('validateFirmware: X4 Pro rejects an image with no app header at 0x10000', () => {
-  const b = mergedImage({ appBytes: 300 * 1024 });
-  b[APP_OFFSET] = 0x00;
+test('validateFirmware: the 4 MB Feather image is refused for the 16 MB X4 Pro, and the reverse', () => {
+  const featherImg = mergedImage({ sizeNibble: 0x2 });
+  let res = validateFirmware(fw(featherImg), x4());
+  assert.equal(res.ok, false);
+  assert.match(res.problems.join(' '), /Built for a 4 MB chip; the Xteink X4 Pro has 16 MB/);
+
+  const x4Img = mergedImage({ sizeNibble: 0x4 });
+  res = validateFirmware(fw(x4Img), feather());
+  assert.equal(res.ok, false);
+  assert.match(res.problems.join(' '), /Built for a 16 MB chip; the Feather ESP32-S3 has 4 MB/);
+  assert.equal(validateFirmware(fw(featherImg), feather()).ok, true);
+});
+
+test('validateFirmware: no bootloader header at the board offset is refused', () => {
+  const b = mergedImage();
+  b[0] = 0xff;
   const res = validateFirmware(fw(b), x4());
   assert.equal(res.ok, false);
-  assert.match(res.problems.join(' '), /No app image at 0x10000/);
+  assert.match(res.problems.join(' '), /No bootloader at 0x0/);
 });
 
-test('validateFirmware: X4 Pro rejects a table that does not call 0x10000 an app partition', () => {
-  const noEntry = mergedImage({ appBytes: 300 * 1024, table: X4_TABLE.filter((e) => !e.subarray(12).includes(0x5f)) }); // drop ota_*
-  let res = validateFirmware(fw(noEntry), x4());
+test('validateFirmware: a bare firmware.bin (no table at 0x8000) is refused', () => {
+  const app = new Uint8Array(300 * 1024).fill(0x55);
+  app[0] = 0xe9;
+  const res = validateFirmware(fw(app), x4());
   assert.equal(res.ok, false);
-  assert.match(res.problems.join(' '), /nothing starting at 0x10000/);
-
-  const dataThere = mergedImage({ appBytes: 300 * 1024, table: [partition(0x01, 0x81, 0x10000, 0x400000, 'ffat')] });
-  res = validateFirmware(fw(dataThere), x4());
-  assert.equal(res.ok, false);
-  assert.match(res.problems.join(' '), /"ffat", not an app partition/);
-
-  const tooSmall = mergedImage({ appBytes: 300 * 1024, table: [partition(0x00, 0x10, 0x10000, 0x1000, 'ota_0')] });
-  res = validateFirmware(fw(tooSmall), x4());
-  assert.equal(res.ok, false);
-  assert.match(res.problems.join(' '), /larger than the "ota_0" partition/);
+  assert.match(res.problems.join(' '), /No partition table at 0x8000/);
 });
 
-test('validateFirmware: the MagTag path is unchanged by writeOffset', () => {
-  const b = mergedImage({ bootloaderOffset: 0x1000, appBytes: 300 * 1024 });
+test('validateFirmware: the MagTag path', () => {
+  const b = mergedImage({ bootloaderOffset: 0x1000, sizeNibble: 0x2 });
   assert.equal(validateFirmware(fw(b), magtag()).ok, true);
-  const s3 = mergedImage({ appBytes: 300 * 1024 });
+  const s3 = mergedImage({ sizeNibble: 0x2 });
   const res = validateFirmware(fw(s3), magtag());
   assert.equal(res.ok, false);
   assert.match(res.problems.join(' '), /not the MagTag build/);

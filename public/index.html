@@ -255,7 +255,7 @@
          showDirectoryPicker to fall back to.
 
          THREE STAGES IN ONE SCREEN, toggled by a6a.js: flash (fetch the latest release's
-         merged-flash.bin, write it — whole at 0x0, or the app slice at 0x10000 for the X4 Pro), drive (press RESET, pick the MARQUEE drive, we write cfg-marquee.json), done
+         merged-flash.bin, write it in pieces around the blank NVS partition), drive (press RESET, pick the MARQUEE drive, we write cfg-marquee.json), done
          (eject, press RESET). The rail changes with them; the foot does not. The log stays
          hidden unless something fails, then shows everything so far. -->
     <section class="screen" id="a6a" data-screen="a6a">
@@ -288,8 +288,8 @@
 
             <!-- Opt-in, default off. The firmware never formats its FAT partition, so a full
                  erase takes the MARQUEE drive with it. Writing the merged image alone leaves it
-                 alone. Hidden altogether for the X4 Pro (a6a.js): only its app partition is
-                 written, so an erase would take the bootloader and the factory calibration. -->
+                 alone. Hidden altogether for the X4 Pro (a6a.js): its factory panel calibration is
+                 in NVS, which a normal write steps around and an erase would wipe. -->
             <div id="a6aEraseOpt">
               <label class="check-row"><input type="checkbox" id="a6aEraseAll"> Erase the whole chip first</label>
               <p class="warn-line hidden" id="a6aEraseWarn">This wipes the MARQUEE drive and everything on it. The drive comes back unformatted and has to be formatted FAT by hand before the next step can write to it. Leave this off unless the board is misbehaving.</p>
@@ -408,7 +408,7 @@
             <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The latest <a href="https://github.com/adafruit/Adafruit_Marquee/releases" target="_blank" rel="noopener">Adafruit_Marquee release</a>, downloaded here for this display's board — the version is shown next to it. The download is checked against the release's checksum, the image is checked before anything is written, and the chip is checked against it before the write starts.</p>
             <div class="hr" style="margin:6px 0"></div>
             <div class="eyebrow">What gets written</div>
-            <!-- a6a.js rewrites this for a board written at an offset (the X4 Pro). -->
+            <!-- a6a.js rewrites this for a board with no erase option (the X4 Pro). -->
             <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty" id="a6aRailWritten">The image shown above, at the start of the flash. The <span class="mono">MARQUEE</span> drive and whatever is on it are kept unless you tick "Erase the whole chip first". The configuration is the next step, and goes onto that drive.</p>
           </div>
 
