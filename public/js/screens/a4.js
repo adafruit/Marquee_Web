@@ -5,7 +5,7 @@
  * preset — resolution, rotation, colour mode, driver, panel id and every SPI pin — so
  * nothing downstream has to ask about hardware again.
  *
- * Three cards, from FEATURED_KEYS. The catalog in presets.js is longer and every entry
+ * Cards come from FEATURED_KEYS. The catalog in presets.js is longer and every entry
  * in it still works; these are the ones this flow can take someone through end to end.
  * A device migrated from an older build pointed at one of the others keeps running,
  * because nothing reads the featured list at runtime.

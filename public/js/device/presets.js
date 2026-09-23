@@ -128,6 +128,21 @@ export const DISPLAY_PRESETS = {
     pins: { busy: 'D7', dc: 'D10', rst: 'D8', cs: 'D9', sramCs: 'D6', mosi: 'D35', sck: 'D36', bus: 0 },
   },
 
+  // 4.2" Tri-Color eInk paired with a Feather ESP32-S3. Reuses the FeatherWing's
+  // firmware and hardware SPI bus, with RESET/BUSY unused. This configuration
+  // names the ThinkInk panel in both driver and panel; keep the bare-panel wiring
+  // above available separately for existing devices.
+  tricolor42S3: {
+    label: '4.2" Tri-Color eInk + ESP32-S3',
+    spec: '400×300 · black/white/red · 420-tricolor-MFGNR',
+    cardMeta: '4.2" 300x400 Tri-Color eInk',
+    terms: '4.2 420 tricolor tri-color eink epaper red ssd1683 feather esp32-s3',
+    photo: 'img/panels/420-tricolor.jpg',
+    preset: '400x300', rotation: '90', mode: 'tricolor',
+    name: 'epd0', driver: '420-tricolor-MFGNR', panel: '420-tricolor-MFGNR',
+    pins: { busy: '-1', dc: 'D10', rst: '-1', cs: 'D9', sramCs: 'D6', mosi: '-1', sck: '-1', bus: 0 },
+  },
+
   // Adafruit 4.2" Grayscale eInk / ePaper bare display: 400×300 4-level gray,
   // SSD1683 (ThinkInk_420_Grayscale4_MFGN). BUSY and RESET aren't wired here, so
   // both are -1 ("pin not used") like the 2.13" FeatherWing.
@@ -212,7 +227,7 @@ export const PRESET_KEYS = Object.keys(DISPLAY_PRESETS);
  * defined and reachable by preset key — a migrated device pointed at a 7.5" tri-color
  * keeps working — they are just not on the menu.
  */
-export const FEATURED_KEYS = ['magtag', 'tricolorFW', 'x4pro'];
+export const FEATURED_KEYS = ['magtag', 'tricolorFW', 'tricolor42S3', 'x4pro'];
 
 /** The name A4 puts on a card, falling back to the catalog label. */
 export function presetCardLabel(key) {

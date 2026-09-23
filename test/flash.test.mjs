@@ -63,6 +63,12 @@ test('firmwareFor: every board gets the whole image; only the X4 Pro forbids the
   assert.equal(firmwareFor({}), null);
 });
 
+test('4.2-inch Tri-Color ESP32-S3 uses and accepts the FeatherWing firmware', () => {
+  const board = firmwareFor({ flow: { selectedPanel: 'tricolor42S3' } });
+  assert.deepEqual(board, feather());
+  assert.equal(validateFirmware(fw(mergedImage({ sizeNibble: 0x2 })), board).ok, true);
+});
+
 test('readPartitions / findPartitionAt: read the table back out of the image', () => {
   const b = mergedImage();
   assert.equal(readPartitions(b).length, X4_TABLE.length);
