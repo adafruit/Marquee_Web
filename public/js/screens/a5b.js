@@ -196,6 +196,24 @@ function setOutcome(text, tone = '') {
   el.className = tone === 'fail' ? 'field-error' : 'hint';
 }
 
+function setFeedLimitOutcome() {
+  setOutcome('Your Adafruit IO Basic account does not have enough free feeds to continue with Marquee. '
+    + 'IO Basic plans provide 10 feeds, and Marquee requires 4 feeds per device. Visit your ', 'fail');
+  const el = $('a5bOutcome');
+  if (!el) return;
+  const feedsLink = document.createElement('a');
+  feedsLink.href = 'https://io.adafruit.com/feeds';
+  feedsLink.textContent = 'feeds page';
+  const plusLink = document.createElement('a');
+  plusLink.href = 'https://io.adafruit.com/plus';
+  plusLink.textContent = 'Adafruit IO Plus';
+  for (const link of [feedsLink, plusLink]) {
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+  }
+  el.append(feedsLink, ' to make room, or upgrade to ', plusLink, ' for unlimited feeds.');
+}
+
 /** A row that failed says why on the row itself, because "something went wrong"
  *  four feeds deep is not an answer anyone can act on. */
 function failRow(feed, why) {
@@ -306,6 +324,7 @@ async function createGroupAndFeeds() {
     //    that has nothing to do with what the user typed.
     let created = 0;
     let failed = 0;
+    let feedLimitReached = false;
     let historyWarning = false;
     for (const feed of MARQUEE_FEEDS) {
       const existing = present.get(feed.key);
@@ -328,7 +347,9 @@ async function createGroupAndFeeds() {
           `${feed.key} — created${feed.history ? '' : ', history off'}`);
         created++;
       } else {
-        failRow(feed, out.status === 403 ? 'feed limit reached' : out.error);
+        const atFeedLimit = out.status === 403 || /feed limit reached/i.test(out.error);
+        feedLimitReached ||= atFeedLimit;
+        failRow(feed, atFeedLimit ? 'feed limit reached' : out.error);
         failed++;
       }
     }
@@ -336,7 +357,8 @@ async function createGroupAndFeeds() {
     if (failed) {
       // Whatever landed stays. The existence check above is what makes pressing the
       // button again finish the job rather than start it over.
-      setOutcome(
+      if (feedLimitReached) setFeedLimitOutcome();
+      else setOutcome(
         failed === MARQUEE_FEEDS.length && !groupExisted
           ? `${groupKey} was created but its feeds were not. Try again to finish.`
           : `${failed} feed${failed === 1 ? '' : 's'} could not be created. The rest are in place — try again to finish.`,
