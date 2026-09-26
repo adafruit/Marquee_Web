@@ -133,6 +133,38 @@ an error worth bricking a take over.
 3. Publish this JSON to the sleep feed.
 4. Navigate to Act III.
 
+### The live take
+
+A push is a snapshot, and a board on a timer is not. It wakes, refetches whatever datum is
+on the image feed, and redraws it — so a dashboard built on feed-bound widgets showed the
+readings of the moment somebody last pressed something, for as long as nobody pressed
+anything again. Measured on the bench: a source feed publishing every 60s, a board cycling
+every 72s, and an image feed untouched for thirteen minutes.
+
+So the editor republishes on the board's own cycle. `device.js` ("the live take") re-reads
+every bound element, re-renders, and puts the result on the image feed — **only** the image
+feed, because the sleep window belongs to the sleep already running.
+
+| | |
+|---|---|
+| trigger | the board's own `sleeping` report on `{group}.status`, plus `LIVE_SETTLE_MS` (5s) |
+| fallback | a board that never reports gets the armed interval as an estimated clock instead |
+| floor | `LIVE_MIN_GAP_MS` (30s) between publishes, whatever asked for one |
+| de-dupe | the base64 BMP, byte for byte — an unchanged picture is never republished |
+| cost | one read per bound element (one per series on a chart), plus at most one publish |
+| off switch | **Live data** on Act III's action bar, stored per display as `liveRefresh` |
+
+**Why `sleeping` and not `awake`.** The report means the alarm is armed, so the whole window
+is available and nothing is racing a fetch. It is also the only moment the promotion
+bracket can credit: a take published now is older than the next `awake`, so `applyStatus()`
+promotes it next cycle rather than holding it. And the firmware stays subscribed to the
+image feed while it is up, so publishing on `awake` can land mid-take and buy a second
+panel refresh — up to two minutes of one on a driver with BUSY unwired.
+
+It will not publish to a display nobody has pushed to, to a canvas with nothing bound, or
+while a drag or a focused inspector field says someone is mid-edit. Failures are said once
+per session and then logged, like the `canvas-state` mirror.
+
 It does not wait for anything, and there is nothing it could wait for — this feed
 carries no acknowledgement. Act III's countdown is therefore a client-side estimate
 of the window that was published, not a report of the board's state, until the

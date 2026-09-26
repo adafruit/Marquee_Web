@@ -11,29 +11,33 @@
  * for whoever owns them.
  */
 
-import { sleepFeedKey, statusFeedKey } from '../core/api.js';
+import { bitmapFeedKey, sleepFeedKey, statusFeedKey, IO_MAX_NO_HISTORY } from '../core/api.js';
 import { navigate } from '../core/router.js';
 import { layer, hideDitherPreview } from '../canvas/stage.js';
 import { select } from '../canvas/selection.js';
 import { resetCounter } from '../canvas/elements.js';
-import { refreshInterval, sleepModeFor } from '../core/config.js';
+import { refreshInterval, sleepModeFor, liveRefreshOn } from '../core/config.js';
 import {
   serialize, invalidateCanvasBaseline, saveCanvasNow, cancelCanvasSave,
 } from '../core/doc.js';
-import { renderOrReport, tooLargeForIO, publishToIO } from '../canvas/render.js';
-import { refreshFeedElements, readFeedData } from './feeds.js';
+import { renderBitmap, renderOrReport, tooLargeForIO, publishToIO } from '../canvas/render.js';
+import { refreshFeedElements, readFeedData, hasFeedBindings, feedReadCost } from './feeds.js';
 import { takeInFlight, parseStatus, readReport, TAKE_CEILING_MS, REPORT_GRACE_MS } from './cycle.js';
 import {
-  getState, setState, setPublished, clearPublished,
+  getState, setState, setPublished, clearPublished, getPublished,
   getQueued, setQueued, clearQueued, subscribe,
 } from '../core/state.js';
 import { syncPushBlock } from '../screens/a7.js';
-import { $, toast, fmtLocalSeconds } from '../core/util.js';
+import { Konva } from '../canvas/konva.js';
+import { $, val, toast, fmtLocalSeconds } from '../core/util.js';
 
 // ---------- observers -------------------------------------------------------
 
 const deviceListeners = new Set();
-/** Emits {type} for 'pushed' | 'woke' | 'reset' | 'status'. */
+/** Emits {type} for 'pushed' | 'queued' | 'woke' | 'slept' | 'reset' | 'status'.
+ *
+ *  'queued' means the image feed moved without anyone navigating anywhere — the queue
+ *  button, and the live take below. A8 reads it as "re-read the pair". */
 export function onDeviceEvent(fn) { deviceListeners.add(fn); }
 function emit(type, detail = {}) { deviceListeners.forEach((fn) => fn({ type, ...detail })); }
 
@@ -179,6 +183,9 @@ async function pushToDisplay() {
     btn.textContent = 'Publishing to IO…';
     const io = await publishToIO(r.bmp);
     if (!io.ok) return;
+    // What IO now holds. The live take below compares against this before republishing, so
+    // a push is not immediately followed by a byte-identical one on the next cycle.
+    noteBitmapOnFeed(r.bmp);
 
     // 2) The sleep window, as JSON on the sibling feed. Not size-checked — the
     // payload is a few dozen bytes and tooLargeForIO is about the BMP.
@@ -568,6 +575,10 @@ function applyStatus(datum) {
   } else {
     startSleepCountdown(secs, { since: at });
   }
+  // The board has armed its alarm, so the whole window is ours: this is the moment to put
+  // a take carrying current readings on the feed, ahead of the fetch that follows. See
+  // "the live take" below for why this event and no other.
+  scheduleLiveTake();
   emit('slept');
 }
 
@@ -755,6 +766,7 @@ async function queueForNextTake() {
     btn.textContent = 'Publishing to IO…';
     const io = await publishToIO(r.bmp);
     if (!io.ok) return;
+    noteBitmapOnFeed(r.bmp);
 
     // The sleep window goes with it: an interval changed while editing is part of
     // the same take, and the board reads both feeds on the same wake.
@@ -769,6 +781,10 @@ async function queueForNextTake() {
     // board next wakes and redraws.
     setQueued({ png: 'data:image/png;base64,' + r.png, doc, at: Date.now() });
     scheduleQueuedWrite();
+    // The feed moved, and this is the only notice anything gets. A8 used to learn it from
+    // the navigate() below re-running its enter hooks, which is an accident of routing
+    // rather than a signal — and the live take has no navigation at all.
+    emit('queued');
 
     toast(sio.ok
       ? 'Queued — the board collects it on its next wake'
@@ -777,6 +793,263 @@ async function queueForNextTake() {
   } finally {
     restore();
   }
+}
+
+// ---------- the live take ---------------------------------------------------
+//
+// THE BUG THIS ANSWERS. A feed-bound widget was only ever re-read by a user action — a
+// push, a queue, a preview, a click on "refresh" in the inspector. Every one of those is
+// somebody asking to see a number. Nothing asked on the board's behalf, and the board is
+// the only one actually looking: it wakes on its timer, fetches whatever datum is on the
+// bitmap feed and redraws it, faithfully, forever. So a panel left cycling on its own
+// showed the readings of the moment somebody last pressed something — for thirteen
+// minutes, in the report this was written from, against a source feed publishing every
+// sixty seconds.
+//
+// The fix is one caller that is not a user, and everything about it is shaped by that. It
+// publishes quietly, it says a failure once, it never navigates, it refuses to publish to
+// a board nobody has chosen to push to, and it does not touch the sleep feed — the window
+// belongs to the sleep already running, and a second write per cycle would double the ops
+// for a payload that has not changed.
+//
+// WHY IT HANGS OFF `sleeping` AND NOT `awake`. Three arguments, one moment. A `sleeping`
+// report means the board has armed its alarm, so the whole window is ours and nothing is
+// racing a fetch. It is also the only moment the promotion bracket above can credit: a
+// take published now is older than the next `awake`, so applyStatus() promotes it next
+// cycle instead of holding it (`take.at < lastAwakeAt`). And the firmware stays subscribed
+// to the bitmap feed while it is up, so publishing on `awake` can land mid-take and buy a
+// second panel refresh — up to two minutes of one, on a driver with BUSY unwired.
+//
+// What it does NOT do is aim at the freshest possible moment. Publishing at
+// `wakesAt - lead` would carry newer numbers, but on a one-minute window the lead is most
+// of the sleep, and a board that wakes early lands the publish inside its own fetch, which
+// is the ambiguous case above. Data one window old is the staleness the board already has,
+// and it is a strict improvement on never.
+
+/** After the board says it is asleep, before the feed's only datum is replaced.
+ *
+ *  The bitmap feed is history-off, so what is on it at `sleeping` IS the take the board
+ *  just drew — and A8 reads exactly that, on exactly this event, to photograph it before
+ *  it is gone (see a8.js#fetchTakes and the `lastDrawn` cache). Publishing into that read
+ *  would replace the picture being taken. The shortest window this editor offers is a
+ *  minute, so a few seconds costs nothing and removes the race entirely. */
+const LIVE_SETTLE_MS = 5000;
+
+/** Floor between two live publishes, whatever asked for one. The same knob and the same
+ *  reason as canvasfeed.js#MIN_GAP_MS: IO's ~30 ops a minute is an account-wide budget
+ *  that the status watch above already spends 12 of. */
+const LIVE_MIN_GAP_MS = 30000;
+
+/** How long to wait out a gesture. A drag or a half-typed inspector field is not a
+ *  moment to photograph the stage in — see liveStageBusy(). */
+const LIVE_BUSY_RETRY_MS = 4000;
+
+let liveTimer = null;
+let liveRunning = false;
+let liveAgain = false;
+let lastLiveAt = 0;
+
+/** The base64 BMP Adafruit IO is known to hold, or null when it holds none of ours.
+ *
+ *  The de-dupe that makes this feature nearly free: a gauge whose feed reports the same
+ *  number for an hour renders the same bytes for an hour, and there is nothing to say. Set
+ *  by the two user publishes as well as by this one, so the first cycle after a push does
+ *  not republish what the push just sent. */
+let lastPublishedBmp = null;
+
+/** Said once per session, like canvasfeed.js. This runs on the board's clock behind
+ *  whatever the user is doing, and a toast per cycle would be a wall of them. */
+let liveReportedFailure = false;
+let liveReportedTooLarge = false;
+
+function liveLog(line) {
+  console.debug('[marquee-live]', line);
+}
+
+/** Is someone's hand on the canvas right now? */
+function liveStageBusy() {
+  if (Konva && typeof Konva.isDragging === 'function' && Konva.isDragging()) return true;
+  const el = document.activeElement;
+  if (!el || el === document.body || typeof el.closest !== 'function') return false;
+  // The inspector and the popovers are rebuilt by a reselect; a field with focus in one of
+  // them is a value being typed.
+  return !!el.closest('#propBody, .sleep-pop, .dither-pop');
+}
+
+/**
+ * Why this cycle should be skipped, as a sentence — or null to go ahead.
+ *
+ * A reason rather than a boolean so the console trail can say what happened. "Nothing was
+ * published" has a dozen innocent causes and they are indistinguishable from a bug unless
+ * the code says which one it was.
+ *
+ * Ordered cheapest and most decisive first.
+ */
+function liveBlockedBecause() {
+  const st = getState();
+  if (!liveRefreshOn()) return 'live data is switched off for this display';
+  // A5b has not run, so the feeds behind the group key do not exist. The same guard, for
+  // the same reason, as ensureStatusWatch().
+  if (st.ioSetup === 'pending') return 'Adafruit IO setup has not been confirmed';
+  if (!bitmapFeedKey() || !val('ioUser') || !val('ioKey')) return 'no group key or credentials yet';
+  // THE CONSENT GUARD, and the one that must never be relaxed. Publishing this canvas to a
+  // panel the user has not chosen to send to would put a stranger's draft on a board.
+  // `lastWriteAt` is persisted per device, so this correctly resumes after a reload.
+  if (!st.lastWriteAt && !getQueued() && !getPublished().doc) {
+    return 'nothing has been pushed to this display yet';
+  }
+  if (!hasFeedBindings()) return 'nothing on this canvas is bound to a feed';
+  // renderBitmap() photographs the stage through captureClean(), which deselects, drops
+  // the zoom to 1:1 and puts both back — and select(null) rebuilds the inspector by
+  // innerHTML. Under a live drag that is a jumping canvas; under a focused inspector field
+  // it is the user's half-typed value destroyed. Nothing here is urgent enough to be worth
+  // either, so a gesture postpones the take rather than cancelling it.
+  if (liveStageBusy()) return 'busy';
+  return null;
+}
+
+/**
+ * Re-read the bindings, re-render, and put the result on the bitmap feed if it differs
+ * from what is already there.
+ *
+ * Deliberately absent, for the reasons queueForNextTake() sets out above — nothing here
+ * reaches the board, so nothing here may claim to have:
+ *
+ *   setPublished()         — the board has not drawn this. That claim is made by
+ *                            applyStatus() on the next `sleeping`, from evidence.
+ *   startSleepCountdown()  — writing a feed does not move an alarm the board already armed.
+ *   lastWriteAt/wakeSource — same.
+ *   publishToIO(sleep)     — the window has not changed.
+ *   toast() on success     — nobody asked for this.
+ *   navigate()             — this is not a user action and must never move the screen.
+ */
+async function takeLiveTake(reason) {
+  if (liveRunning) { liveAgain = true; return; }
+  const blocked = liveBlockedBecause();
+  if (blocked) {
+    liveLog('skipped — ' + blocked);
+    // A gesture is temporary; everything else waits for the next trigger rather than
+    // spinning a timer on a display that is switched off or has nothing bound.
+    if (blocked === 'busy') armLiveTake(LIVE_BUSY_RETRY_MS, reason);
+    return;
+  }
+
+  const epoch = stateEpoch;
+  liveRunning = true;
+  try {
+    // Best-effort by contract: a failed read leaves the previous value rather than
+    // blanking the element, so partial freshness still beats none.
+    const allRead = await refreshFeedElements();
+    if (epoch !== stateEpoch) return;
+
+    // renderBitmap() rather than renderOrReport(): that one toasts, and this runs on the
+    // board's clock rather than on a click.
+    let r;
+    try {
+      r = renderBitmap();
+    } catch (e) {
+      console.error('[marquee-live]', e);
+      return;
+    }
+
+    if (r.bmp === lastPublishedBmp) {
+      liveLog('nothing to publish — the render is byte-identical to what IO holds (' + reason + ')');
+      return;
+    }
+    // tooLargeForIO() toasts; this is its quiet twin, said once.
+    if (!r.fitsNoHistory) {
+      if (!liveReportedTooLarge) {
+        liveReportedTooLarge = true;
+        toast('This dashboard is too large to refresh on the board\'s own cycle — shrink the '
+          + 'panel or use fewer colours. The take already on the feed is unaffected.');
+      }
+      liveLog('skipped — ' + r.base64Bytes + ' B is over IO\'s ' + IO_MAX_NO_HISTORY + ' B ceiling');
+      return;
+    }
+
+    lastLiveAt = Date.now();
+    const out = await publishToIO(r.bmp, bitmapFeedKey(), { quiet: true });
+    if (epoch !== stateEpoch) return;
+    if (!out.ok) {
+      if (!liveReportedFailure) {
+        liveReportedFailure = true;
+        toast('The dashboard could not be refreshed on "' + out.feed + '" (' + out.error + ') — '
+          + 'the board keeps redrawing the take already on the feed.');
+      }
+      liveLog('publish failed — ' + out.error);
+      // IO does not hold those bytes, so the next cycle must carry them again.
+      lastPublishedBmp = null;
+      return;
+    }
+
+    lastPublishedBmp = r.bmp;
+    // Booked exactly as queueForNextTake() books one, and it becomes `published` by the
+    // same route: the board's next `sleeping` promotes it, and scheduleQueuedWrite() is
+    // the estimate a board that never reports gets instead.
+    setQueued({ png: 'data:image/png;base64,' + r.png, doc: serialize(), at: Date.now() });
+    scheduleQueuedWrite();
+    emit('queued');
+    liveLog('published ' + r.base64Bytes + ' B after ' + reason + ' — '
+      + feedReadCost() + ' feed read(s)' + (allRead ? '' : ', some unreadable'));
+  } finally {
+    liveRunning = false;
+    if (liveAgain) { liveAgain = false; armLiveTake(LIVE_SETTLE_MS, 'a trigger that arrived mid-run'); }
+    else armLiveFallback();
+  }
+}
+
+/** Run one, no sooner than the floor allows. */
+function armLiveTake(delay, reason) {
+  clearTimeout(liveTimer);
+  const since = Date.now() - lastLiveAt;
+  liveTimer = setTimeout(() => takeLiveTake(reason), Math.max(delay, LIVE_MIN_GAP_MS - since));
+}
+
+/**
+ * The evidence trigger. Called from applyStatus()'s `sleeping` branch, which is the moment
+ * this whole section is built around.
+ */
+function scheduleLiveTake() {
+  armLiveTake(LIVE_SETTLE_MS, 'the board reported sleeping');
+}
+
+/**
+ * The fallback, for a board whose firmware reports nothing.
+ *
+ * There is no `sleeping` to hang off, so the sleep window the editor last asked for is the
+ * only clock available — the same model/evidence split scheduleQueuedWrite() makes one
+ * section up, and it retires itself the moment a board proves it reports. Floored so a
+ * one-minute interval cannot outrun the gap.
+ */
+function armLiveFallback() {
+  clearTimeout(liveTimer);
+  if (boardReportsState()) return;
+  const period = Math.max(refreshInterval() * 1000, LIVE_MIN_GAP_MS);
+  liveTimer = setTimeout(() => takeLiveTake('the estimated cycle'), period);
+}
+
+/**
+ * What Adafruit IO now holds on the bitmap feed, told to us by whoever put it there.
+ *
+ * Called by the push and by the queue as well as by the live take, because the baseline is
+ * about the FEED and not about who wrote to it: without it, the first cycle after a manual
+ * push would republish bytes identical to the ones the push just sent.
+ */
+function noteBitmapOnFeed(bmp) {
+  lastPublishedBmp = bmp;
+  lastLiveAt = Date.now();
+}
+
+/** Forget this board's take. A different display has a different panel on a different
+ *  feed, so the byte baseline cannot travel with the session. */
+function stopLiveTakes() {
+  clearTimeout(liveTimer);
+  liveTimer = null;
+  liveAgain = false;
+  lastPublishedBmp = null;
+  lastLiveAt = 0;
+  liveReportedFailure = false;
+  liveReportedTooLarge = false;
 }
 
 // ---------- device switch ---------------------------------------------------
@@ -805,6 +1078,7 @@ export function stopDeviceRuntime() {
   clearPublished();
   dropQueuedWrite();
   stopStatusWatch();
+  stopLiveTakes();
   statusSeen = false;
 }
 
@@ -843,6 +1117,7 @@ async function resetState() {
     clearPublished();
     dropQueuedWrite();
     stopStatusWatch();
+    stopLiveTakes();
     setState({
       deviceState: 'online-awake', wakesAt: null, lastWriteAt: null,
       wakeSource: null, sleepSeconds: null, lastWokeAt: null, lastSleptAt: null,
@@ -890,6 +1165,9 @@ export function initDevice() {
     if (document.hidden) return;
     ensureStatusWatch();
     catchUpStatus();
+    // The live take's own timer was throttled with everything else, and for a board that
+    // does not report there is no catch-up report to re-arm it. Put the clock back.
+    armLiveFallback();
   });
 
   // The board reports whether or not this editor has pushed anything, so the watch
@@ -898,6 +1176,10 @@ export function initDevice() {
   // once a watch is running.
   ensureStatusWatch();
   subscribe(() => ensureStatusWatch());
+
+  // The estimated clock for a board that never reports. A board that does report re-arms
+  // this off its own `sleeping`, and armLiveFallback() stands down the moment one does.
+  armLiveFallback();
 
   status('☕ Device awake');
 }

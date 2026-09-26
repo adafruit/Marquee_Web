@@ -67,6 +67,19 @@ IO datum per keystroke. `canvasfeed.js` adds its own timing on top:
 | `DEBOUNCE_MS` | 3000 | a drag, a resize, or a sentence typed into a label is **one** datum |
 | `MIN_GAP_MS` | 15000 | a floor between publishes however busy the canvas is — IO's rate limit is an account-wide budget shared with every element binding on the canvas |
 | de-dupe | exact payload | a save that serializes identically never reaches the network |
+| de-dupe | the **design** | a new feed reading changes the picture, not the scene — see below |
+
+The second de-dupe is what keeps this feed quiet now that the editor refreshes bound
+elements on the board's own cycle (see "The live take" in
+[`marquee-sleep.md`](marquee-sleep.md)). `serialize()` bakes each bound element's last
+reading into the document, so every refresh is a document change — and without this the
+feed would carry a fresh copy of the whole scene, embedded images and all, once per board
+cycle, forever, per open tab. `core/samples.js` names the keys that hold a reading rather
+than a design decision, and a document differing in nothing else is not published.
+
+What the feed then holds is the scene as of the last real edit. That is the right split —
+this feed is the editable scene, the image feed is the rendering of it — and a browser
+hydrating from here re-reads the bindings itself.
 
 A failed publish costs nothing: the document is already in localStorage, `lastPublishedJson`
 is dropped, and the next edit carries the whole scene up again. The user is told **once**

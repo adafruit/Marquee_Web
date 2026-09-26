@@ -228,6 +228,41 @@ export function downsample(points, max) {
 }
 
 /**
+ * Every element with a live binding, split by HOW it is read: `targets` take a last
+ * value, `charts` take a window.
+ *
+ * Exported because the question has a second asker. refreshFeedElements() below answers
+ * "which of these do I re-read"; device.js's live take asks "is there anything here a feed
+ * could change at all", before deciding whether a background refresh is worth an Adafruit
+ * IO request. Those are one derivation, and a second spelling of it is how a newly added
+ * widget type ends up refreshing on a push and never on the cycle.
+ */
+export function feedBoundElements(nodes) {
+  const all = nodes || layer.find('.element');
+  return {
+    targets: all.filter((n) => FEED_ETYPES.includes(n.getAttr('etype')) && n.getAttr('feedKey')),
+    charts: all.filter((n) => n.getAttr('etype') === 'linechart' && (n.getAttr('feeds') || []).length),
+  };
+}
+
+/** Is there anything on this canvas that a feed could change? */
+export function hasFeedBindings() {
+  const { targets, charts } = feedBoundElements();
+  return !!(targets.length || charts.length);
+}
+
+/**
+ * The Adafruit IO cost of one refresh, in requests: one per bound single-value element,
+ * one per series on every chart. device.js logs it beside each live take, because "is this
+ * feature eating my rate limit" is a question the console should be able to answer without
+ * anyone counting widgets by hand.
+ */
+export function feedReadCost() {
+  const { targets, charts } = feedBoundElements();
+  return targets.length + charts.reduce((n, c) => n + (c.getAttr('feeds') || []).length, 0);
+}
+
+/**
  * Re-read every feed-bound element (or just the ones passed in) and rebuild
  * them. Best-effort by design: a failed read LEAVES THE PREVIOUS VALUE rather
  * than blanking the element, so one flaky request can't turn a panel off.
@@ -237,11 +272,7 @@ export function downsample(points, max) {
  * request, because they need a window rather than a last value.
  */
 export async function refreshFeedElements(nodes) {
-  const all = nodes || layer.find('.element');
-  const targets = all
-    .filter((n) => FEED_ETYPES.includes(n.getAttr('etype')) && n.getAttr('feedKey'));
-  const charts = all
-    .filter((n) => n.getAttr('etype') === 'linechart' && (n.getAttr('feeds') || []).length);
+  const { targets, charts } = feedBoundElements(nodes);
   if (!targets.length && !charts.length) return true;
   const results = await Promise.all([
     ...targets.map(async (n) => {
