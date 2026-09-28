@@ -25,7 +25,7 @@ import { initRender } from './canvas/render.js';
 import { initFeeds } from './device/feeds.js';
 import { initIconFont } from './canvas/elements.js';
 import { initDevice } from './device/device.js';
-import { initKeyboard } from './canvas/selection.js';
+import { initKeyboard, initDeselect } from './canvas/selection.js';
 import { initRouter, navigate, onEnter, syncNav, isNavigable } from './core/router.js';
 import { getState, subscribe, replaceFlow } from './core/state.js';
 import * as devices from './device/devices.js';
@@ -200,6 +200,7 @@ async function boot() {
   initFeeds();
   initDevice();
   initKeyboard();
+  initDeselect();
 
   // One init per navigable screen, and router.js's SCREENS is the same list.
   initA1c();
