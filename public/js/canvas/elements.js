@@ -13,7 +13,7 @@ import { layer, tr, snap, zoom, suspendDitherPreview, scheduleDitherRefresh } fr
 import { select, refreshProps } from './selection.js';
 import { FA_FAMILY, FA_WEIGHT, iconGlyph, DEFAULT_GAUGE_ICON, onFaReady } from './icons.js';
 import {
-  toast, clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, niceStep, stepDecimals, snapToStep, scaleUnit,
+  toast, clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, niceStep, snapToStep, fmtTicks, scaleUnit,
 } from '../core/util.js';
 
 let counter = 0;
@@ -279,12 +279,14 @@ function chartDomain(g, all) {
   // ends on a labelled round number. Left raw, a 65.01–74.98 range has a single
   // round stop inside it (70) and the ticks fell back to printing the extremes.
   // Authored bounds are the user's and are kept exactly; log keeps its own floor.
+  // The step is handed back so the ticks are laid on this same grid (see niceTicks).
+  let step;
   if (!log) {
-    const step = niceStep(lo, hi, 3);
+    step = niceStep(lo, hi, 3);
     if (authoredMin === null) lo = snapToStep(lo, step);
     if (authoredMax === null) hi = snapToStep(hi, step, true);
   }
-  return { lo, hi, log };
+  return { lo, hi, log, step };
 }
 
 /**
@@ -355,24 +357,19 @@ function buildLineChart(g) {
   const keyLegend = !!g.getAttr('keyLegend');
   const xLabel = g.getAttr('xLabel') || '';
   const yLabel = g.getAttr('yLabel') || '';
-  const axisFont = clamp(Math.round(+g.getAttr('axisFontSize') || AXIS_FONT_DEFAULT),
-                         CHART_FONT_MIN, CHART_FONT_MAX);
+  const requestedFont = clamp(Math.round(+g.getAttr('axisFontSize') || AXIS_FONT_DEFAULT),
+                              CHART_FONT_MIN, CHART_FONT_MAX);
   const axisFamily = g.getAttr('axisFontFamily') || 'monospace';
-  const titleFont = axisFont + TITLE_STEP;
-  // The data along the axes (Y numbers, X times) sits a step below the captions,
-  // so the captions read as the headings for them.
-  const tickFont = Math.max(CHART_FONT_MIN - 1, Math.round(axisFont * 0.8));
 
   g.add(new Konva.Rect({ width: w, height: h, fill: '#000', opacity: 0 })); // hit area
 
   const all = chartSeries(g);
-  const { lo, hi, log } = chartDomain(g, all);
+  const { lo, hi, log, step } = chartDomain(g, all);
   const time = chartTimeDomain(all);
-  const ticks = niceTicks(lo, hi, 3).filter((t) => t >= lo && t <= hi);
-  // Ticks print at their step's precision (65, 70, 75 — not 65.00), still capped
-  // by the chart's Decimals and at 2 places.
-  const tickDp = ticks.length > 1 ? stepDecimals(ticks[1] - ticks[0]) : 2;
-  const tickText = (t) => fmtDecimals(t, Math.min(decimals, 2, tickDp));
+  const ticks = niceTicks(lo, hi, 3, step).filter((t) => t >= lo && t <= hi);
+  // Ticks print at their step's precision (65, 70, 75, not 65.00), switching to
+  // exponent form for very small or very large values. See fmtTicks.
+  const tickLabels = fmtTicks(ticks, Math.min(decimals, 2));
   // A legend is what tells two lines apart, so it appears as soon as there are two
   // — `keyLegend` chooses the feed KEY over the name, per the IO field, rather than
   // being what switches the legend on. A single line needs no key to itself, so it
@@ -380,32 +377,56 @@ function buildLineChart(g) {
   const labelled = all.filter((s) => s.name || s.key);
   const showLegend = labelled.length > 1 || (keyLegend && labelled.length === 1);
 
-  // The plot box. Every gutter is EARNED by something drawn in it, so a chart with
-  // no axis labels and no legend keeps nearly the whole frame for data — the panels
-  // this renders to are 250px wide and cannot spare fixed padding.
-  const yGutter = yLabel ? axisFont + 1 : 0;                       // rotated Y caption
-  // Y tick numbers, drawn whether or not the grid is. Capped: a pressure feed
-  // reading 1013.25 wants 7 characters, which on a 120px chart would spend a
-  // quarter of the frame on labels for the data itself.
-  const tickW = ticks.length
-    ? Math.min(Math.round(Math.max(...ticks.map((t) => tickText(t).length)) * tickFont * 0.62) + 1,
-               Math.floor(w * 0.28))
-    : 0;
-  const left = yGutter + tickW + 1;
-  const top = title ? titleFont + 3 : 1;
-  const legendH = showLegend ? axisFont + 2 : 0;
-  // The X axis mirrors the Y: times under the axis, as the Y has its tick numbers,
-  // whenever the samples carry real timestamps (the legacy sample data doesn't),
-  // and the X caption on its own row beneath them, as the Y has its own gutter.
-  // Picked before the plot box because they decide whether the row is earned.
-  const plotW = Math.max(4, w - left - 1);
-  const timeLabels = time ? timeTickLabels(time, plotW, tickFont) : [];
-  const timeRowH = timeLabels.length ? tickFont + 1 : 0;
-  const bottom = 1 + timeRowH + (xLabel ? axisFont + 1 : 0) + legendH;
+  /**
+   * Every text row and gutter at one axis font size. The plot box gets what is left:
+   * every gutter is EARNED by something drawn in it, so a chart with no axis labels
+   * and no legend keeps nearly the whole frame for data. The panels this renders to
+   * are 250px wide and cannot spare fixed padding.
+   */
+  const layoutAt = (axisFont, withTimes = true) => {
+    const titleFont = axisFont + TITLE_STEP;
+    // The data along the axes (Y numbers, X times) sits a step below the captions,
+    // so the captions read as the headings for them.
+    const tickFont = Math.max(CHART_FONT_MIN - 1, Math.round(axisFont * 0.8));
+    const yGutter = yLabel ? axisFont + 1 : 0;                     // rotated Y caption
+    // Y tick numbers, drawn whether or not the grid is. Capped: a pressure feed
+    // reading 1013.25 wants 7 characters, which on a 120px chart would spend a
+    // quarter of the frame on labels for the data itself.
+    const tickW = ticks.length
+      ? Math.min(Math.round(Math.max(...tickLabels.map((l) => l.length)) * tickFont * 0.62) + 1,
+                 Math.floor(w * 0.28))
+      : 0;
+    const left = yGutter + tickW + 1;
+    const top = title ? titleFont + 3 : 1;
+    const legendH = showLegend ? axisFont + 2 : 0;
+    // The X axis mirrors the Y: times under the axis, as the Y has its tick numbers,
+    // whenever the samples carry real timestamps (the legacy sample data doesn't),
+    // and the X caption on its own row beneath them, as the Y has its own gutter.
+    const plotW = Math.max(4, w - left - 1);
+    const timeLabels = withTimes && time ? timeTickLabels(time, plotW, tickFont) : [];
+    const timeRowH = timeLabels.length ? tickFont + 1 : 0;
+    const bottom = 1 + timeRowH + (xLabel ? axisFont + 1 : 0) + legendH;
+    return { axisFont, titleFont, tickFont, yGutter, tickW, left, top, legendH,
+             plotW, timeLabels, timeRowH, plotH: h - top - bottom };
+  };
+  // The requested size is a ceiling, not a promise. The rows it asks for (title,
+  // times, X caption, legend) must leave the plot a usable share of the height, or
+  // the text crowds the data out and spills past the frame. So the size steps down
+  // until they do. At the floor size a tiny chart can still run out, so the time
+  // row goes last, as the only row nobody typed.
+  const minPlotH = Math.max(12, Math.round(h * 0.3));
+  let lay = layoutAt(requestedFont);
+  for (let f = requestedFont - 1; lay.plotH < minPlotH && f >= CHART_FONT_MIN; f--) lay = layoutAt(f);
+  if (lay.plotH < 4) lay = layoutAt(lay.axisFont, false);
+  const { axisFont, titleFont, tickFont, yGutter, tickW, left, top, legendH,
+          plotW, timeLabels, timeRowH } = lay;
+  // Read back by the inspector, which says so when the size was cut down. Not
+  // serialized: it is derived, and the next build recomputes it.
+  g.setAttr('axisFontFit', axisFont);
   const plot = {
     x: left, y: top,
     w: plotW,
-    h: Math.max(4, h - top - bottom),
+    h: Math.max(4, lay.plotH),
   };
   /**
    * x for one sample. Time-based when the timestamps are real dates, so every
@@ -423,7 +444,7 @@ function buildLineChart(g) {
   if (title) {
     g.add(new Konva.Text({
       text: title, fontSize: titleFont, fontFamily: axisFamily, fontStyle: 'bold', fill: ink,
-      x: 1, y: 0,
+      x: 1, y: 0, width: Math.max(4, w - 2), wrap: 'none', ellipsis: true,
     }));
   }
 
@@ -433,14 +454,14 @@ function buildLineChart(g) {
   // Each number is centred on its tick but kept clear of the title above and the
   // frame's bottom edge, which the top and bottom ticks would otherwise cross.
   const tickMinY = title ? titleFont + 1 : 0;
-  ticks.forEach((t) => {
+  ticks.forEach((t, i) => {
     const y = Math.round(py(t)) + 0.5;
     g.add(new Konva.Line({
       points: [plot.x, y, showGrid ? plot.x + plot.w : plot.x + 3, y],
       stroke: ink, strokeWidth: 1, opacity: showGrid ? 0.35 : 1,
     }));
     g.add(new Konva.Text({
-      text: tickText(t), fontSize: tickFont, fontFamily: axisFamily, fill: ink,
+      text: tickLabels[i], fontSize: tickFont, fontFamily: axisFamily, fill: ink,
       x: yGutter, y: clamp(Math.round(y - tickFont / 2), tickMinY, h - tickFont),
       width: tickW, align: 'right',
     }));

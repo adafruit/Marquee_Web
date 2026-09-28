@@ -336,6 +336,7 @@ export function refreshProps() {
         <select id="pChFont" aria-label="Chart font family" style="flex:1">${[['monospace', 'Mono'], ['sans-serif', 'Sans'], ['serif', 'Serif']].map(([v, l]) =>
           `<option value="${v}"${(n.getAttr('axisFontFamily') || 'monospace') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
       </div>
+      <p class="hint" id="pChFontFit"></p>
       <div class="prop-grid">
         <label class="field"><span class="label">Y minimum</span>
           <input type="number" id="pChYMin" value="${escapeAttr(String(n.getAttr('yMin') ?? ''))}" placeholder="auto"></label>
@@ -537,12 +538,24 @@ export function refreshProps() {
   const setChart = (attr, coerce = (v) => v) => (e) => {
     n.setAttr(attr, coerce(e.target.value));
     rebuildWidget(n);
+    showFontFit();      // a new caption row can change what size fits
   };
   bind('pChX', setChart('xLabel'));
   bind('pChY', setChart('yLabel'));
   bind('pChYMin', setChart('yMin'));         // raw text: '' means auto-detect
   bind('pChYMax', setChart('yMax'));
   bind('pChScale', setChart('yScale'));
+  // The chart may draw its text smaller than asked, to fit its height (see
+  // buildLineChart). Say so beside the field, or the size looks ignored.
+  const showFontFit = () => {
+    const hint = $('pChFontFit');
+    if (!hint) return;
+    const fit = n.getAttr('axisFontFit'), asked = n.getAttr('axisFontSize');
+    hint.textContent = fit < asked
+      ? `Drawn at ${fit}px — ${asked}px doesn't fit this chart's height. Make it taller for more.` : '';
+    hint.hidden = !(fit < asked);
+  };
+  if (etype === 'linechart') showFontFit();
   bind('pChFontSize', setChart('axisFontSize', (v) => clamp(Math.round(+v) || 7, CHART_FONT_MIN, CHART_FONT_MAX)));
   bind('pChFont', setChart('axisFontFamily'));
   bind('pChDec', setChart('decimals', (v) => Math.max(0, Math.min(10, Math.round(+v) || 0))));

@@ -98,18 +98,29 @@ export function niceStep(lo, hi, count = 4) {
   return (norm > 5 ? 10 : norm > 2 ? 5 : norm > 1 ? 2 : 1) * mag;
 }
 
-/** How many decimal places a value on a `step` grid needs: 0 for 5, 1 for 0.5. */
+/**
+ * How many decimal places a LABEL on a `step` grid prints: 0 for 5, 1 for 0.5.
+ * Capped at 10 because that is display precision, not arithmetic — values on
+ * the grid go through gridValue(), which has no such cap.
+ */
 export const stepDecimals = (step) => clamp(Math.ceil(-Math.log10(step) - 1e-9), 0, 10);
 
 /**
- * `v` rounded out to the step grid — down, or up when `up` — at the step's own
- * precision, for the same drift reason as niceTicks. The epsilon keeps a value
- * already on the grid (65 / 5 = 12.999… in floating point) where it is.
+ * The i-th stop of a `step` grid, with floating-point drift removed.
+ * i * step alone yields 0.30000000000000004 at step 0.1. Rounding to 12
+ * significant digits removes that at every magnitude. Fixed decimal places
+ * would not: capped at 10, they rounded a 1e-12 grid to 0 and collapsed the
+ * chart's whole domain onto one edge.
+ */
+const gridValue = (i, step) => Number((i * step).toPrecision(12));
+
+/**
+ * `v` rounded out to the step grid — down, or up when `up`. The epsilon keeps a
+ * value already on the grid (65 / 5 = 12.999… in floating point) where it is.
  */
 export function snapToStep(v, step, up = false) {
   const q = v / step;
-  const i = up ? Math.ceil(q - 1e-9) : Math.floor(q + 1e-9);
-  return Number((i * step).toFixed(stepDecimals(step)));
+  return gridValue(up ? Math.ceil(q - 1e-9) : Math.floor(q + 1e-9), step);
 }
 
 /**
@@ -121,18 +132,20 @@ export function snapToStep(v, step, up = false) {
  * The ramp rounds UP (a step of 5 where 3.3 was asked for) because these label a
  * 60px-tall plot on an e-ink panel — erring toward fewer, further-apart stops is
  * what keeps them legible.
+ *
+ * `step` lets a caller that has already snapped its range to a grid (the chart's
+ * auto-detected Y bounds) reuse that grid. Recomputed over the snapped range it
+ * can come out coarser and miss the ends: 0.33–0.91 snaps to 0.2–1 on a 0.2 grid,
+ * and a fresh step of 0.5 labels only 0.5 and 1.
  */
-export function niceTicks(lo, hi, count = 4) {
+export function niceTicks(lo, hi, count = 4, step = niceStep(lo, hi, count)) {
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return [lo, hi];
-  const step = niceStep(lo, hi, count);
-  // Stops are printed as axis labels, so they are rounded to the step's own
-  // precision. Accumulating (t += step) drifts, and so does re-multiplying
-  // (Math.round(t / step) * step still yields 0.30000000000000004 at step 0.1) —
-  // decimal rounding is what actually removes it.
-  const dp = stepDecimals(step);
+  // Accumulating (t += step) drifts, so each stop is computed from its index and
+  // cleaned by gridValue(). The stops are positions as well as labels, so they
+  // keep their magnitude here; label formatting is stepDecimals()'s job.
   const out = [];
   const first = Math.ceil(lo / step - 1e-9);
-  for (let i = first; i * step <= hi + step * 1e-9; i++) out.push(Number((i * step).toFixed(dp)));
+  for (let i = first; i * step <= hi + step * 1e-9; i++) out.push(gridValue(i, step));
   return out.length >= 2 ? out : [lo, hi];
 }
 
@@ -406,3 +419,24 @@ document.addEventListener('keydown', (e) => {
     escapeHandlers.get(id)?.();
   }
 });
+
+/**
+ * Labels for a run of evenly spaced tick values, as strings in the same order.
+ *
+ * Each label gets exactly the decimal places its step needs (65, 70, 75, not
+ * 65.00; 0.2, 0.4 at a 0.2 step). Any fewer and neighbouring ticks print the same
+ * text (0, 1, 1 for a 0.5 grid), so no Decimals-style cap applies here.
+ * Fixed-point stops at 4 places, and at a million or more. Past those, labels
+ * switch to exponent form, with just enough digits to tell neighbouring ticks
+ * apart. That keeps a 1e-12 series from being labelled 0.00 at every tick.
+ * `places` only formats a lone tick, which has no step to go by.
+ */
+export function fmtTicks(ticks, places = 2) {
+  if (ticks.length < 2) return ticks.map((t) => fmtDecimals(t, places));
+  const step = Math.abs(ticks[1] - ticks[0]);
+  const maxAbs = Math.max(...ticks.map(Math.abs));
+  const dp = stepDecimals(step);
+  if (dp <= 4 && maxAbs < 1e6) return ticks.map((t) => fmtDecimals(t, dp));
+  const digits = Math.max(0, Math.floor(Math.log10(maxAbs)) - Math.floor(Math.log10(step)));
+  return ticks.map((t) => (t === 0 ? '0' : t.toExponential(digits)));
+}
