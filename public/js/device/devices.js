@@ -68,6 +68,10 @@ export const SETTINGS_SCOPE = {
   pmDevice: 'device',
   ioGroup: 'device',
   sleepDuration: 'device',
+  // Whether this display's take is re-rendered from its feeds on the board's own cycle.
+  // Per-device, not per-account: one board watching a thermometer and another showing a
+  // fixed sign want different answers, and they are different boards.
+  liveRefresh: 'device',
 };
 
 export const ACCOUNT_FIELDS = Object.keys(SETTINGS_SCOPE).filter((k) => SETTINGS_SCOPE[k] === 'account');

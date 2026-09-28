@@ -20,12 +20,12 @@ import { selected, select } from '../canvas/selection.js';
 import { serialize, onDocChange } from '../core/doc.js';
 import { getState, countQueuedChanges, subscribe } from '../core/state.js';
 import { onDeviceEvent, catchUpStatus } from '../device/device.js';
-import { readFeedData, readFeedLast } from '../device/feeds.js';
+import { readFeedData, readFeedLast, hasFeedBindings } from '../device/feeds.js';
 import { displayState } from '../device/cycle.js';
-import { refreshIntervalLabel } from '../core/config.js';
+import { refreshIntervalLabel, liveRefreshOn } from '../core/config.js';
 import { navigate, currentScreen, syncNav } from '../core/router.js';
 import { activeDeviceId, panelNowKey } from '../device/devices.js';
-import { $, val, show, fmtInterval, fmtLocalTime, fmtLocalSeconds } from '../core/util.js';
+import { $, val, show, toast, fmtInterval, fmtLocalTime, fmtLocalSeconds } from '../core/util.js';
 
 /**
  * How large to draw a panel preview. NEVER above 1:1.
@@ -465,6 +465,47 @@ function renderNext() {
   show(note, pending > 0);
 }
 
+// ---------- the live-data chip ----------------------------------------------
+//
+// device.js does the work (see "the live take" there); this is the switch and the sentence
+// that says what it is doing. It lives on Showtime rather than in the editor because it is
+// a property of the cycle, not of the canvas — A7's bar is about the one thing you DO, and
+// this is about what happens while you do nothing.
+//
+// The field is the store, the chip is the view: #liveRefresh is a hidden per-display
+// setting in the settings bank, and writing it with an `input` event is what runs its
+// persistence — the same arrangement as "Wake and redraw" and #sleepDuration on A7.
+
+const LIVE_COPY = {
+  on: 'On — refreshed each cycle',
+  off: 'Off — the board keeps the last take',
+};
+
+/** Draw the chip from the field, and show it only when there is something for it to
+ *  govern. A dashboard with nothing bound to a feed cannot go stale, so offering a
+ *  control over its freshness would be a claim about work that never happens. */
+function syncLiveChip() {
+  const chip = $('liveChip');
+  if (!chip) return;
+  show(chip, hasFeedBindings());
+  const on = liveRefreshOn();
+  chip.setAttribute('aria-pressed', String(on));
+  $('liveChipValue').textContent = on ? LIVE_COPY.on : LIVE_COPY.off;
+}
+
+function toggleLive() {
+  const field = $('liveRefresh');
+  if (!field) return;
+  field.value = liveRefreshOn() ? 'off' : 'on';
+  // Dispatched so main.js#initSettings persists it against this display, exactly as the
+  // interval select does for #sleepDuration.
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  syncLiveChip();
+  toast(liveRefreshOn()
+    ? 'Live data on — each take is re-rendered from the current feed values'
+    : 'Live data off — the board redraws the take already on the feed');
+}
+
 // ---------- what the board is doing -----------------------------------------
 //
 // No clock. The three states come from `{feed}-status` via cycle.js, and the only times on
@@ -599,8 +640,12 @@ function renderCycle() {
 
 export function initA8({ onEnter }) {
   $('editDashboard').addEventListener('click', () => navigate('a7'));
+  $('liveChip')?.addEventListener('click', toggleLive);
 
   onEnter('a8', () => {
+    // Before the panels: a device switch replaced the field under the chip with no input
+    // event to notice, and the bindings it keys its visibility off may have changed too.
+    syncLiveChip();
     renderWritten();      // whatever the last read found, immediately
     renderNext();
     fetchTakes();         // then the feed, which is the actual answer
@@ -615,7 +660,10 @@ export function initA8({ onEnter }) {
   // reflected here the next time this screen is looked at — and immediately if
   // it is already open.
   onDocChange(() => {
-    if (currentScreen() === 'a8') renderNext();
+    if (currentScreen() !== 'a8') return;
+    renderNext();
+    // Binding or unbinding the last feed is what the chip appears and disappears with.
+    syncLiveChip();
   });
 
   subscribe((_st, patch) => {
@@ -645,7 +693,10 @@ export function initA8({ onEnter }) {
     // with it — leaving it behind would have a reset editor still claiming to know what is
     // on the glass.
     if (type === 'reset') forgetDrawn();
-    if (type === 'pushed' || type === 'woke' || type === 'slept' || type === 'reset') {
+    // 'queued' is the live take (and now the manual queue) saying the feed moved. Without
+    // it, a take published while nobody navigated anywhere would not appear in "The next
+    // take" until the board's next report happened to trigger a read.
+    if (type === 'pushed' || type === 'queued' || type === 'woke' || type === 'slept' || type === 'reset') {
       syncNav();
       fetchTakes();
     }

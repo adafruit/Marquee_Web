@@ -44,6 +44,18 @@ export function refreshInterval() {
 }
 
 /**
+ * Is this display's take kept in step with the feeds behind it?
+ *
+ * Read from the field rather than from flow state for the same reason refreshInterval()
+ * is: the Showtime chip writes the field, and this has to be true the instant it changes
+ * rather than one persist later. Absent means ON — a display configured before this
+ * existed has no stored value, and the bug this setting governs is one it currently has.
+ */
+export function liveRefreshOn() {
+  return ($('liveRefresh')?.value ?? 'on') !== 'off';
+}
+
+/**
  * The line between light and deep sleep, in seconds.
  *
  * Sleep mode is DERIVED from the interval rather than picked, because the interval

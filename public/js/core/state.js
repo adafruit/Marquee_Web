@@ -7,6 +7,8 @@
  * to the tab drops you back where you were rather than at the start of setup.
  */
 
+import { stripSamples } from './samples.js';
+
 const KEY = 'marquee.flow';
 
 const DEFAULTS = {
@@ -188,14 +190,40 @@ export function setQueued(take) { queued = take; }
 export function clearQueued() { queued = null; }
 
 /**
+ * The newest document that is ON THE FEED — the right thing to measure a live edit
+ * against.
+ *
+ * A queued take is published: it is sitting on the bitmap feed and the board collects it
+ * on its next wake. So an edit that made it into that take is not waiting on the user for
+ * anything, which is exactly what A8 says about this number — "a take already on the feed
+ * is not waiting on the user for anything, and saying '1 change queued' about it would
+ * invite a second push of something already sent". Reading `published` alone said the
+ * opposite: three edits queued still read as three changes queued.
+ *
+ * `published` is the baseline only when nothing is waiting, which is the case it was
+ * written for.
+ */
+function baselineDoc() {
+  return (queued && queued.doc) || published.doc;
+}
+
+/**
  * How many elements differ between what was written and what the editor holds.
  * Compared by serialized element, so a move, a recolor and a retyped label each
  * count once — this is the "3 changes waiting" number on A8, not a diff engine.
+ *
+ * Compared SAMPLE-BLIND (samples.js). serialize() bakes each bound element's last
+ * reading into the document, and device.js now re-reads those bindings on the board's own
+ * cycle — so without this, a panel watching a thermometer would report a change every
+ * minute with nobody at the keyboard. A new reading is the panel doing its job; the live
+ * take publishes it by itself, and it was never something the user was being asked to
+ * send.
  */
 export function countQueuedChanges(liveDoc) {
-  if (!published.doc || !liveDoc) return 0;
-  const key = (el) => JSON.stringify(el);
-  const before = (published.doc.elements || []).map(key);
+  const base = baselineDoc();
+  if (!base || !liveDoc) return 0;
+  const key = (el) => JSON.stringify(stripSamples(el));
+  const before = (base.elements || []).map(key);
   const after = (liveDoc.elements || []).map(key);
   const pool = [...before];
   let added = 0;
@@ -211,6 +239,6 @@ export function countQueuedChanges(liveDoc) {
   const structural = Math.max(added, removed);
   // A display-settings change (mode, rotation, dither) redraws everything even
   // when no element moved, so it counts as one pending change on its own.
-  const displayChanged = JSON.stringify(published.doc.display) !== JSON.stringify(liveDoc.display);
+  const displayChanged = JSON.stringify(base.display) !== JSON.stringify(liveDoc.display);
   return structural + (displayChanged && structural === 0 ? 1 : 0);
 }

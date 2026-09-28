@@ -808,6 +808,18 @@
   text-wrap: pretty;
 }
 
+/* ---- A8 · the live-data chip --------------------------------------------- */
+/* Borrows the sleep chip's shape because it is the same kind of thing — a setting
+   stated at rest — but it is a toggle rather than a door, so it carries no caret and
+   answers on press instead of opening a panel. Off is drawn quieter than on: a paused
+   refresh is a state worth noticing without being alarmed by. */
+.action-bar .live-chip {
+  flex: none;
+}
+.action-bar .live-chip[aria-pressed="false"] {
+  opacity: 0.62;
+}
+
 /* ---- A7 · the sleep chip and its popover --------------------------------- */
 /* The sleep setting is set once and read often, so it is stated at rest and edited
    behind a click. Outlined in accent rather than filled: it is the only other thing

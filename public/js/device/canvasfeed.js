@@ -25,6 +25,7 @@ import { canvasStateFeedKey, IO_MAX_NO_HISTORY } from '../core/api.js';
 import { MARQUEE_FEEDS, createGroupFeed } from './provision.js';
 import { publishToIO } from '../canvas/render.js';
 import { readFeedLast } from './feeds.js';
+import { withoutSamples } from '../core/samples.js';
 import { val, toast, fmtBytes } from '../core/util.js';
 
 /** Idle time after the last edit before the scene goes up. Long enough that a drag,
@@ -49,6 +50,24 @@ let lastPublishAt = 0;
  * hydrate would immediately echo what it just read back up.
  */
 let lastPublishedJson = null;
+
+/**
+ * The same thing with every feed READING taken out of it (samples.js).
+ *
+ * The scene and the picture of the scene are two different feeds, and only one of them
+ * changes when a thermometer does. device.js re-reads the bindings on the board's own
+ * cycle now, and each of those refreshes redraws the layer, which is a document change as
+ * far as doc.js is concerned — so without this baseline a panel watching a one-minute feed
+ * would put a fresh copy of the entire document, embedded images and all, onto
+ * {group}.canvas-state once a cycle, forever, for as long as a tab is open. That is the
+ * exact opposite of MIN_GAP_MS's promise above.
+ *
+ * So the de-dupe is on the DESIGN. A structural edit still goes up immediately and carries
+ * whatever readings it happens to be carrying; a reading on its own does not. What the
+ * feed then holds is the scene as of the last real edit, which is what it held before any
+ * of this existed — and a browser hydrating from it re-reads the bindings itself.
+ */
+let lastPublishedDesign = null;
 
 /** Failures are reported once. This runs on a timer behind the user's typing, and a
  *  toast per attempt would turn one wrong feed key into a wall of them. */
@@ -79,9 +98,18 @@ async function createMissingFeed(feed) {
   return out.ok;
 }
 
-/** The feed already holds this exact document — told to us by whoever read it. */
+/** The feed already holds this exact document — told to us by whoever read it. Both
+ *  baselines move together, or the next reading-only refresh would echo the hydrate
+ *  straight back up. */
 export function noteCanvasStateSeen(json) {
   lastPublishedJson = json;
+  try {
+    lastPublishedDesign = JSON.stringify(withoutSamples(JSON.parse(json)));
+  } catch {
+    // Unparseable is not a baseline. Leaving it null makes the next publish unconditional,
+    // which is the safe direction.
+    lastPublishedDesign = null;
+  }
 }
 
 /**
@@ -96,7 +124,11 @@ export function scheduleCanvasStatePublish(doc) {
   if (!feed || !val('ioUser') || !val('ioKey')) return;
   const json = JSON.stringify(doc);
   if (json === lastPublishedJson) return;
-  pending = { feed, json };
+  // Nothing about the SCENE moved — only what the feeds behind it are saying. See
+  // lastPublishedDesign.
+  const design = JSON.stringify(withoutSamples(doc));
+  if (design === lastPublishedDesign) return;
+  pending = { feed, json, design };
   arm();
 }
 
@@ -128,6 +160,7 @@ async function flush() {
   // Before the await, so edits landing during the request de-dupe against what is on
   // its way up rather than queueing a duplicate of it.
   lastPublishedJson = job.json;
+  lastPublishedDesign = job.design;
   let out = await publishToIO(job.json, job.feed, { quiet: true });
   // A 404 is the ordinary answer for a display configured before this feed existed, so
   // it is answered rather than reported: make the feed, send again, say nothing.
@@ -142,9 +175,10 @@ async function flush() {
         + 'it is saved in this browser, but other machines will not see it.');
     }
     reportedFailure = true;
-    // The feed does NOT hold this. Dropping the baseline is what makes the next edit
+    // The feed does NOT hold this. Dropping the baselines is what makes the next edit
     // — or the next successful publish of anything — carry the whole scene up again.
     lastPublishedJson = null;
+    lastPublishedDesign = null;
   }
 }
 
