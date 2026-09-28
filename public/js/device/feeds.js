@@ -203,9 +203,8 @@ export async function readFeedHistory(feedKey, { hours = 24, raw = false } = {})
     return body.data
       .map((row) => ({ t: ti >= 0 ? row[ti] : null, v: Number(row[vi]) }))
       .filter((p) => Number.isFinite(p.v))
-      // Sorted oldest-first, explicitly. The chart reads the LAST point as the
-      // latest reading and joins points in array order, so a descending response
-      // would draw the window backwards and report the oldest sample as current.
+      // Sorted oldest-first, explicitly. The chart joins points in array order, so
+      // a descending response would draw the window backwards.
       // /data/chart ascends today; /data descends, and that is one query away.
       .sort((a, b) => (Date.parse(a.t) || 0) - (Date.parse(b.t) || 0));
   } catch { return null; }
@@ -213,7 +212,7 @@ export async function readFeedHistory(feedKey, { hours = 24, raw = false } = {})
 
 /**
  * Thin a series to at most `max` points, keeping the FIRST and LAST so the window's
- * endpoints and the headline "latest reading" stay exact.
+ * endpoints stay exact.
  *
  * Charts are 120-300px wide, so anything denser than that draws multiple samples
  * into one column — and canvas.json is the wire format to the device, so the
