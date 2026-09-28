@@ -90,6 +90,28 @@ export function fmtFeedText(raw, places) {
   return toNum(raw) === null ? String(raw) : fmtDecimals(raw, places);
 }
 
+/** The 1 / 2 / 5 × 10ⁿ step that niceTicks() spaces its stops by. */
+export function niceStep(lo, hi, count = 4) {
+  const raw = (hi - lo) / Math.max(1, count);
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const norm = raw / mag;
+  return (norm > 5 ? 10 : norm > 2 ? 5 : norm > 1 ? 2 : 1) * mag;
+}
+
+/** How many decimal places a value on a `step` grid needs: 0 for 5, 1 for 0.5. */
+export const stepDecimals = (step) => clamp(Math.ceil(-Math.log10(step) - 1e-9), 0, 10);
+
+/**
+ * `v` rounded out to the step grid — down, or up when `up` — at the step's own
+ * precision, for the same drift reason as niceTicks. The epsilon keeps a value
+ * already on the grid (65 / 5 = 12.999… in floating point) where it is.
+ */
+export function snapToStep(v, step, up = false) {
+  const q = v / step;
+  const i = up ? Math.ceil(q - 1e-9) : Math.floor(q + 1e-9);
+  return Number((i * step).toFixed(stepDecimals(step)));
+}
+
 /**
  * Tick stops on a 1 / 2 / 5 × 10ⁿ ramp, the spacing that reads as "round numbers"
  * at any magnitude. `count` is a target, not a promise: the stops are aligned to
@@ -102,15 +124,12 @@ export function fmtFeedText(raw, places) {
  */
 export function niceTicks(lo, hi, count = 4) {
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return [lo, hi];
-  const raw = (hi - lo) / Math.max(1, count);
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const norm = raw / mag;
-  const step = (norm > 5 ? 10 : norm > 2 ? 5 : norm > 1 ? 2 : 1) * mag;
+  const step = niceStep(lo, hi, count);
   // Stops are printed as axis labels, so they are rounded to the step's own
   // precision. Accumulating (t += step) drifts, and so does re-multiplying
   // (Math.round(t / step) * step still yields 0.30000000000000004 at step 0.1) —
   // decimal rounding is what actually removes it.
-  const dp = clamp(Math.ceil(-Math.log10(step)), 0, 10);
+  const dp = stepDecimals(step);
   const out = [];
   const first = Math.ceil(lo / step - 1e-9);
   for (let i = first; i * step <= hi + step * 1e-9; i++) out.push(Number((i * step).toFixed(dp)));

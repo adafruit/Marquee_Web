@@ -15,11 +15,11 @@ import {
   isWidget, rebuildWidget, elementColor, setElementColor, wireNode, nextId,
   INDICATOR_OPS, MIN_WIDGET_W, indicatorValueKnown, batteryFraction,
   isFeedLinked, linkedLabelText, feedValueAttr, CHART_RANGES, CHART_RAW_MAX,
-  gaugeValue,
+  CHART_FONT_MIN, CHART_FONT_MAX, gaugeValue,
 } from './elements.js';
 import { openFeedPicker, refreshFeedElements, refreshChart } from '../device/feeds.js';
 import { GAUGE_ICONS, FA_LINK } from './icons.js';
-import { $, escapeHtml, escapeAttr, toast } from '../core/util.js';
+import { $, escapeHtml, escapeAttr, toast, clamp } from '../core/util.js';
 
 export let selected = null;
 
@@ -330,6 +330,12 @@ export function refreshProps() {
         <label class="field"><span class="label">Y label</span>
           <input type="text" id="pChY" value="${escapeAttr(String(n.getAttr('yLabel') ?? ''))}"></label>
       </div>
+      <div class="prop-row">
+        <span class="label">Chart text</span>
+        <input type="number" id="pChFontSize" value="${n.getAttr('axisFontSize') ?? 7}" min="${CHART_FONT_MIN}" max="${CHART_FONT_MAX}">
+        <select id="pChFont" style="flex:1">${[['monospace', 'Mono'], ['sans-serif', 'Sans'], ['serif', 'Serif']].map(([v, l]) =>
+          `<option value="${v}"${(n.getAttr('axisFontFamily') || 'monospace') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      </div>
       <div class="prop-grid">
         <label class="field"><span class="label">Y minimum</span>
           <input type="number" id="pChYMin" value="${escapeAttr(String(n.getAttr('yMin') ?? ''))}" placeholder="auto"></label>
@@ -343,7 +349,8 @@ export function refreshProps() {
           <option value="log"${n.getAttr('yScale') === 'log' ? ' selected' : ''}>Logarithmic</option>
         </select>
       </div>
-      <p class="hint">Leave the bounds blank to detect them from the data.</p>
+      <p class="hint">Leave the bounds blank to detect them from the data. The X axis
+        shows the times of the history window, with the X label beneath them.</p>
     </details>
     <details class="prop-group">
       <summary>Data &amp; drawing</summary>
@@ -536,6 +543,8 @@ export function refreshProps() {
   bind('pChYMin', setChart('yMin'));         // raw text: '' means auto-detect
   bind('pChYMax', setChart('yMax'));
   bind('pChScale', setChart('yScale'));
+  bind('pChFontSize', setChart('axisFontSize', (v) => clamp(Math.round(+v) || 7, CHART_FONT_MIN, CHART_FONT_MAX)));
+  bind('pChFont', setChart('axisFontFamily'));
   bind('pChDec', setChart('decimals', (v) => Math.max(0, Math.min(10, Math.round(+v) || 0))));
   bind('pChStep', (e) => { n.setAttr('stepped', e.target.checked); rebuildWidget(n); });
   bind('pChGrid', (e) => { n.setAttr('gridLines', e.target.checked); rebuildWidget(n); });

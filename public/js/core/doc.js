@@ -113,6 +113,7 @@ export function serialize() {
           yScale: n.getAttr('yScale'), decimals: n.getAttr('decimals'),
           rawOnly: !!n.getAttr('rawOnly'), stepped: !!n.getAttr('stepped'),
           gridLines: !!n.getAttr('gridLines'), keyLegend: !!n.getAttr('keyLegend'),
+          axisFontSize: n.getAttr('axisFontSize'), axisFontFamily: n.getAttr('axisFontFamily'),
         });
         // The legacy sample series is only reachable when no feeds are bound (see
         // chartSeries), so it is only worth saving in that case — carrying it

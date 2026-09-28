@@ -12,7 +12,9 @@ import { display, logicalDims, PAPER, PALETTES, hexToRGB, neutralShades } from '
 import { layer, tr, snap, zoom, suspendDitherPreview, scheduleDitherRefresh } from './stage.js';
 import { select, refreshProps } from './selection.js';
 import { FA_FAMILY, FA_WEIGHT, iconGlyph, DEFAULT_GAUGE_ICON, onFaReady } from './icons.js';
-import { toast, clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, scaleUnit } from '../core/util.js';
+import {
+  toast, clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, niceStep, stepDecimals, snapToStep, scaleUnit,
+} from '../core/util.js';
 
 let counter = 0;
 export const nextId = () => 'el' + (++counter);
@@ -208,8 +210,14 @@ export const CHART_RAW_MAX = 640;
 const SERIES_DASH = [[], [4, 2], [1, 2], [6, 2, 1, 2], [8, 3], [2, 2, 6, 2]];
 export const seriesDash = (i) => SERIES_DASH[i % SERIES_DASH.length];
 
-const AXIS_FONT = 7;
-const TITLE_FONT = 9;
+// The chart's text (tick numbers, X/Y captions, legend, block title) is sized and
+// set per chart; these are the defaults and the range the inspector allows. 7px
+// monospace is what every chart drew before the option existed, so older layouts
+// are unchanged. The title stays TITLE_STEP px larger than the rest so it still
+// reads as the heading.
+const AXIS_FONT_DEFAULT = 7;
+export const CHART_FONT_MIN = 5, CHART_FONT_MAX = 24;
+const TITLE_STEP = 2;
 
 /**
  * Every series to draw, as [{ key, name, color, dash, points: [{t, v}] }].
@@ -267,6 +275,15 @@ function chartDomain(g, all) {
   // zero in the mapping and draw the line at the very top. Open the window
   // slightly instead so it lands mid-frame.
   if (hi === lo) { lo -= 1; hi += 1; }
+  // An auto-detected end is rounded OUT to the tick step, so the axis starts and
+  // ends on a labelled round number. Left raw, a 65.01–74.98 range has a single
+  // round stop inside it (70) and the ticks fell back to printing the extremes.
+  // Authored bounds are the user's and are kept exactly; log keeps its own floor.
+  if (!log) {
+    const step = niceStep(lo, hi, 3);
+    if (authoredMin === null) lo = snapToStep(lo, step);
+    if (authoredMax === null) hi = snapToStep(hi, step, true);
+  }
   return { lo, hi, log };
 }
 
@@ -280,12 +297,15 @@ function chartDomain(g, all) {
  *
  * Returns null when the timestamps aren't parseable dates, which is the legacy
  * `data` path (its `t` is an array index). Index placement is correct there.
+ * Only date STRINGS count, which is what IO sends: a bare number is that index,
+ * and read as milliseconds it made the unbound sample chart a window a few ms
+ * wide on 1 Jan 1970, labelled with the same clock time end to end.
  */
 function chartTimeDomain(all) {
   const ms = [];
   for (const s of all) {
     for (const p of s.points) {
-      const t = typeof p.t === 'number' ? p.t : Date.parse(p.t);
+      const t = typeof p.t === 'string' ? Date.parse(p.t) : NaN;
       if (!Number.isFinite(t)) return null;
       ms.push(t);
     }
@@ -293,6 +313,35 @@ function chartTimeDomain(all) {
   if (ms.length < 2) return null;
   const lo = Math.min(...ms), hi = Math.max(...ms);
   return hi > lo ? { lo, hi } : null;
+}
+
+/**
+ * Time labels for the bottom axis when no X caption is authored, as
+ * [{ frac, text }] with frac in 0..1 across the plot.
+ *
+ * Spaced at the vertical grid's cadence (5, else 3, else 2 — every count lands on a
+ * grid line) and thinned until they fit, since a 250px panel has room for a few
+ * times, not one per sample. A window of a day and a half or less reads as clock
+ * times; anything longer as dates, because "14:00" repeated across a week says
+ * nothing. Both come from the browser's locale, which is where the bitmap is drawn.
+ */
+function timeTickLabels(time, plotW, font) {
+  const fmt = time.hi - time.lo <= 36 * 3600e3
+    ? (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : (ms) => new Date(ms).toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+  for (const n of [5, 3, 2]) {
+    const labels = Array.from({ length: n }, (_, i) => {
+      const frac = i / (n - 1);
+      return { frac, text: fmt(time.lo + frac * (time.hi - time.lo)) };
+    });
+    const widest = Math.max(...labels.map((l) => l.text.length)) * font * 0.62;
+    // The ends are pinned inside the plot while the rest centre on their instant, so
+    // the tightest pair is an end and its neighbour: one full label plus half of the
+    // next has to fit in one step, with a gap to spare.
+    const step = plotW / (n - 1);
+    if (step >= (n > 2 ? 1.5 : 2) * widest + font) return labels;
+  }
+  return [];
 }
 
 function buildLineChart(g) {
@@ -306,6 +355,13 @@ function buildLineChart(g) {
   const keyLegend = !!g.getAttr('keyLegend');
   const xLabel = g.getAttr('xLabel') || '';
   const yLabel = g.getAttr('yLabel') || '';
+  const axisFont = clamp(Math.round(+g.getAttr('axisFontSize') || AXIS_FONT_DEFAULT),
+                         CHART_FONT_MIN, CHART_FONT_MAX);
+  const axisFamily = g.getAttr('axisFontFamily') || 'monospace';
+  const titleFont = axisFont + TITLE_STEP;
+  // The data along the axes (Y numbers, X times) sits a step below the captions,
+  // so the captions read as the headings for them.
+  const tickFont = Math.max(CHART_FONT_MIN - 1, Math.round(axisFont * 0.8));
 
   g.add(new Konva.Rect({ width: w, height: h, fill: '#000', opacity: 0 })); // hit area
 
@@ -313,9 +369,10 @@ function buildLineChart(g) {
   const { lo, hi, log } = chartDomain(g, all);
   const time = chartTimeDomain(all);
   const ticks = niceTicks(lo, hi, 3).filter((t) => t >= lo && t <= hi);
-  // The headline number: the latest reading of the first series that has one.
-  const lead = all.find((s) => s.points.length);
-  const tickText = (t) => fmtDecimals(t, Math.min(decimals, 2));
+  // Ticks print at their step's precision (65, 70, 75 — not 65.00), still capped
+  // by the chart's Decimals and at 2 places.
+  const tickDp = ticks.length > 1 ? stepDecimals(ticks[1] - ticks[0]) : 2;
+  const tickText = (t) => fmtDecimals(t, Math.min(decimals, 2, tickDp));
   // A legend is what tells two lines apart, so it appears as soon as there are two
   // — `keyLegend` chooses the feed KEY over the name, per the IO field, rather than
   // being what switches the legend on. A single line needs no key to itself, so it
@@ -326,20 +383,28 @@ function buildLineChart(g) {
   // The plot box. Every gutter is EARNED by something drawn in it, so a chart with
   // no axis labels and no legend keeps nearly the whole frame for data — the panels
   // this renders to are 250px wide and cannot spare fixed padding.
-  const yGutter = yLabel ? AXIS_FONT + 1 : 0;                       // rotated Y caption
-  const tickW = showGrid
-    // Capped: a pressure feed reading 1013.25 wants 7 characters, which on a 120px
-    // chart would spend a quarter of the frame on labels for the data itself.
-    ? Math.min(Math.round(Math.max(...ticks.map((t) => tickText(t).length), 1) * AXIS_FONT * 0.62) + 1,
+  const yGutter = yLabel ? axisFont + 1 : 0;                       // rotated Y caption
+  // Y tick numbers, drawn whether or not the grid is. Capped: a pressure feed
+  // reading 1013.25 wants 7 characters, which on a 120px chart would spend a
+  // quarter of the frame on labels for the data itself.
+  const tickW = ticks.length
+    ? Math.min(Math.round(Math.max(...ticks.map((t) => tickText(t).length)) * tickFont * 0.62) + 1,
                Math.floor(w * 0.28))
-    : 0;                                                            // Y tick numbers
+    : 0;
   const left = yGutter + tickW + 1;
-  const top = (title || lead) ? TITLE_FONT + 3 : 1;
-  const legendH = showLegend ? AXIS_FONT + 2 : 0;
-  const bottom = 1 + (xLabel ? AXIS_FONT + 1 : 0) + legendH;
+  const top = title ? titleFont + 3 : 1;
+  const legendH = showLegend ? axisFont + 2 : 0;
+  // The X axis mirrors the Y: times under the axis, as the Y has its tick numbers,
+  // whenever the samples carry real timestamps (the legacy sample data doesn't),
+  // and the X caption on its own row beneath them, as the Y has its own gutter.
+  // Picked before the plot box because they decide whether the row is earned.
+  const plotW = Math.max(4, w - left - 1);
+  const timeLabels = time ? timeTickLabels(time, plotW, tickFont) : [];
+  const timeRowH = timeLabels.length ? tickFont + 1 : 0;
+  const bottom = 1 + timeRowH + (xLabel ? axisFont + 1 : 0) + legendH;
   const plot = {
     x: left, y: top,
-    w: Math.max(4, w - left - 1),
+    w: plotW,
     h: Math.max(4, h - top - bottom),
   };
   /**
@@ -357,29 +422,30 @@ function buildLineChart(g) {
 
   if (title) {
     g.add(new Konva.Text({
-      text: title, fontSize: TITLE_FONT, fontFamily: 'monospace', fill: ink, x: 1, y: 0,
-    }));
-  }
-  if (lead) {
-    g.add(new Konva.Text({
-      text: fmtDecimals(lead.points[lead.points.length - 1].v, decimals),
-      fontSize: TITLE_FONT, fontFamily: 'monospace', fill: lead.color,
-      x: 0, y: 0, width: w - 1, align: 'right',
+      text: title, fontSize: titleFont, fontFamily: axisFamily, fontStyle: 'bold', fill: ink,
+      x: 1, y: 0,
     }));
   }
 
-  // Grid before the axis and the data, so neither is overdrawn by it.
+  // Y ticks: a number beside each, and either a grid line across the plot or,
+  // without the grid, a short mark on the axis so the number points at a height.
+  // Drawn before the axis and the data, so neither is overdrawn by a grid line.
+  // Each number is centred on its tick but kept clear of the title above and the
+  // frame's bottom edge, which the top and bottom ticks would otherwise cross.
+  const tickMinY = title ? titleFont + 1 : 0;
+  ticks.forEach((t) => {
+    const y = Math.round(py(t)) + 0.5;
+    g.add(new Konva.Line({
+      points: [plot.x, y, showGrid ? plot.x + plot.w : plot.x + 3, y],
+      stroke: ink, strokeWidth: 1, opacity: showGrid ? 0.35 : 1,
+    }));
+    g.add(new Konva.Text({
+      text: tickText(t), fontSize: tickFont, fontFamily: axisFamily, fill: ink,
+      x: yGutter, y: clamp(Math.round(y - tickFont / 2), tickMinY, h - tickFont),
+      width: tickW, align: 'right',
+    }));
+  });
   if (showGrid) {
-    ticks.forEach((t) => {
-      const y = Math.round(py(t)) + 0.5;
-      g.add(new Konva.Line({
-        points: [plot.x, y, plot.x + plot.w, y], stroke: ink, strokeWidth: 1, opacity: 0.35,
-      }));
-      g.add(new Konva.Text({
-        text: tickText(t), fontSize: AXIS_FONT, fontFamily: 'monospace', fill: ink,
-        x: yGutter, y: Math.round(y - AXIS_FONT / 2), width: tickW, align: 'right',
-      }));
-    });
     // Vertical grid at the same cadence as the horizontal one, so the mesh reads
     // as a grid rather than as ruled paper.
     const cols = 4;
@@ -403,15 +469,29 @@ function buildLineChart(g) {
   // a 250px panel.
   if (yLabel) {
     g.add(new Konva.Text({
-      text: yLabel, fontSize: AXIS_FONT, fontFamily: 'monospace', fill: ink,
+      text: yLabel, fontSize: axisFont, fontFamily: axisFamily, fill: ink,
       x: 0, y: plot.y + plot.h, rotation: -90, width: plot.h, align: 'center',
     }));
   }
   if (xLabel) {
     g.add(new Konva.Text({
-      text: xLabel, fontSize: AXIS_FONT, fontFamily: 'monospace', fill: ink,
-      x: plot.x, y: plot.y + plot.h + 2, width: plot.w, align: 'center',
+      text: xLabel, fontSize: axisFont, fontFamily: axisFamily, fill: ink,
+      x: plot.x, y: plot.y + plot.h + 2 + timeRowH, width: plot.w, align: 'center',
     }));
+  }
+  if (timeLabels.length) {
+    // The ends are pinned inside the plot (left- and right-aligned) rather than
+    // centred on their instant, so the first and last times can't hang off the frame.
+    timeLabels.forEach(({ frac, text }) => {
+      const tw = Math.ceil(text.length * tickFont * 0.62) + 2;
+      const x = plot.x + frac * plot.w;
+      const [bx, align] = frac === 0 ? [plot.x, 'left']
+        : frac === 1 ? [plot.x + plot.w - tw, 'right'] : [x - tw / 2, 'center'];
+      g.add(new Konva.Text({
+        text, fontSize: tickFont, fontFamily: axisFamily, fill: ink,
+        x: Math.round(bx), y: plot.y + plot.h + 2, width: tw, align, wrap: 'none',
+      }));
+    });
   }
 
   // One line per series, drawn last so data always sits on top of the grid.
@@ -447,18 +527,18 @@ function buildLineChart(g) {
     const y = h - legendH + 1;
     labelled.forEach((s) => {
       const text = keyLegend ? (s.key || s.name) : (s.name || s.key);
-      const entryW = 10 + Math.ceil(text.length * AXIS_FONT * 0.62) + 5;
+      const entryW = 10 + Math.ceil(text.length * axisFont * 0.62) + 5;
       // Clipped rather than wrapped or shrunk: the legend is one row by design, and
       // silently overflowing it would draw feed names off the edge of the panel.
       if (x + entryW > w && x > plot.x) return;
       // A dash sample rather than a colour chip: the dash is the part that survives
       // a mono panel, so it is the part the legend has to show.
       g.add(new Konva.Line({
-        points: [x, y + AXIS_FONT / 2, x + 8, y + AXIS_FONT / 2],
+        points: [x, y + axisFont / 2, x + 8, y + axisFont / 2],
         stroke: s.color, strokeWidth: 1, dash: s.dash.length ? s.dash : undefined,
       }));
       g.add(new Konva.Text({
-        text, fontSize: AXIS_FONT, fontFamily: 'monospace', fill: ink,
+        text, fontSize: axisFont, fontFamily: axisFamily, fill: ink,
         x: x + 10, y, width: Math.max(4, w - x - 10), ellipsis: true, wrap: 'none',
       }));
       x += entryW;
@@ -499,6 +579,8 @@ export function addLineChart(attrs = {}) {
   g.setAttr('stepped', attrs.stepped ?? false);
   g.setAttr('gridLines', attrs.gridLines ?? false);
   g.setAttr('keyLegend', attrs.keyLegend ?? false);
+  g.setAttr('axisFontSize', attrs.axisFontSize ?? AXIS_FONT_DEFAULT);
+  g.setAttr('axisFontFamily', attrs.axisFontFamily ?? 'monospace');
   // Legacy sample data. Only reached when no feeds are bound (see chartSeries), so
   // a fresh unbound chart still shows a shape instead of an empty frame.
   g.setAttr('data', attrs.data ?? randTempSeries());
