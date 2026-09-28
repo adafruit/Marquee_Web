@@ -161,7 +161,7 @@ export function refreshProps() {
         // Read-only rather than hidden: the composed string is the useful thing to
         // see, and hiding it would leave no way to check what the panel will show.
         ? `<p class="hint">Text comes from <b>${escapeHtml(n.getAttr('feedName') || n.getAttr('feedKey'))}</b>.
-           Use the prefix and suffix to wrap it, or unlink to type your own.</p>`
+           Use the prefix, suffix and decimals to format it, or unlink to type your own.</p>`
            + feedRowHTML(n, 'Lbl', labelValueText(n))
            + `
         <div class="prop-row">
@@ -171,6 +171,10 @@ export function refreshProps() {
         <div class="prop-row">
           <span class="label">After</span>
           <input type="text" id="pLblSuffix" style="flex:1; width:0; min-width:0" value="${escapeAttr(String(n.getAttr('feedSuffix') ?? ''))}" placeholder="e.g. °F">
+        </div>
+        <div class="prop-row">
+          <span class="label">Decimals</span>
+          <input type="number" id="pLblDec" style="flex:1; width:0; min-width:0" min="0" max="10" value="${escapeAttr(String(n.getAttr('feedDecimals') ?? ''))}" placeholder="as sent">
         </div>
         <button type="button" class="btn btn-sm btn-block" id="pLblUnlink">Unlink from feed</button>`
         : `<button type="button" class="btn btn-sm btn-block" id="pLblFeed">${linkGlyph} Connect to IO Feed</button>`)
@@ -470,6 +474,12 @@ export function refreshProps() {
   };
   bind('pLblPrefix', setAffix('feedPrefix'));
   bind('pLblSuffix', setAffix('feedSuffix'));
+  // Same per-keystroke rule. Blank means "as sent", so it clears to null, not 0.
+  bind('pLblDec', (e) => {
+    const v = e.target.value.trim();
+    n.setAttr('feedDecimals', v === '' ? null : Math.max(0, Math.min(10, Math.round(+v) || 0)));
+    n.text(linkedLabelText(n));
+  });
   bind('pLblFeed', () => openFeedPicker(n));
   bind('pLblUnlink', () => {
     const name = n.getAttr('feedName') || n.getAttr('feedKey');

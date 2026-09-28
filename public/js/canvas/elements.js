@@ -12,7 +12,7 @@ import { display, logicalDims, PAPER, PALETTES, hexToRGB, neutralShades } from '
 import { layer, tr, snap, zoom, suspendDitherPreview, scheduleDitherRefresh } from './stage.js';
 import { select, refreshProps } from './selection.js';
 import { FA_FAMILY, FA_WEIGHT, iconGlyph, DEFAULT_GAUGE_ICON, onFaReady } from './icons.js';
-import { toast, clamp, toNum, fmtDecimals, niceTicks, scaleUnit } from '../core/util.js';
+import { toast, clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, scaleUnit } from '../core/util.js';
 
 let counter = 0;
 export const nextId = () => 'el' + (++counter);
@@ -115,7 +115,8 @@ export function rebuildWidget(n) {
  */
 export function linkedLabelText(n) {
   const raw = n.getAttr('feedValue');
-  const body = (raw === null || raw === undefined || String(raw) === '') ? '—' : String(raw);
+  const body = (raw === null || raw === undefined || String(raw) === '')
+    ? '—' : fmtFeedText(raw, n.getAttr('feedDecimals'));
   return `${n.getAttr('feedPrefix') || ''}${body}${n.getAttr('feedSuffix') || ''}`;
 }
 
@@ -149,6 +150,7 @@ export function addLabel(attrs = {}) {
   node.setAttr('feedName', attrs.feedName ?? '');
   node.setAttr('feedPrefix', attrs.feedPrefix ?? '');
   node.setAttr('feedSuffix', attrs.feedSuffix ?? '');
+  node.setAttr('feedDecimals', attrs.feedDecimals ?? null);   // null = as sent
   node.setAttr('feedValue', attrs.feedValue ?? null);
   // A linked label's text is DERIVED, so recompute it on load rather than
   // trusting the saved string: the prefix/suffix could have been edited in the

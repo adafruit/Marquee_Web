@@ -81,6 +81,16 @@ export function fmtDecimals(raw, places) {
 }
 
 /**
+ * A feed reading as a linked label shows it. Unset `places` means "as sent", and a
+ * reading that isn't a number is passed through untouched — unlike fmtDecimals, a
+ * label bound to a text feed must not collapse to a dash.
+ */
+export function fmtFeedText(raw, places) {
+  if (places === null || places === undefined || places === '') return String(raw);
+  return toNum(raw) === null ? String(raw) : fmtDecimals(raw, places);
+}
+
+/**
  * Tick stops on a 1 / 2 / 5 × 10ⁿ ramp, the spacing that reads as "round numbers"
  * at any magnitude. `count` is a target, not a promise: the stops are aligned to
  * the ramp, so the count lands near it rather than on it. Always returns at least

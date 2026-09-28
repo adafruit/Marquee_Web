@@ -47,6 +47,7 @@ export function serialize() {
           base.feedName = n.getAttr('feedName') || '';
           base.feedPrefix = n.getAttr('feedPrefix') || '';
           base.feedSuffix = n.getAttr('feedSuffix') || '';
+          base.feedDecimals = n.getAttr('feedDecimals') ?? null;
           base.feedValue = n.getAttr('feedValue') ?? null;
         }
       } else if (etype === 'divider') {
