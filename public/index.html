@@ -663,6 +663,24 @@
             </select>
           </div>
 
+          <!-- A second view onto #rotSel, which is stranded in the Settings modal. The
+               board never reports its rotation back, so a hand-edited cfg-marquee.json
+               is invisible here — this is how the user brings the two back into line. -->
+          <div class="hr"></div>
+          <details class="prop-group">
+            <summary>Display settings</summary>
+            <div class="prop-row">
+              <span class="label">Rotation</span>
+              <select id="sceneRot" style="flex:1">
+                <option value="0">0° — native</option>
+                <option value="90">90°</option>
+                <option value="180">180°</option>
+                <option value="270">270°</option>
+              </select>
+            </div>
+            <p class="hint">Must match <span class="mono">display.rotation</span> in the board's cfg-marquee.json.</p>
+          </details>
+
         </aside>
 
       </div>

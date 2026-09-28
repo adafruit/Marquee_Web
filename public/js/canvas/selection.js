@@ -10,7 +10,7 @@
  */
 
 import { display, PALETTES, neutralShades } from './palette.js';
-import { layer, tr, snap, editorOpts, suspendDitherPreview, scheduleDitherRefresh } from './stage.js';
+import { stage, layer, tr, snap, editorOpts, suspendDitherPreview, scheduleDitherRefresh } from './stage.js';
 import {
   isWidget, rebuildWidget, elementColor, setElementColor, wireNode, nextId,
   INDICATOR_OPS, MIN_WIDGET_W, indicatorValueKnown, batteryFraction,
@@ -654,6 +654,21 @@ export function duplicateSelected() {
   suspendDitherPreview();
   scheduleDitherRefresh();
   toast('Duplicated element');
+}
+
+/**
+ * Clicking empty space drops the selection. Two places count as empty: the stage
+ * itself — the paper layer is not listening, so a miss on every element lands on
+ * the stage — and the backdrop around the panel. Only the backdrop proper, not
+ * anything inside it: the zoom bar, the dither chip and canvas.json all sit in
+ * .canvas-ground, and touching them should not cost you your selection.
+ */
+export function initDeselect() {
+  stage.on('click tap', (e) => { if (e.target === stage && selected) select(null); });
+  const ground = document.querySelector('.canvas-ground');
+  ground?.addEventListener('click', (e) => {
+    if (selected && (e.target === ground || e.target.classList.contains('device-shell'))) select(null);
+  });
 }
 
 /**

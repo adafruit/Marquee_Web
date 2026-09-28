@@ -13,6 +13,7 @@ import {
   addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery,
   loadImageFile, applyTemplate,
 } from '../canvas/elements.js';
+import { display } from '../canvas/palette.js';
 import { refreshInterval, sleepModeFor } from '../core/config.js';
 import { getState, subscribe } from '../core/state.js';
 import { $, $$, show, fmtInterval } from '../core/util.js';
@@ -139,6 +140,43 @@ function syncSleepChip() {
   el.textContent = `Timer · ${intervalPhrase(refreshInterval())}`;
 }
 
+// ---------- rotation ----------------------------------------------------------
+
+/**
+ * The inspector's rotation select is a view onto #rotSel, the descriptor field.
+ * It is read from `display` rather than kept in step by events, because a preset
+ * load and a device switch both set #rotSel programmatically and fire nothing —
+ * both reach this screen through onEnter, which is where this runs.
+ */
+function syncSceneRot() {
+  const sel = $('sceneRot');
+  if (sel) sel.value = String(display.rotation);
+}
+
+/**
+ * The editor never reads cfg-marquee.json back off the board, so it cannot know
+ * whether the file agrees. Changing rotation here only changes the shape of the
+ * bitmap we send — the board still applies the rotation in its own file on top —
+ * so the confirm names the exact value the file has to carry.
+ */
+function onSceneRotChange(e) {
+  const deg = +e.target.value;
+  const step = Math.round(deg / 90) % 4;  // the same mapping cfg.js writes
+  if (!confirm(`Rotate the canvas to ${deg}°?\n\n`
+    + 'The board draws using the rotation in its own cfg-marquee.json, not this setting. '
+    + `Check the file on the MARQUEE drive has "rotation": ${step} under "display", `
+    + 'or the dashboard will land sideways or upside down.\n\n'
+    + 'Elements keep their positions, so some may end up off the canvas.')) {
+    syncSceneRot();
+    return;
+  }
+  // Through #rotSel, so config.js does the rest exactly as it does for the Settings
+  // field: re-fit the canvas, persist to the device record, and rebuild rec.cfg.
+  const rot = $('rotSel');
+  rot.value = String(deg);
+  rot.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 // ---------- the popovers ------------------------------------------------------
 
 /**
@@ -240,6 +278,9 @@ export function initA7({ onEnter }) {
   });
   $('sleepDuration').addEventListener('input', syncIntervalFromField);
 
+  // ---- rotation ----
+  $('sceneRot').addEventListener('change', onSceneRotChange);
+
   // ---- the popovers ----
   POPOVERS.forEach((p) => $(p.chipId).addEventListener('click', () => togglePopover(p)));
 
@@ -265,6 +306,7 @@ export function initA7({ onEnter }) {
   syncDitherPreviewBtn();
   syncPushBlock();
   syncSleepChip();
+  syncSceneRot();
 
   // The board can fall asleep while this screen is still open — a cycle started
   // here never leaves it — so the push block follows the device rather than only
@@ -283,5 +325,6 @@ export function initA7({ onEnter }) {
     closeAllPopovers({ restoreFocus: false });
     syncIntervalFromField();
     syncPushBlock();
+    syncSceneRot();
   });
 }
