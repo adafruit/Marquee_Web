@@ -332,8 +332,8 @@ export function refreshProps() {
       </div>
       <div class="prop-row">
         <span class="label">Chart text</span>
-        <input type="number" id="pChFontSize" value="${n.getAttr('axisFontSize') ?? 7}" min="${CHART_FONT_MIN}" max="${CHART_FONT_MAX}">
-        <select id="pChFont" style="flex:1">${[['monospace', 'Mono'], ['sans-serif', 'Sans'], ['serif', 'Serif']].map(([v, l]) =>
+        <input type="number" id="pChFontSize" aria-label="Chart text size" value="${n.getAttr('axisFontSize') ?? 7}" min="${CHART_FONT_MIN}" max="${CHART_FONT_MAX}">
+        <select id="pChFont" aria-label="Chart font family" style="flex:1">${[['monospace', 'Mono'], ['sans-serif', 'Sans'], ['serif', 'Serif']].map(([v, l]) =>
           `<option value="${v}"${(n.getAttr('axisFontFamily') || 'monospace') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
       </div>
       <div class="prop-grid">
