@@ -940,6 +940,19 @@
 }
 .json-view:empty::before { content: 'Nothing yet.'; opacity: 0.45; }
 
+/* The import dialog: the file's display against this one, mismatches called out. */
+.import-modal { width: min(94vw, 480px); }
+.import-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.import-table th, .import-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-divider);
+}
+.import-table th { font-weight: 600; color: var(--color-muted); }
+.import-table td { font-family: var(--font-mono); font-size: 11px; }
+.import-table tr[data-differs="true"] td { color: var(--color-warn); font-weight: 600; }
+.import-warnings { margin: 0; padding-left: 18px; font-size: 12px; color: var(--color-warn); }
+
 /* ---- A8 · showtime ------------------------------------------------------- */
 
 /* The context bar of A8's chrome stack — A7's act rail in the other key, and set to

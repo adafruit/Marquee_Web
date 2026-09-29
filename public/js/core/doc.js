@@ -15,16 +15,20 @@
  * canvasfeed.js, which is on a much longer leash than the 400ms debounce here.
  */
 
-import { display } from '../canvas/palette.js';
-import { layer, fitZoom } from '../canvas/stage.js';
+import { display, MODE_LABELS } from '../canvas/palette.js';
+import { layer, fitZoom, hideDitherPreview } from '../canvas/stage.js';
 import { select } from '../canvas/selection.js';
 import {
   addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery, addImage,
+  remapColorsToPalette,
 } from '../canvas/elements.js';
-import { applyDisplayToForm, setResolution } from './config.js';
+import { applyDisplayToForm, setResolution, applyDither } from './config.js';
 import { activeDeviceId, saveCanvas } from '../device/devices.js';
 import { scheduleCanvasStatePublish } from '../device/canvasfeed.js';
-import { $, copyFromButton } from './util.js';
+import { validateCanvasDoc, compareDisplay, fitDoc } from './canvasimport.js';
+import {
+  $, copyFromButton, toast, escapeHtml, openModal, closeModal, wireModal, segValue, setSegValue, show,
+} from './util.js';
 
 export function serialize() {
   return {
@@ -245,6 +249,125 @@ export function currentCanvasJson() {
   return lastCanvasJson || JSON.stringify(serialize(), null, 2);
 }
 
+// ---------- import ----------------------------------------------------------
+//
+// The validation and the fit are canvasimport.js; this is the dialog and the load.
+// The active display always wins — the same rule as hydrateFromCanvasFeed() — so the
+// dialog only asks how to place the artwork on it, and whether to take its dithering.
+
+/** The validated document and its comparison, held while the dialog is open. */
+let pendingImport = null;
+
+const dims = (d) => (d ? `${d.w}×${d.h}` : '—');
+
+function describeDither(d) {
+  if (!d.dither) return '—';
+  if (d.dither === 'none') return 'none';
+  if (d.dither === 'ordered') return `ordered o${d.orderedMap ?? '?'}`;
+  return `Floyd–Steinberg ${d.diffusion ?? '?'}%`;
+}
+
+function fillImportDialog(doc, warnings, cmp) {
+  const src = doc.display;
+  const n = doc.elements.length;
+  $('importSummary').textContent =
+    `${n} element${n === 1 ? '' : 's'} — importing replaces the current scene.`;
+
+  const rows = [
+    ['Size', dims(cmp.srcDims), dims(cmp.dstDims), cmp.sizeDiffers],
+    ['Rotation', src.rotation !== undefined ? `${src.rotation}°` : '—', `${display.rotation}°`, false],
+    ['Colors', src.type ? MODE_LABELS[src.type] : '—', MODE_LABELS[display.type], cmp.typeDiffers],
+    ['Dither', describeDither(src), describeDither(display), cmp.ditherDiffers],
+  ];
+  $('importRows').innerHTML = rows.map(([k, a, b, differs]) =>
+    `<tr data-differs="${differs}"><th>${k}</th><td>${escapeHtml(a)}</td><td>${escapeHtml(b)}</td></tr>`
+  ).join('');
+
+  show($('importFitRow'), cmp.sizeDiffers);
+  setSegValue('importFitSeg', 'fit');
+  const hint = $('importFitHint');
+  if (cmp.sizeDiffers) {
+    const s = Math.min(cmp.dstDims.w / cmp.srcDims.w, cmp.dstDims.h / cmp.srcDims.h);
+    hint.textContent = `Fit scales everything by ${Math.round(s * 100)}% and centers it; `
+      + '1:1 keeps the original positions, and anything off the edge is cropped.';
+  } else if (!cmp.srcDims) {
+    hint.textContent = 'The file does not say what size it was drawn at, so it is placed 1:1.';
+  }
+  show(hint, cmp.sizeDiffers || !cmp.srcDims);
+
+  const typeNote = $('importTypeNote');
+  typeNote.textContent = cmp.typeDiffers
+    ? `Drawn for ${MODE_LABELS[src.type]}; colors will be snapped to this display's ${MODE_LABELS[display.type]}.`
+    : '';
+  show(typeNote, cmp.typeDiffers);
+
+  $('importDither').checked = true;
+  show($('importDitherRow'), cmp.ditherDiffers);
+
+  const list = $('importWarnings');
+  list.innerHTML = warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('');
+  show(list, warnings.length > 0);
+}
+
+async function onImportFile(input) {
+  const file = input.files?.[0];
+  // Reset so choosing the same file again still fires 'change'.
+  input.value = '';
+  if (!file) return;
+  let text;
+  try {
+    text = await file.text();
+  } catch {
+    toast(`Could not read ${file.name}.`);
+    return;
+  }
+  const { ok, errors, warnings, doc } = validateCanvasDoc(text);
+  if (!ok) {
+    toast(`${file.name} was not imported: ${errors[0]}`
+      + (errors.length > 1 ? ` (and ${errors.length - 1} more)` : ''));
+    return;
+  }
+  const cmp = compareDisplay(doc.display, display);
+  pendingImport = { doc, cmp };
+  fillImportDialog(doc, warnings, cmp);
+  openModal('importModal', { trap: true, focus: 'importConfirm', returnFocusTo: 'canvasImportBtn' });
+}
+
+async function confirmImport() {
+  const job = pendingImport;
+  pendingImport = null;
+  closeModal('importModal');
+  if (!job) return;
+  const { doc, cmp } = job;
+
+  const fit = cmp.sizeDiffers && segValue('importFitSeg') !== '1:1';
+  const takeDither = cmp.ditherDiffers && $('importDither').checked;
+  const out = fit ? fitDoc(doc, cmp.srcDims, cmp.dstDims) : doc;
+
+  // The same order as hydrateFromCanvasFeed(): the outgoing scene's autosave must not
+  // land on top of this one, and a dither overlay of the old artwork must not linger.
+  cancelCanvasSave();
+  hideDitherPreview();
+  deserialize(out, { keepDisplay: true });
+  // Snap every ink onto THIS panel's palette — a tricolor red has no business on mono.
+  remapColorsToPalette();
+  if (takeDither) applyDither(doc.display);
+  await whenCanvasSettled();
+  // Written unconditionally, and through the normal path: localStorage first, then the
+  // {group}.canvas-state mirror on its usual leash (canvasfeed.js).
+  invalidateCanvasBaseline();
+  saveCanvasNow();
+  const n = doc.elements.length;
+  toast(`Imported ${n} element${n === 1 ? '' : 's'}${fit ? ', fitted to this display' : ''}`);
+}
+
+function initImport() {
+  wireModal('importModal', ['importClose', 'importCancel']);
+  $('canvasImportBtn')?.addEventListener('click', () => $('canvasImportFile')?.click());
+  $('canvasImportFile')?.addEventListener('change', (e) => onImportFile(e.currentTarget));
+  $('importConfirm')?.addEventListener('click', confirmImport);
+}
+
 // ---------- boot ------------------------------------------------------------
 
 export function initDoc() {
@@ -264,4 +387,6 @@ export function initDoc() {
     a.remove();
     URL.revokeObjectURL(a.href);
   });
+
+  initImport();
 }

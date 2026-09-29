@@ -67,10 +67,19 @@ export function landscapeAtZero(panel = display.panel) {
 
 /** Logical canvas dimensions once rotation (and the firmware's own step) is applied. */
 export function logicalDims() {
-  const swap = (display.rotation % 180 !== 0) !== landscapeAtZero();
+  return logicalDimsOf(display);
+}
+
+/**
+ * The same answer for any descriptor, not just the live one — an imported document
+ * carries the display it was authored on, and fitting it means knowing how big THAT
+ * canvas was.
+ */
+export function logicalDimsOf(d) {
+  const swap = ((d.rotation || 0) % 180 !== 0) !== landscapeAtZero(d.panel || '');
   return {
-    w: swap ? display.height : display.width,
-    h: swap ? display.width : display.height,
+    w: swap ? d.height : d.width,
+    h: swap ? d.width : d.height,
   };
 }
 
