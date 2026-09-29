@@ -21,7 +21,7 @@ export const display = {
   width: 128,        // physical panel width, before rotation
   height: 296,       // physical panel height, before rotation
   rotation: 0,       // 0 | 90 | 180 | 270 (degrees)
-  panel: 'magtag-2025',
+  panel: 'magtag',
   type: 'mono',      // mono | gray4 | tricolor | quadcolor
   dither: 'FloydSteinberg',
   diffusion: 85,
@@ -58,8 +58,10 @@ export const MODE_LABELS = {
  * rotation 0 is LANDSCAPE on the glass. The MagTag's 128×296 buffer is presented as
  * 296×128 at rotation 0; the editor's canvas has to agree or the bitmap it ships is
  * the wrong way round. Every other catalogued panel shows its buffer as-is at 0.
+ * 'magtag-2025' is the MagTag's old id, kept so a canvas.json saved under it still
+ * imports landscape.
  */
-export const LANDSCAPE_AT_ZERO_PANELS = new Set(['magtag-2025']);
+export const LANDSCAPE_AT_ZERO_PANELS = new Set(['magtag', 'magtag-2025']);
 
 export function landscapeAtZero(panel = display.panel) {
   return LANDSCAPE_AT_ZERO_PANELS.has(String(panel || '').trim());

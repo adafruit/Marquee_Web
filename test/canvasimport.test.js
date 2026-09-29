@@ -55,11 +55,13 @@ test('bad display fields are warned about and dropped; a half size is no size', 
 test('logicalDimsOf: rotation swaps, and the MagTag is landscape at 0', () => {
   assert.deepEqual(logicalDimsOf({ width: 128, height: 296, rotation: 0, panel: '' }), { w: 128, h: 296 });
   assert.deepEqual(logicalDimsOf({ width: 128, height: 296, rotation: 90, panel: '' }), { w: 296, h: 128 });
+  assert.deepEqual(logicalDimsOf({ width: 128, height: 296, rotation: 0, panel: 'magtag' }), { w: 296, h: 128 });
+  assert.deepEqual(logicalDimsOf({ width: 128, height: 296, rotation: 90, panel: 'magtag' }), { w: 128, h: 296 });
+  // The MagTag's old panel id, as an older canvas.json carries it.
   assert.deepEqual(logicalDimsOf({ width: 128, height: 296, rotation: 0, panel: 'magtag-2025' }), { w: 296, h: 128 });
-  assert.deepEqual(logicalDimsOf({ width: 128, height: 296, rotation: 90, panel: 'magtag-2025' }), { w: 128, h: 296 });
 });
 
-const MAGTAG = { width: 128, height: 296, rotation: 0, panel: 'magtag-2025', type: 'mono',
+const MAGTAG = { width: 128, height: 296, rotation: 0, panel: 'magtag', type: 'mono',
   dither: 'FloydSteinberg', diffusion: 85, orderedMap: 8 };
 
 test('compareDisplay: the same panel is no difference at all', () => {

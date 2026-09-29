@@ -17,9 +17,9 @@
  */
 
 export const DISPLAY_PRESETS = {
-  // Adafruit MagTag (2025): 2.9" mono e-ink, SSD1680. The panel scans portrait —
+  // Adafruit MagTag: 2.9" mono e-ink, SSD1680. The panel scans portrait —
   // Adafruit_SSD1680(128, 296) — and the config ships rotation 0: the firmware's
-  // magtag-2025 panel entry already presents that buffer as the 296×128 landscape
+  // magtag panel entry already presents that buffer as the 296×128 landscape
   // the product is used in, so the file states the native buffer and no step on
   // top of it. palette.js lists the panel in LANDSCAPE_AT_ZERO_PANELS so the
   // editor's canvas is landscape at 0 too.
@@ -31,12 +31,12 @@ export const DISPLAY_PRESETS = {
   magtag: {
     label: 'MagTag 2.9"',
     spec: '296×128 · mono · SSD1680',
-    cardLabel: 'MagTag 2.9" (2025)',
+    cardLabel: 'MagTag 2.9"',
     cardMeta: '296×128 · mono · SSD1680',
     terms: 'magtag 2.9 esp32-s2 mono ssd1680',
     photo: 'img/panels/magtag.jpg',   // adafruit.com product 4800
     preset: '128x296', rotation: '0', mode: 'mono',
-    name: 'epd0', driver: 'SSD1680', panel: 'magtag-2025',
+    name: 'epd0', driver: 'SSD1680', panel: 'magtag',
     pins: { busy: 'D5', dc: 'D7', rst: 'D6', cs: 'D8', sramCs: '-1', mosi: '-1', sck: '-1', bus: 0 },
   },
 

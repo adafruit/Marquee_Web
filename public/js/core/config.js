@@ -319,7 +319,7 @@ function applyRestoredConfig() {
 /** Panel ids this editor used to write, and what the firmware's EPD factory calls them
  *  now. Applied on load so a record saved under the old name does not hand the board a
  *  panel it rejects (ERR_EPD_PANEL_UNSUPPORTED). */
-const PANEL_RENAMES = { 'adafruit-magtag': 'magtag-2025' };
+const PANEL_RENAMES = { 'adafruit-magtag': 'magtag', 'magtag-2025': 'magtag' };
 
 export function loadConfig(data) {
   if (!data || typeof data !== 'object') { applyRestoredConfig(); return; }
