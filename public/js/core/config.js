@@ -337,6 +337,24 @@ function restoreConfig() {
   loadConfig(data);
 }
 
+/**
+ * Adopt a set of dither settings — an imported document's — without touching the rest
+ * of the descriptor. Not applyDisplayToForm(), which also forces the resolution preset
+ * to "custom" and would read as the user having diverged from their panel.
+ */
+export function applyDither({ dither, diffusion, orderedMap }) {
+  if (dither) display.dither = dither;
+  if (Number.isFinite(diffusion)) display.diffusion = diffusion;
+  if (Number.isFinite(orderedMap)) display.orderedMap = orderedMap;
+  setSegValue('ditherSeg', display.dither);
+  if ($('diffusion')) $('diffusion').value = display.diffusion;
+  if ($('orderedMap')) $('orderedMap').value = String(display.orderedMap);
+  if ($('diffusionLabel')) $('diffusionLabel').textContent = display.diffusion + '%';
+  syncDitherControls();
+  saveConfig();
+  scheduleDitherRefresh();
+}
+
 // ---------- derived UI ------------------------------------------------------
 
 function syncDitherControls() {

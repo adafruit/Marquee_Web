@@ -129,6 +129,16 @@ and it is the weaker claim: a real take always outranks it, because `fetchTakes(
 overwrites `lastDrawn` from `.bitmap` on its next pass and only falls back to the cache
 when IO has nothing to say.
 
+## Importing a file
+
+`Import JSON` in the editor (`core/doc.js`, validated by `core/canvasimport.js`) loads a
+`canvas.json` onto the canvas and needs nothing from this feed: it ends in the same
+`saveCanvasNow()` as any edit, so the imported scene goes to localStorage first and up
+here on the usual leash above. Like a hydrate it loads with `keepDisplay: true` — the
+file's `display` block is shown to the user against this panel's, the artwork can be
+fitted (uniform scale, centered) or placed 1:1, colours are snapped to this panel's
+palette, and only the dithering may optionally be adopted from the file.
+
 ## Displays that predate this feed
 
 A5b creates the whole set at setup and never runs again for a display that is already
@@ -149,7 +159,7 @@ it locally is a different product. The board gets a bitmap.
 
 **A history of designs.** Ruled out by the 1 KB history cap before it was ruled out on
 taste, but it would be the wrong shape anyway: version history is a repository's job,
-and `Export JSON` in the editor is the manual door out.
+and `Export JSON` / `Import JSON` in the editor are the manual doors out and back in.
 
 **Credentials, pins or identity.** The `display` block is geometry, rotation, colour
 mode and dither settings — never a pinout, an Adafruit IO username or a key. That is

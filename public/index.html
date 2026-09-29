@@ -638,6 +638,8 @@
               <div class="cj-actions">
                 <span id="canvasSaveStatus" data-state="saved">saved</span>
                 <button type="button" id="canvasCopyBtn" class="btn btn-sm" title="Copy JSON to clipboard">Copy</button>
+                <button type="button" id="canvasImportBtn" class="btn btn-sm" title="Load a canvas.json onto the canvas">Import JSON</button>
+                <input type="file" id="canvasImportFile" accept=".json,application/json" class="hidden" aria-hidden="true" tabindex="-1">
                 <button type="button" id="canvasExportBtn" class="btn btn-sm" title="Download canvas.json">Export JSON</button>
               </div>
             </div>
@@ -796,6 +798,37 @@
       <span class="hint" style="flex:1; text-align:left">Contains the Wi-Fi password and the Adafruit IO key.</span>
       <button type="button" class="btn btn-sm" id="cfgCopy">Copy</button>
       <button type="button" class="btn btn-sm btn-primary" id="cfgDownload">Download cfg-marquee.json</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import canvas.json. Opened by core/doc.js once the file has validated; the active
+     display always wins, so this only asks how to place the artwork on it. -->
+<div class="modal-backdrop hidden" id="importModal">
+  <div class="modal import-modal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+    <div class="modal-head">
+      <h4 id="importTitle">Import canvas.json</h4>
+      <button type="button" class="modal-close" id="importClose" aria-label="Close import dialog">✕</button>
+    </div>
+    <p class="hint" id="importSummary"></p>
+    <table class="import-table" id="importTable">
+      <thead><tr><th></th><th>File</th><th>This display</th></tr></thead>
+      <tbody id="importRows"></tbody>
+    </table>
+    <div class="prop-row hidden" id="importFitRow">
+      <span class="label">Placement</span>
+      <div class="seg" id="importFitSeg">
+        <label class="seg-opt"><input type="radio" name="importFit" value="fit" checked>Fit to display</label>
+        <label class="seg-opt"><input type="radio" name="importFit" value="1:1">1:1</label>
+      </div>
+    </div>
+    <p class="hint hidden" id="importFitHint"></p>
+    <p class="hint hidden" id="importTypeNote"></p>
+    <label class="check-row hidden" id="importDitherRow"><input type="checkbox" id="importDither" checked> Use the file's dithering</label>
+    <ul class="import-warnings hidden" id="importWarnings"></ul>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-sm" id="importCancel">Cancel</button>
+      <button type="button" class="btn btn-sm btn-primary" id="importConfirm">Import</button>
     </div>
   </div>
 </div>
