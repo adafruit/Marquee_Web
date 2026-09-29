@@ -16,7 +16,7 @@ globalThis.document = {
   getElementById: (id) => fields[id] || null,
   addEventListener() {},
 };
-const store = { 'marquee.flow': JSON.stringify({ selectedPanel: 'magtag-2025' }) };
+const store = { 'marquee.flow': JSON.stringify({ selectedPanel: 'magtag' }) };
 globalThis.localStorage = {
   getItem: (k) => (k in store ? store[k] : null),
   setItem: (k, v) => { store[k] = String(v); },
