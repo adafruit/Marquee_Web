@@ -179,7 +179,7 @@ export const DISPLAY_PRESETS = {
     pins: { busy: '-1', dc: 'D10', rst: '-1', cs: 'D9', sramCs: '-1', mosi: 'D35', sck: 'D36', bus: 0 },
   },
 
-  // Xteink X4 Pro Pocket eReader: 800x400 mono, UC8279. The first entry in this
+  // Xteink X4 Pro Pocket eReader: 800x480 mono, UC8279. The first entry in this
   // catalog that is a whole product rather than a panel wired to a Feather, which
   // shows up in three places:
   //
@@ -195,23 +195,26 @@ export const DISPLAY_PRESETS = {
   //   * the panel is soldered down, but unlike the MagTag there is no firmware
   //     panel entry that owns the bus, so MOSI/SCK are stated explicitly.
   //
-  // 800x400 is already the landscape orientation the device is read in, so
-  // rotation is 0 and the framebuffer is the datasheet scan order unchanged.
+  // 800x480 is already the landscape orientation the device is read in, so
+  // rotation is 0 and the framebuffer is the datasheet scan order unchanged. The
+  // height is 480, not 400: the controller scans 600 gates and shows a 480-gate
+  // window from gate 120 (marquee-x4pro EPD_HEIGHT). A shorter canvas leaves a
+  // blank band along the bottom of the panel.
   //
   // BUSY is active-HIGH on this panel, which EPD drivers assume anyway — but the
   // descriptor has no field for it either way, so it is recorded here.
   x4pro: {
     label: 'Xteink X4 Pro',
-    spec: '800×400 · mono · UC8279',
+    spec: '800×480 · mono · UC8279',
     cardLabel: 'XTeink X4 Pro Pocket eReader',
     // TO CONFIRM: the design calls this grayscale, and `mode` below says mono. 4.3"
-    // and 800×400 are consistent (that is roughly a 4.3" diagonal), but grayscale and
+    // and 800×480 are consistent (that is roughly a 4.3" diagonal), but grayscale and
     // mono are not the same panel. The card says what the design says; `mode` and
     // `spec` say what this descriptor actually drives. One of the two is wrong.
     cardMeta: '4.3" · grayscale',
-    terms: 'xteink x4 pro pocket ereader 800x400 mono uc8279 esp32-s3',
+    terms: 'xteink x4 pro pocket ereader 800x480 mono uc8279 esp32-s3',
     photo: 'img/panels/xteink-x4-pro.jpg',   // xteink.com product shot
-    preset: '800x400', rotation: '0', mode: 'mono',
+    preset: '800x480', rotation: '0', mode: 'mono',
     name: 'epd0', driver: 'UC8279', panel: 'xteink-x4-pro',
     pins: { busy: 'D6', dc: 'D18', rst: 'D14', cs: 'D13', sramCs: '-1', mosi: 'D11', sck: 'D12', bus: 0 },
   },

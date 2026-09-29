@@ -417,7 +417,6 @@ function renderNext() {
   const glass = $('takeNext');
   const caption = $('takeNextCaption');
 
-  // Keep the blueprint corner marks; replace only the image.
   glass.querySelectorAll('img, .placeholder').forEach((el) => el.remove());
   const img = new Image();
   if (takes.next) {
