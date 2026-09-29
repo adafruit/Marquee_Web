@@ -36,8 +36,62 @@ export function ioHost() {
  * stays one.
  */
 export function ioLog(action, feedKey, note = '') {
-  const user = (document.getElementById('ioUser')?.value || '').trim() || '(no user)';
-  console.log(`[io] ${action} ${user}/${feedKey || '(no feed)'} @ ${ioHost()}${note ? ` — ${note}` : ''}`);
+  const { owner, key } = feedRef(feedKey);
+  console.log(`[io] ${action} ${owner || '(no user)'}/${key || '(no feed)'} @ ${ioHost()}${note ? ` — ${note}` : ''}`);
+}
+
+function ioUser() {
+  return (globalThis.document?.getElementById('ioUser')?.value || '').trim();
+}
+
+/**
+ * Split a feed key into the account it lives under and its key on that account.
+ *
+ * A feed someone else SHARED with you is stored as "owner/key" — IO feed keys cannot
+ * contain a slash, so the prefix is unambiguous — and every other key is bare and
+ * belongs to the connected account. Encoding the owner in the key rather than beside
+ * it means an element binding, a chart's `feeds[].key` and the `series` map all carry
+ * a shared feed without learning a new attribute, and documents saved before shared
+ * feeds existed still read exactly as they did.
+ *
+ * `user` is injectable so this stays testable without a DOM.
+ */
+export function feedRef(feedKey, user = ioUser()) {
+  const k = String(feedKey || '');
+  const i = k.indexOf('/');
+  return i < 0 ? { owner: user, key: k } : { owner: k.slice(0, i), key: k.slice(i + 1) };
+}
+
+/** The REST URL for a feed (owned or shared), plus an optional path suffix like "/data/last". */
+export function feedUrl(feedKey, suffix = '') {
+  const { owner, key } = feedRef(feedKey);
+  return `https://${ioHost()}/api/v2/${encodeURIComponent(owner)}/feeds/${encodeURIComponent(key)}${suffix}`;
+}
+
+/**
+ * Turn whatever someone pasted from a shared feed's page into "owner/key", or null.
+ *
+ * IO's feed page offers four spellings of the same feed and any of them is a
+ * reasonable thing to paste:
+ *   https://io.adafruit.com/abachman/feeds/secondary.shared-message-buffer
+ *   https://io.adafruit.com/api/v2/abachman/feeds/secondary.shared-message-buffer/data
+ *   abachman/feeds/secondary.shared-message-buffer          (MQTT)
+ *   abachman/secondary.shared-message-buffer                (our own stored form)
+ */
+export function parseSharedFeed(input) {
+  let s = String(input || '').trim();
+  s = s.replace(/^[a-z]+:\/\/[^/]+\/?/i, '')      // scheme + host
+       .replace(/^io\.adafruit\.com\/?/i, '')       // host pasted without a scheme
+       .replace(/^api\/v2\//i, '')
+       .replace(/[?#].*$/, '')
+       .replace(/\/+$/, '');
+  const parts = s.split('/').filter(Boolean);
+  if (parts[1] === 'feeds') parts.splice(1, 1);
+  // Anything after the key is an endpoint on it (/data, /data/last, /details …).
+  const [owner, key] = parts;
+  if (!owner || !key) return null;
+  const ok = /^[A-Za-z0-9_.-]+$/;
+  return ok.test(owner) && ok.test(key) ? `${owner}/${key}` : null;
 }
 
 /**

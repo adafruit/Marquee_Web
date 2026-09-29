@@ -8,7 +8,7 @@
  * element already selected; and the chart's "Add feed", which APPENDS to a list.
  */
 
-import { ioHost, ioLog } from '../core/api.js';
+import { ioHost, ioLog, feedUrl, parseSharedFeed } from '../core/api.js';
 import { layer } from '../canvas/stage.js';
 import {
   addLabel, rebuildWidget, applyFeedValue, FEED_ETYPES, CHART_RAW_MAX,
@@ -20,6 +20,14 @@ import {
 } from '../core/util.js';
 
 let feedsCache = [];
+
+/**
+ * Feeds other accounts have shared with this one, keyed "owner/key" (see feedRef in
+ * api.js). null = not fetched yet for this open of the picker.
+ */
+let sharedCache = null;
+
+const showingShared = () => !!$('feedSharedToggle')?.checked;
 
 /**
  * Which element the picker is binding to. null = the toolbox flow, which drops a
@@ -39,15 +47,62 @@ let feedPickerMode = 'bind';
 function renderFeedList() {
   const q = ($('feedFilter').value || '').trim().toLowerCase();
   const list = $('feedList');
-  const shown = feedsCache.filter((f) =>
+  const shared = showingShared();
+  const all = (shared ? sharedCache : feedsCache) || [];
+  const shown = all.filter((f) =>
     !q || (f.name || '').toLowerCase().includes(q) || (f.key || '').toLowerCase().includes(q));
   list.innerHTML = shown.map((f) =>
     `<button type="button" class="btn" data-key="${escapeAttr(f.key)}" data-name="${escapeAttr(f.name || f.key)}"`
     + ' style="justify-content:flex-start; text-align:left; font-family:var(--font-body); letter-spacing:0">'
     + `${escapeHtml(f.name || f.key)}<span class="mono" style="opacity:.6; margin-left:6px; font-size:11px">${escapeHtml(f.key)}</span></button>`
   ).join('');
-  $('feedListStatus').textContent =
-    feedsCache.length ? `${shown.length} of ${feedsCache.length} feed(s)` : 'No feeds found';
+  $('feedListStatus').textContent = all.length ? `${shown.length} of ${all.length} feed(s)`
+    : shared ? 'Nothing shared with you — enter a shared feed below' : 'No feeds found';
+}
+
+/**
+ * List the feeds shared WITH this account.
+ *
+ * Not in IO's published API docs: GET /{user}/sharing is what io.adafruit.com's own
+ * Privacy & Sharing page reads. `with_you` holds one row per share; only approved
+ * ones can actually be read, so pending and blocked shares are left out. When the
+ * route refuses us, the manual entry under the list is the way in.
+ */
+async function loadSharedFeeds() {
+  const user = val('ioUser'), key = val('ioKey');
+  $('feedListStatus').textContent = 'Loading shared feeds…';
+  console.log(`[io] list    ${user}/sharing @ ${ioHost()} — feeds shared with this account`);
+  try {
+    const res = await fetch(`https://${ioHost()}/api/v2/${encodeURIComponent(user)}/sharing`,
+      { headers: { 'X-AIO-Key': key } });
+    if (!res.ok) throw new Error(String(res.status));
+    const body = await res.json();
+    const rows = body?.shares?.feeds?.with_you || [];
+    sharedCache = rows
+      .filter((r) => r.status === 'approved' && r.owner?.username && r.feed?.key)
+      .map((r) => ({
+        key: `${r.owner.username}/${r.feed.key}`,
+        name: r.feed.name || r.feed.key,
+      }));
+    return true;
+  } catch {
+    sharedCache = [];
+    return false;
+  }
+}
+
+/** Swap the list between this account's feeds and the ones shared with it. */
+async function showSharedMode() {
+  const shared = showingShared();
+  $('feedSharedManual')?.classList.toggle('hidden', !shared);
+  $('feedList').innerHTML = '';
+  if (shared && sharedCache === null && !(await loadSharedFeeds())) {
+    if (!showingShared()) return;   // unticked while loading
+    renderFeedList();
+    $('feedListStatus').textContent = "Couldn't list shared feeds — enter one below";
+    return;
+  }
+  if (showingShared() === shared) renderFeedList();
 }
 
 export async function openFeedPicker(target = null, { mode = 'bind' } = {}) {
@@ -58,6 +113,10 @@ export async function openFeedPicker(target = null, { mode = 'bind' } = {}) {
   feedPickerMode = mode;
   openModal('feedDataModal');
   $('feedFilter').value = '';
+  $('feedSharedToggle').checked = false;
+  $('feedSharedManual').classList.add('hidden');
+  $('feedSharedKey').value = '';
+  sharedCache = null;
   $('feedList').innerHTML = '';
   $('feedListStatus').textContent = 'Loading feeds…';
   try {
@@ -93,7 +152,7 @@ export async function readFeedValue(feedKey) {
   ioLog('read   ', feedKey, 'last value');
   try {
     const res = await fetch(
-      `https://${ioHost()}/api/v2/${encodeURIComponent(user)}/feeds/${encodeURIComponent(feedKey)}/data/last`,
+      feedUrl(feedKey, '/data/last'),
       { headers: { 'X-AIO-Key': key } });
     if (!res.ok) return null;
     const datum = await res.json().catch(() => ({}));
@@ -120,7 +179,7 @@ export async function readFeedLast(feedKey) {
   ioLog('read   ', feedKey, 'last datum');
   try {
     const res = await fetch(
-      `https://${ioHost()}/api/v2/${encodeURIComponent(user)}/feeds/${encodeURIComponent(feedKey)}/data/last`,
+      feedUrl(feedKey, '/data/last'),
       { headers: { 'X-AIO-Key': key } });
     if (!res.ok) return null;
     const d = await res.json().catch(() => null);
@@ -153,7 +212,7 @@ export async function readFeedData(feedKey, { limit = 1 } = {}) {
   ioLog('read   ', feedKey, `newest ${Math.max(1, limit)} datum(s)`);
   try {
     const res = await fetch(
-      `https://${ioHost()}/api/v2/${encodeURIComponent(user)}/feeds/${encodeURIComponent(feedKey)}/data?${qs}`,
+      feedUrl(feedKey, `/data?${qs}`),
       { headers: { 'X-AIO-Key': key } });
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
@@ -190,7 +249,7 @@ export async function readFeedHistory(feedKey, { hours = 24, raw = false } = {})
   ioLog('read   ', feedKey, `${hours}h history${raw ? ', raw' : ''}`);
   try {
     const res = await fetch(
-      `https://${ioHost()}/api/v2/${encodeURIComponent(user)}/feeds/${encodeURIComponent(feedKey)}/data/chart?${qs}`,
+      feedUrl(feedKey, `/data/chart?${qs}`),
       { headers: { 'X-AIO-Key': key } });
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
@@ -333,79 +392,116 @@ export function initFeeds() {
   $('addFeedData')?.addEventListener('click', () => openFeedPicker(null));
   $('feedFilter')?.addEventListener('input', renderFeedList);
 
-  $('feedList')?.addEventListener('click', async (e) => {
-    const btn = e.target.closest('button[data-key]');
-    if (!btn) return;
-    const user = val('ioUser'), key = val('ioKey');
-    const feedKey = btn.dataset.key;
-    const feedName = btn.dataset.name || feedKey;
+  $('feedSharedToggle')?.addEventListener('change', showSharedMode);
 
-    // A chart series is a history pull, not a last value, and an empty feed is
-    // still a legitimate series to add — so this mode returns before the
-    // /data/last fetch below, which treats "no value" as a failure.
-    if (feedPickerMode === 'series' && feedPickerTarget) {
-      const node = feedPickerTarget;
-      const feeds = (node.getAttr('feeds') || []).map((f) => ({ ...f }));
-      if (feeds.some((f) => f.key === feedKey)) {
-        toast(`"${feedName}" is already on this chart`);
+  $('feedList')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-key]');
+    if (btn) pickFeed(btn.dataset.key, btn.dataset.name || btn.dataset.key);
+  });
+
+  // A shared feed typed or pasted in — for when the list can't be fetched, or the
+  // share hasn't shown up in it.
+  // The feed record is fetched first: it is the one request that tells "not shared
+  // with you" apart from "empty", and it carries the name the owner gave the feed.
+  const useManual = async () => {
+    const feedKey = parseSharedFeed($('feedSharedKey').value);
+    if (!feedKey) {
+      $('feedListStatus').textContent = 'Expected owner/feeds/key, or the feed\'s URL';
+      return;
+    }
+    $('feedListStatus').textContent = 'Looking up feed…';
+    ioLog('read   ', feedKey, 'feed record (shared feed entry)');
+    try {
+      const res = await fetch(feedUrl(feedKey), { headers: { 'X-AIO-Key': val('ioKey') } });
+      if (!res.ok) {
+        $('feedListStatus').textContent = res.status === 404
+          ? 'Not found — or not shared with this account' : `IO replied ${res.status}`;
         return;
       }
-      $('feedListStatus').textContent = 'Loading history…';
-      feeds.push({
-        key: feedKey,
-        name: feedName,
-        // Each series gets the next palette ink, so two feeds differ by colour as
-        // well as by dash the moment the second one is added.
-        color: PALETTES[display.type][feeds.length % PALETTES[display.type].length],
-      });
-      node.setAttr('feeds', feeds);
-      const ok = await refreshChart(node);
+      const feed = await res.json().catch(() => ({}));
+      pickFeed(feedKey, feed.name || feedKey);
+    } catch {
+      $('feedListStatus').textContent = 'Could not reach Adafruit IO';
+    }
+  };
+  $('feedSharedUse')?.addEventListener('click', useManual);
+  $('feedSharedKey')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); useManual(); }
+  });
+}
+
+/**
+ * Bind the chosen feed to whatever the picker was opened for. One path for a list
+ * click and a typed-in shared feed, so they can't drift apart.
+ */
+async function pickFeed(feedKey, feedName) {
+  const key = val('ioKey');
+
+  // A chart series is a history pull, not a last value, and an empty feed is
+  // still a legitimate series to add — so this mode returns before the
+  // /data/last fetch below, which treats "no value" as a failure.
+  if (feedPickerMode === 'series' && feedPickerTarget) {
+    const node = feedPickerTarget;
+    const feeds = (node.getAttr('feeds') || []).map((f) => ({ ...f }));
+    if (feeds.some((f) => f.key === feedKey)) {
+      toast(`"${feedName}" is already on this chart`);
+      return;
+    }
+    $('feedListStatus').textContent = 'Loading history…';
+    feeds.push({
+      key: feedKey,
+      name: feedName,
+      // Each series gets the next palette ink, so two feeds differ by colour as
+      // well as by dash the moment the second one is added.
+      color: PALETTES[display.type][feeds.length % PALETTES[display.type].length],
+    });
+    node.setAttr('feeds', feeds);
+    const ok = await refreshChart(node);
+    closeFeedPicker();
+    select(node);
+    toast(ok ? `Added ${feedName} to the chart`
+             : `Added ${feedName}, but its history could not be read`);
+    return;
+  }
+
+  $('feedListStatus').textContent = 'Loading value…';
+  ioLog('read   ', feedKey, 'last value (feed picker)');
+  try {
+    const res = await fetch(
+      feedUrl(feedKey, '/data/last'),
+      { headers: { 'X-AIO-Key': key } });
+    if (!res.ok) {
+      $('feedListStatus').textContent = `IO replied ${res.status}`;
+      toast(res.status === 404 ? `"${feedName}" has no data yet` : `IO replied ${res.status}`);
+      return;
+    }
+    const datum = await res.json().catch(() => ({}));
+    const value = datum && datum.value != null ? String(datum.value) : '';
+    if (value === '') { toast(`"${feedName}" has no value`); return; }
+
+    if (feedPickerTarget) {
+      const node = feedPickerTarget;
+      node.setAttr('feedKey', feedKey);
+      node.setAttr('feedName', feedName);
+      applyFeedValue(node, value);
       closeFeedPicker();
-      select(node);
-      toast(ok ? `Added ${feedName} to the chart`
-               : `Added ${feedName}, but its history could not be read`);
+      select(node);          // re-render the inspector with the new binding
+      toast(`Bound ${feedName} = ${value}`);
       return;
     }
 
-    $('feedListStatus').textContent = 'Loading value…';
-    ioLog('read   ', feedKey, 'last value (feed picker)');
-    try {
-      const res = await fetch(
-        `https://${ioHost()}/api/v2/${encodeURIComponent(user)}/feeds/${encodeURIComponent(feedKey)}/data/last`,
-        { headers: { 'X-AIO-Key': key } });
-      if (!res.ok) {
-        $('feedListStatus').textContent = `IO replied ${res.status}`;
-        toast(res.status === 404 ? `"${feedName}" has no data yet` : `IO replied ${res.status}`);
-        return;
-      }
-      const datum = await res.json().catch(() => ({}));
-      const value = datum && datum.value != null ? String(datum.value) : '';
-      if (value === '') { toast(`"${feedName}" has no value`); return; }
-
-      if (feedPickerTarget) {
-        const node = feedPickerTarget;
-        node.setAttr('feedKey', feedKey);
-        node.setAttr('feedName', feedName);
-        applyFeedValue(node, value);
-        closeFeedPicker();
-        select(node);          // re-render the inspector with the new binding
-        toast(`Bound ${feedName} = ${value}`);
-        return;
-      }
-
-      // The toolbox shortcut. It drops a genuinely LINKED label — it used to bake
-      // "name: value" into the text once and never read the feed again, which looked
-      // like a binding and behaved like a screenshot. The feed name becomes the
-      // prefix so the caption survives, but the number now refreshes.
-      const node = addLabel({
-        feedKey, feedName, feedPrefix: `${feedName}: `, feedValue: value,
-      });
-      closeFeedPicker();
-      select(node);
-      toast(`Added ${feedName} = ${value}`);
-    } catch {
-      $('feedListStatus').textContent = 'Could not reach Adafruit IO';
-      toast(`Could not reach ${ioHost()} — check the network`);
-    }
-  });
+    // The toolbox shortcut. It drops a genuinely LINKED label — it used to bake
+    // "name: value" into the text once and never read the feed again, which looked
+    // like a binding and behaved like a screenshot. The feed name becomes the
+    // prefix so the caption survives, but the number now refreshes.
+    const node = addLabel({
+      feedKey, feedName, feedPrefix: `${feedName}: `, feedValue: value,
+    });
+    closeFeedPicker();
+    select(node);
+    toast(`Added ${feedName} = ${value}`);
+  } catch {
+    $('feedListStatus').textContent = 'Could not reach Adafruit IO';
+    toast(`Could not reach ${ioHost()} — check the network`);
+  }
 }
