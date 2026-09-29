@@ -66,7 +66,7 @@ Empty until A5b has run.
 | `driver` | string | `#pmDriver` | the controller, as the datasheet names it: `SSD1680`, `SSD1683`, `JD79661`, `UC8179`, `UC8279`… |
 | `panel` | string | `#pmPanel` | `{size}-{resolution}-{color_mode}` for a bare panel, `{vendor}-{product}` for one inside a product |
 | `width`, `height` | integer | `#resW`, `#resH` | the **unrotated** framebuffer, as the driver is constructed — `(128, 296)` for a MagTag, not `296×128`. The exception is a panel whose firmware entry owns the scan order: `213-tricolor-MFGNR` states its landscape `250×122` |
-| `rotation` | integer 0–3 | `#rotSel` | clockwise 90° steps applied on top of the native buffer: `0`→0°, `1`→90°, `2`→180°, `3`→270°. The editor stores degrees; this is `round(deg / 90) mod 4`. For `magtag-2025` the firmware's panel entry already shows the 128×296 buffer as landscape, so `0` is the 296×128 orientation the product is used in; `213-tricolor-MFGNR` likewise ships `0` against a `250×122` buffer. A7's inspector Rotation select writes `#rotSel` too. The editor never reads this file back off the board, so a hand edit here has to be matched there (and vice versa) |
+| `rotation` | `0`, `90`, `180` or `270` | `#rotSel` | clockwise rotation in degrees applied on top of the native buffer — the same value canvas.json's `display.rotation` carries. For `magtag-2025` the firmware's panel entry already shows the 128×296 buffer as landscape, so `0` is the 296×128 orientation the product is used in; `213-tricolor-MFGNR` likewise ships `0` against a `250×122` buffer. A7's inspector Rotation select writes `#rotSel` too. The editor never reads this file back off the board, so a hand edit here has to be matched there (and vice versa) |
 | `mode` | string | `#dtype` | `mono` \| `grayscale4` \| `tricolor` \| `quadcolor`. The editor's own name for the second is `gray4`; it is the one that is renamed |
 | `colstart` | integer, **optional** | `#pmColstart` | column offset of the live glass inside the controller's RAM. Present only when non-zero: the SSD1680Z breakout (`adafruit-4947`) needs `-8`. Absent means no shift — including on `213-tricolor-MFGNR`, whose firmware panel entry applies the offset itself |
 
@@ -161,7 +161,7 @@ bench tool on your own machine, and said on screen at A5C and A6-A.
         "panel":    { "type": "string" },
         "width":    { "type": "integer", "minimum": 1 },
         "height":   { "type": "integer", "minimum": 1 },
-        "rotation": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "rotation": { "enum": [0, 90, 180, 270] },
         "mode":     { "enum": ["mono", "grayscale4", "tricolor", "quadcolor"] },
         "colstart": { "type": "integer" }
       }

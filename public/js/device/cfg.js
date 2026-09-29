@@ -64,9 +64,8 @@ function buildDisplay() {
     panel: val('pmPanel') || '',
     width: Number($('resW')?.value) || 0,
     height: Number($('resH')?.value) || 0,
-    // Degrees in the form; the clockwise 90° step index the device passes to
-    // setRotation(): 0 -> 0°, 1 -> 90°, 2 -> 180°, 3 -> 270°.
-    rotation: Math.round((Number($('rotSel')?.value) || 0) / 90) % 4,
+    // Clockwise degrees, as the form and canvas.json carry them: 0, 90, 180 or 270.
+    rotation: Number($('rotSel')?.value) || 0,
     mode: MODE_NAMES[val('dtype')] || val('dtype') || 'mono',
   };
   // Absent means "no shift", so a blank or zero field stays out of the file entirely —

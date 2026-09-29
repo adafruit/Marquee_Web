@@ -28,7 +28,7 @@ existing entry and change every field:
 | `terms` | Extra words the A4 search box matches on: chip names, product ids, colloquial names |
 | `photo` | A product shot, `img/panels/<name>.jpg`, added under `public/img/panels/`. Optional — a card without one shows a grey placeholder |
 | `preset` | The **unrotated** frame-buffer as the driver is constructed — `128x296` for a portrait-scanning 2.9", not `296x128`. Storing the rotated size builds a driver with width and height transposed |
-| `rotation` | `'0'`–`'3'`, the clockwise 90° step the firmware applies on top of that buffer |
+| `rotation` | `'0'`, `'90'`, `'180'` or `'270'` — the clockwise rotation in degrees the firmware applies on top of that buffer |
 | `mode` | `mono`, `gray4`, `tricolor`, `quadcolor` — must be a key of `PALETTES` in `palette.js` |
 | `name`, `driver`, `panel` | Display name (`epd0`), driver IC, and the firmware panel id from step 1 |
 | `pins` | `busy`, `dc`, `rst`, `cs`, `sramCs`, `mosi`, `sck`, `bus`. Spelled `D<n>` (the only form the firmware's `parsePin()` accepts) or `'-1'` for "not used" — including MOSI/SCK when the panel sits on a bus the firmware already knows |

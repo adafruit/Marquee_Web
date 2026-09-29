@@ -161,10 +161,9 @@ function syncSceneRot() {
  */
 function onSceneRotChange(e) {
   const deg = +e.target.value;
-  const step = Math.round(deg / 90) % 4;  // the same mapping cfg.js writes
   if (!confirm(`Rotate the canvas to ${deg}°?\n\n`
     + 'The board draws using the rotation in its own cfg-marquee.json, not this setting. '
-    + `Check the file on the MARQUEE drive has "rotation": ${step} under "display", `
+    + `Check the file on the MARQUEE drive has "rotation": ${deg} under "display", `
     + 'or the dashboard will land sideways or upside down.\n\n'
     + 'Elements keep their positions, so some may end up off the canvas.')) {
     syncSceneRot();
