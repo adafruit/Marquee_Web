@@ -21,12 +21,6 @@ import {
 
 let feedsCache = [];
 
-/**
- * Feeds other accounts have shared with this one, keyed "owner/key" (see feedRef in
- * api.js). null = not fetched yet for this open of the picker.
- */
-let sharedCache = null;
-
 const showingShared = () => !!$('feedSharedToggle')?.checked;
 
 /**
@@ -47,8 +41,7 @@ let feedPickerMode = 'bind';
 function renderFeedList() {
   const q = ($('feedFilter').value || '').trim().toLowerCase();
   const list = $('feedList');
-  const shared = showingShared();
-  const all = (shared ? sharedCache : feedsCache) || [];
+  const all = feedsCache || [];
   const shown = all.filter((f) =>
     !q || (f.name || '').toLowerCase().includes(q) || (f.key || '').toLowerCase().includes(q));
   list.innerHTML = shown.map((f) =>
@@ -57,52 +50,25 @@ function renderFeedList() {
     + `${escapeHtml(f.name || f.key)}<span class="mono" style="opacity:.6; margin-left:6px; font-size:11px">${escapeHtml(f.key)}</span></button>`
   ).join('');
   $('feedListStatus').textContent = all.length ? `${shown.length} of ${all.length} feed(s)`
-    : shared ? 'Nothing shared with you — enter a shared feed below' : 'No feeds found';
+    : 'No feeds found';
 }
 
 /**
- * List the feeds shared WITH this account.
+ * Swap the picker between this account's feed list and the shared-feed entry.
  *
- * Not in IO's published API docs: GET /{user}/sharing is what io.adafruit.com's own
- * Privacy & Sharing page reads. `with_you` holds one row per share; only approved
- * ones can actually be read, so pending and blocked shares are left out. When the
- * route refuses us, the manual entry under the list is the way in.
+ * Shared feeds can't be listed: GET /{user}/sharing, which io.adafruit.com's own
+ * Privacy & Sharing page reads, answers an AIO key with 401 "this endpoint requires a
+ * user session token". So shared mode is just the URL box — the filter and the list
+ * only ever held this account's feeds.
  */
-async function loadSharedFeeds() {
-  const user = val('ioUser'), key = val('ioKey');
-  $('feedListStatus').textContent = 'Loading shared feeds…';
-  console.log(`[io] list    ${user}/sharing @ ${ioHost()} — feeds shared with this account`);
-  try {
-    const res = await fetch(`https://${ioHost()}/api/v2/${encodeURIComponent(user)}/sharing`,
-      { headers: { 'X-AIO-Key': key } });
-    if (!res.ok) throw new Error(String(res.status));
-    const body = await res.json();
-    const rows = body?.shares?.feeds?.with_you || [];
-    sharedCache = rows
-      .filter((r) => r.status === 'approved' && r.owner?.username && r.feed?.key)
-      .map((r) => ({
-        key: `${r.owner.username}/${r.feed.key}`,
-        name: r.feed.name || r.feed.key,
-      }));
-    return true;
-  } catch {
-    sharedCache = [];
-    return false;
-  }
-}
-
-/** Swap the list between this account's feeds and the ones shared with it. */
-async function showSharedMode() {
+function showSharedMode() {
   const shared = showingShared();
-  $('feedSharedManual')?.classList.toggle('hidden', !shared);
-  $('feedList').innerHTML = '';
-  if (shared && sharedCache === null && !(await loadSharedFeeds())) {
-    if (!showingShared()) return;   // unticked while loading
-    renderFeedList();
-    $('feedListStatus').textContent = "Couldn't list shared feeds — enter one below";
-    return;
-  }
-  if (showingShared() === shared) renderFeedList();
+  for (const id of ['feedSharedHelp', 'feedSharedManual']) $(id)?.classList.toggle('hidden', !shared);
+  for (const id of ['feedFilter', 'feedList']) $(id)?.classList.toggle('hidden', shared);
+  if (shared) {
+    $('feedListStatus').textContent = '';
+    $('feedSharedKey').focus();
+  } else renderFeedList();
 }
 
 export async function openFeedPicker(target = null, { mode = 'bind' } = {}) {
@@ -114,9 +80,8 @@ export async function openFeedPicker(target = null, { mode = 'bind' } = {}) {
   openModal('feedDataModal');
   $('feedFilter').value = '';
   $('feedSharedToggle').checked = false;
-  $('feedSharedManual').classList.add('hidden');
   $('feedSharedKey').value = '';
-  sharedCache = null;
+  showSharedMode();
   $('feedList').innerHTML = '';
   $('feedListStatus').textContent = 'Loading feeds…';
   try {
@@ -143,6 +108,30 @@ export function closeFeedPicker() {
 }
 
 /**
+ * The newest datum on a feed: `{ status, datum }`, where datum is null unless status is 2xx
+ * and IO sent one back. Throws only when IO can't be reached.
+ *
+ * Neither endpoint answers for every feed, so this asks both. `/data/last` is the only one
+ * that answers for a feed with history OFF (`/data` is always [] there — see readFeedLast).
+ * But on a feed shared READ-ONLY with this account, IO 404s `/data/last` while the feed
+ * record and `/data` both read fine. That behaviour isn't documented; it was checked against
+ * a live share on 2026-09-30, and a writable share of the same feed answered `/data/last`.
+ * So a 404 from `/data/last` gets one retry as `/data?limit=1` before it counts as "no data".
+ */
+async function fetchLastDatum(feedKey, key) {
+  const headers = { 'X-AIO-Key': key };
+  let res = await fetch(feedUrl(feedKey, '/data/last'), { headers });
+  if (res.status === 404) {
+    res = await fetch(feedUrl(feedKey, '/data?limit=1'), { headers });
+    if (!res.ok) return { status: res.status, datum: null };
+    const rows = await res.json().catch(() => null);
+    return { status: res.status, datum: Array.isArray(rows) && rows[0] ? rows[0] : null };
+  }
+  if (!res.ok) return { status: res.status, datum: null };
+  return { status: res.status, datum: await res.json().catch(() => null) };
+}
+
+/**
  * Read one feed's last value. Resolves to a string, or null when the feed is
  * unreadable or empty — callers treat null as "unknown", never as a real value.
  */
@@ -151,11 +140,7 @@ export async function readFeedValue(feedKey) {
   if (!user || !key || !feedKey) return null;
   ioLog('read   ', feedKey, 'last value');
   try {
-    const res = await fetch(
-      feedUrl(feedKey, '/data/last'),
-      { headers: { 'X-AIO-Key': key } });
-    if (!res.ok) return null;
-    const datum = await res.json().catch(() => ({}));
+    const { datum } = await fetchLastDatum(feedKey, key);
     return datum && datum.value != null ? String(datum.value) : null;
   } catch { return null; }
 }
@@ -178,11 +163,7 @@ export async function readFeedLast(feedKey) {
   if (!user || !key || !feedKey) return null;
   ioLog('read   ', feedKey, 'last datum');
   try {
-    const res = await fetch(
-      feedUrl(feedKey, '/data/last'),
-      { headers: { 'X-AIO-Key': key } });
-    if (!res.ok) return null;
-    const d = await res.json().catch(() => null);
+    const { datum: d } = await fetchLastDatum(feedKey, key);
     if (!d || d.value == null) return null;
     return { id: d.id, value: String(d.value), createdAt: Date.parse(d.created_at) };
   } catch { return null; }
@@ -399,8 +380,7 @@ export function initFeeds() {
     if (btn) pickFeed(btn.dataset.key, btn.dataset.name || btn.dataset.key);
   });
 
-  // A shared feed typed or pasted in — for when the list can't be fetched, or the
-  // share hasn't shown up in it.
+  // A shared feed, pasted in — the only way in, since shared feeds can't be listed.
   // The feed record is fetched first: it is the one request that tells "not shared
   // with you" apart from "empty", and it carries the name the owner gave the feed.
   const useManual = async () => {
@@ -467,15 +447,13 @@ async function pickFeed(feedKey, feedName) {
   $('feedListStatus').textContent = 'Loading value…';
   ioLog('read   ', feedKey, 'last value (feed picker)');
   try {
-    const res = await fetch(
-      feedUrl(feedKey, '/data/last'),
-      { headers: { 'X-AIO-Key': key } });
-    if (!res.ok) {
-      $('feedListStatus').textContent = `IO replied ${res.status}`;
-      toast(res.status === 404 ? `"${feedName}" has no data yet` : `IO replied ${res.status}`);
+    const { status, datum } = await fetchLastDatum(feedKey, key);
+    if (status < 200 || status >= 300) {
+      const msg = status === 404 ? `"${feedName}" has no data yet` : `IO replied ${status}`;
+      $('feedListStatus').textContent = msg;
+      toast(msg);
       return;
     }
-    const datum = await res.json().catch(() => ({}));
     const value = datum && datum.value != null ? String(datum.value) : '';
     if (value === '') { toast(`"${feedName}" has no value`); return; }
 

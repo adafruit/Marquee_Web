@@ -1064,7 +1064,13 @@
     <input type="text" id="feedFilter" placeholder="Filter feeds…" autocomplete="off">
     <div id="feedList" style="max-height:320px; overflow:auto; display:flex; flex-direction:column; gap:4px; margin-top:8px"></div>
     <!-- A shared feed by hand: any spelling IO shows on the feed's page works
-         (web URL, API URL, MQTT topic, owner/key). See parseSharedFeed in api.js. -->
+         (web URL, API URL, MQTT topic, owner/key). See parseSharedFeed in api.js.
+         IO has no way to list shared feeds with an AIO key — see showSharedMode. -->
+    <p class="hint hidden" id="feedSharedHelp" style="margin-top:8px">
+      Open the shared feed on io.adafruit.com, copy its URL from the address bar
+      (e.g. <span class="mono">https://io.adafruit.com/owner/feeds/key</span>),
+      paste it below, and click <strong>Use</strong>.
+    </p>
     <div id="feedSharedManual" class="hidden" style="display:flex; gap:6px; margin-top:8px">
       <input type="text" id="feedSharedKey" placeholder="owner/feeds/key or the feed's URL" autocomplete="off" style="flex:1">
       <button type="button" class="btn" id="feedSharedUse">Use</button>
