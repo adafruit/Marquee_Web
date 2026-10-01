@@ -54,6 +54,23 @@ let fwCheck = null;
  */
 const fwFetch = { state: 'idle', ctrl: null, seq: 0, manifest: null, message: '' };
 
+/**
+ * How the screen was opened, when it was not as a step of setup: the stage to start on and
+ * the screen Back returns to. Set by openFlash() and taken by the next enter, so a plain
+ * navigate('a6a') from setup gets the defaults. `backTo` outlives the enter; Back reads it.
+ */
+let entry = null;
+let backTo = null;
+
+/**
+ * Open A6-A for a finished display — from an A1 tile to re-flash it, or from A5C to write a
+ * new Wi-Fi network onto it. Nothing is recorded on the record: see devices.isFinished().
+ */
+export function openFlash({ stage = null, back = null } = {}) {
+  entry = { stage, back };
+  navigate('a6a');
+}
+
 function log(line) {
   const el = $('a6aLog');
   if (!el) return;
@@ -435,10 +452,15 @@ function downloadCfg() {
  */
 function finish(message) {
   abortReleaseFetch();
+  const finished = devices.isFinished(devices.activeDevice());
   const id = devices.activeDeviceId();
-  if (id) devices.promoteDraft(id);
-  navigate('a7');
-  if (message) toast(message);
+  // A display that was already ready has no draft to promote, but may still carry a
+  // setupStep — "Start setup over" sets one — and it has to go, or every open lands here.
+  if (id && !devices.promoteDraft(id)) devices.setSetupStep(id, null);
+  // Maintenance started on the list, so it ends there.
+  navigate(finished ? 'a1' : 'a7');
+  const note = finished ? 'Display updated' : message;
+  if (note) toast(note);
 }
 
 // ---------- the debug view --------------------------------------------------
@@ -491,8 +513,14 @@ export function initA6a({ onEnter }) {
   // Back to Wi-Fi, from every stage. Cheap now that A5C keeps what was typed — it re-opens
   // prefilled rather than empty. setupStep follows, so a reload lands on the screen being
   // shown. Moving between stages is done by buttons inside the stages themselves.
+  //
+  // A finished display goes back where it came from instead, and records nothing.
   $('a6aBack')?.addEventListener('click', () => {
     abortReleaseFetch();
+    if (devices.isFinished(devices.activeDevice())) {
+      navigate(backTo || 'a1');
+      return;
+    }
     const id = devices.activeDeviceId();
     if (id) devices.setSetupStep(id, 'a5c');
     navigate('a5c');
@@ -501,6 +529,9 @@ export function initA6a({ onEnter }) {
   onEnter('a6a', () => {
     const rec = devices.activeDevice();
     const expect = expected();
+    const want = entry?.stage || null;
+    backTo = entry?.back || null;
+    entry = null;
 
     abortReleaseFetch();
     fw = null; fwCheck = null; running = false;
@@ -532,7 +563,7 @@ export function initA6a({ onEnter }) {
       const at = rec.firmware.offset ? ` at ${hex(rec.firmware.offset)}` : '';
       log(`Flashed ${fmtLocalSeconds(new Date(rec.firmware.flashedAt))} — ${rec.firmware.chip || 'chip unknown'} · ${rec.firmware.fileName || FIRMWARE_ARTIFACT}${ver}${at}. "Flash again" redoes it.`);
     }
-    setStage(rec?.firmware?.flashedAt ? 'drive' : 'flash');
+    setStage(want || (rec?.firmware?.flashedAt ? 'drive' : 'flash'));
     // The download starts on its own; a board that was already flashed lands on the drive stage
     // and does not pull 1.3 MB it may never use — "Flash again" starts it then.
     if (stage === 'flash') startReleaseFetch();

@@ -26,7 +26,7 @@ import { initFeeds } from './device/feeds.js';
 import { initIconFont } from './canvas/elements.js';
 import { initDevice } from './device/device.js';
 import { initKeyboard, initDeselect } from './canvas/selection.js';
-import { initRouter, navigate, onEnter, syncNav, isNavigable } from './core/router.js';
+import { initRouter, navigate, onEnter, syncNav, isNavigable, wasOnList } from './core/router.js';
 import { getState, subscribe, replaceFlow } from './core/state.js';
 import * as devices from './device/devices.js';
 import { rehydrateFor, removeDevice } from './device/activate.js';
@@ -172,18 +172,24 @@ function initSettings() {
 
 function landingScreen() {
   const rec = devices.activeDevice();
-  if (!rec) return 'a1';
+  // Left for the list, so a reload stays on the list — even with setup unfinished. The
+  // draft's setupStep is not lost: it is what its "Setup in progress" tile resumes to.
+  // Ahead of everything, because which device is active says nothing about the list.
+  if (!rec || wasOnList()) return 'a1';
+  const st = getState();
   // Setup progress is recorded on the record, not inferred from flow state.
   if (rec.setupStep) return rec.setupStep;
-  const st = getState();
-  // Coming back to a sleeping device should show the sleep state, not the editor —
-  // that is the screen that explains why nothing is updating.
-  if (st.deviceState === 'asleep' && st.lastWriteAt) return 'a8';
+  // A reload lands where you were. This has to come before the sleep rule below, which
+  // used to win and sent a refresh of the editor to Showtime whenever the board slept.
+  //
   // isNavigable() is required, not defensive padding: a record migrated from the old
   // build can carry lastScreen: 'a5', which is parked. navigate() hard-rejects it, so
   // NO screen would get data-active and the app would boot to an empty <main> with
   // nothing thrown.
-  if (st.lastScreen && st.lastScreen !== 'a8' && isNavigable(st.lastScreen)) return st.lastScreen;
+  if (st.lastScreen && isNavigable(st.lastScreen)) return st.lastScreen;
+  // No screen to go back to: a sleeping device opens on the sleep state, not the
+  // editor — that is the screen that explains why nothing is updating.
+  if (st.deviceState === 'asleep' && st.lastWriteAt) return 'a8';
   return 'a7';
 }
 

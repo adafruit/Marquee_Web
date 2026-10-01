@@ -152,7 +152,7 @@ feed, because the sleep window belongs to the sleep already running.
 | floor | `LIVE_MIN_GAP_MS` (30s) between publishes, whatever asked for one |
 | de-dupe | the base64 BMP, byte for byte — an unchanged picture is never republished |
 | cost | one read per bound element (one per series on a chart), plus at most one publish |
-| off switch | **Live data** on Act III's action bar, stored per display as `liveRefresh` |
+| off switch | none — every display bound to a feed stays live |
 
 **Why `sleeping` and not `awake`.** The report means the alarm is armed, so the whole window
 is available and nothing is racing a fetch. It is also the only moment the promotion

@@ -279,6 +279,10 @@
   image-rendering: auto;
 }
 .device-card .thumb-empty { font-size: 11.5px; opacity: 0.5; }
+/* A draft's product shot, framed the way A4's panel cards frame it (.panel-card .photo):
+   edge to edge on white. The padding and the panel grey are for a picture OF the glass,
+   and this is a photo of the whole board. Height stays the tile's, so the grid lines up. */
+.device-card .thumb-photo { padding: 0; background: #fff; }
 
 .device-card .meta { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 14px; min-width: 0; }
 .device-card .row { display: flex; align-items: center; gap: 8px; }
@@ -292,9 +296,8 @@
   white-space: nowrap;
 }
 .device-card .hardware { font-size: 12px; opacity: 0.75; }
-.device-card .group { font-size: 11px; opacity: 0.55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Every tile carries a control of its own — Remove on a device, Discard on a draft — so
+/* Every tile carries controls of its own — at the least, Remove — so
    no tile can be one big button any more.
 
    The opening action is an empty button STRETCHED OVER the card rather than a wrapper
@@ -315,12 +318,16 @@
   color: inherit;
   cursor: pointer;
 }
-/* Destructive, and one click from a wall of tiles, so it stays quiet until the tile is
-   under the cursor or the button itself has focus — visible enough to find, not so loud
-   that a grid of displays reads as a grid of delete buttons. It keeps its space in the
-   layout either way, so revealing it never nudges the card underneath the pointer. */
-.device-card .card-remove {
-  align-self: flex-start;
+/* The tile's own controls — Update firmware, Update Wi-Fi and Remove on a device,
+   Remove on a draft. Remove is destructive and one click from a wall of tiles, so the
+   row stays quiet until the tile is under the cursor or one of its buttons has focus —
+   visible enough to find, not so loud that a grid of displays reads as a grid of delete
+   buttons. It keeps its space in the layout either way, so revealing it never nudges the
+   card underneath the pointer. */
+.device-card .card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   margin: 0 14px 12px;
   /* Above the overlay, or the card's own open action would swallow every click on it. */
   position: relative;
@@ -328,10 +335,12 @@
   opacity: 0;
   transition: opacity 90ms linear;
 }
-.device-card:hover .card-remove,
-.device-card .card-remove:focus-visible { opacity: 1; }
+/* Remove sits apart from the two that keep the board, at the far end of the row. */
+.device-card .card-actions .card-remove { margin-left: auto; }
+.device-card:hover .card-actions,
+.device-card .card-actions:focus-within { opacity: 1; }
 @media (hover: none) {
-  .device-card .card-remove { opacity: 1; }
+  .device-card .card-actions { opacity: 1; }
 }
 
 /* Dashed, and deliberately NOT on .card — no surface fill, so it reads as an empty slot
@@ -806,18 +815,6 @@
   font-size: 12.5px;
   opacity: 0.7;
   text-wrap: pretty;
-}
-
-/* ---- A8 · the live-data chip --------------------------------------------- */
-/* Borrows the sleep chip's shape because it is the same kind of thing — a setting
-   stated at rest — but it is a toggle rather than a door, so it carries no caret and
-   answers on press instead of opening a panel. Off is drawn quieter than on: a paused
-   refresh is a state worth noticing without being alarmed by. */
-.action-bar .live-chip {
-  flex: none;
-}
-.action-bar .live-chip[aria-pressed="false"] {
-  opacity: 0.62;
 }
 
 /* ---- A7 · the sleep chip and its popover --------------------------------- */

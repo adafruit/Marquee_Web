@@ -93,16 +93,22 @@ img { display: block; max-width: 100%; }
 /* The path badge is a real button — it routes back to the fork. */
 button.pill { cursor: pointer; color: inherit; }
 .chrome button.pill:hover { background: rgba(242, 242, 243, 0.14); }
-/* On air is the only filled pill, and its dot is the only warm color anywhere. */
+/* On air is the only filled pill; its green lamp and offline's red one are the only
+   saturated dots anywhere. Offline is not dimmed like asleep — it is the one state
+   that wants noticing. In setup has no lamp: the board is not reporting anything yet. */
 .pill-on-air { background: var(--color-chrome); color: var(--color-chrome-text); }
 .pill-on-air .dot { background: var(--color-lamp-on); }
 .pill-asleep { border: 1px solid var(--color-divider); opacity: 0.8; }
 .pill-asleep .dot { background: var(--color-lamp-off); }
+.pill-offline { border: 1px solid color-mix(in srgb, var(--color-lamp-fault) 55%, transparent); color: var(--color-danger); }
+.pill-offline .dot { background: var(--color-lamp-fault); }
+.pill-setup { border: 1px solid var(--color-accent); color: var(--color-accent-text); }
 /* On the dark chrome bar both variants become outlines — a filled dark pill on a
    dark bar would disappear. */
 .chrome .pill { border: 1px solid var(--color-chrome-hairline); background: none; color: inherit; }
 .chrome .pill-asleep { opacity: 0.8; }
 .chrome .pill-asleep .dot { background: var(--color-neutral-500); }
+.chrome .pill-offline { color: inherit; }
 
 /* — blueprint frame — */
 

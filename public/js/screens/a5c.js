@@ -13,7 +13,8 @@
  */
 
 import { navigate } from '../core/router.js';
-import { setSetupStep, activeDeviceId } from '../device/devices.js';
+import { setSetupStep, activeDeviceId, activeDevice, isFinished } from '../device/devices.js';
+import { openFlash } from './a6a.js';
 import { setWifiCredentials, wifiCredentials } from '../device/cfg.js';
 import { $, val } from '../core/util.js';
 
@@ -43,7 +44,8 @@ export function initA5c({ onEnter }) {
     e.currentTarget.textContent = showing ? 'Show' : 'Hide';
   });
 
-  $('a5cBack')?.addEventListener('click', () => navigate('a5b'));
+  // A finished display came here from its A1 tile, not from A5b, so that is where Back goes.
+  $('a5cBack')?.addEventListener('click', () => navigate(isFinished(activeDevice()) ? 'a1' : 'a5b'));
 
   $('a5cSave')?.addEventListener('click', () => {
     const ssid = val('a5cSsid');
@@ -51,6 +53,12 @@ export function initA5c({ onEnter }) {
     // An open network is a real configuration, so an empty password is allowed through
     // — the button gates on the SSID alone.
     setWifiCredentials({ ssid, password: $('a5cPass')?.value || '' });
+    // A finished display only needs the new file on its drive — straight to that stage,
+    // with Back returning here rather than to the list.
+    if (isFinished(activeDevice())) {
+      openFlash({ stage: 'drive', back: 'a5c' });
+      return;
+    }
     const id = activeDeviceId();
     if (id) setSetupStep(id, 'a6a');
     navigate('a6a');
