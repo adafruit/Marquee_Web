@@ -24,7 +24,7 @@
 
 import { getState, setState } from './state.js';
 import { displayState } from '../device/cycle.js';
-import { activeDevice, deviceLabel } from '../device/devices.js';
+import { activeDevice, deviceLabel, isFinished } from '../device/devices.js';
 import { $, $$, val, show } from './util.js';
 
 /**
@@ -32,7 +32,7 @@ import { $, $$, val, show } from './util.js';
  *
  *   chrome  'list'   A1 — above the flow. No device identity, because the list is
  *                    about all of them and the active one is an implementation detail.
- *           'setup'  the setup run. No device state.
+ *           'setup'  the setup run. No device state; ALL DISPLAYS asks before leaving.
  *           'device' A7/A8 — the full set: countdown, ALL DISPLAYS, the state lamp.
  *   rail    which of the two editor cells is current, or null for no rail at all.
  */
@@ -48,6 +48,20 @@ const SCREENS = {
 
 let current = null;
 const enterHooks = new Map();
+
+/**
+ * Whether the list was the last screen shown, kept for the BROWSER rather than per device.
+ *
+ * `lastScreen` lives in the active device's flow slice, and the list is the one screen that
+ * is not about the active device — which can even change underneath it: arriving here
+ * discards an untouched draft, and removing a tile moves activeId on. Either way the next
+ * device's own lastScreen would answer a reload of the list with "the editor".
+ */
+const ON_LIST_KEY = 'marquee.onList';
+
+export function wasOnList() {
+  try { return localStorage.getItem(ON_LIST_KEY) === '1'; } catch { return false; }
+}
 
 /** Register a callback run every time `screen` becomes visible. */
 export function onEnter(screen, fn) {
@@ -80,6 +94,7 @@ export function navigate(screen) {
   // Remembered so a reload lands where the user left off. Safe to do before the
   // sync below: the subscriber this wakes only re-renders nav, it never navigates.
   setState({ lastScreen: screen });
+  try { localStorage.setItem(ON_LIST_KEY, screen === 'a1' ? '1' : '0'); } catch { /* storage disabled */ }
   syncRail();
   syncChrome();
   // After the display flip, so anything measuring a container sees real numbers.
@@ -119,10 +134,10 @@ function syncChrome() {
   const st = getState();
   const kind = SCREENS[current]?.chrome || 'setup';
 
-  // ALL DISPLAYS is the only way back out of the editor loop, and it is deliberately
-  // not offered during setup: leaving a half-configured board by the front door
-  // should be a decision, not a stray click in the chrome.
-  show($('crumbAllDisplays'), kind === 'device');
+  // ALL DISPLAYS is on every screen but the list itself. During setup it asks first —
+  // see leaveForList() — so leaving a half-configured board is a decision, not a stray
+  // click in the chrome.
+  show($('crumbAllDisplays'), kind !== 'list');
 
   // The device status pill. Editor screens only. Hidden on A1 because the list is about
   // every device, and a lamp up here would be reporting on whichever one happens to be
@@ -143,9 +158,9 @@ function syncChrome() {
     // because the Showtime clock renders from the same call — this label and that
     // countdown disagreeing is the exact failure cycle.js exists to prevent.
     const phase = displayState(st);
-    pill.className = `pill ${phase === 'redrawing' ? 'pill-on-air' : 'pill-asleep'}`;
+    pill.className = `pill ${phase === 'redrawing' ? 'pill-on-air' : phase === 'offline' ? 'pill-offline' : 'pill-asleep'}`;
     pill.querySelector('[data-role="text"]').textContent =
-      phase === 'offline' ? 'Offline' : phase === 'sleeping' ? 'Asleep' : 'On air';
+      phase === 'offline' ? 'Offline' : phase === 'sleeping' ? 'Sleeping 💤' : 'On air';
   }
 
   // The last crumb is the board being edited. Read from the LIVE form rather than the
@@ -165,6 +180,24 @@ export function syncNav() {
   syncChrome();
 }
 
+/**
+ * ALL DISPLAYS. Straight there from the editor; from a setup screen, only once confirmed.
+ *
+ * Nothing is lost either way — a draft keeps its setupStep and shows on the list as a
+ * resume tile — but a board can be mid-flash on A6-A, and pulling the screen out from under
+ * that is the click this exists to catch. A finished display on those screens is being
+ * re-flashed or moved to a new network rather than set up, so it is asked in those terms.
+ */
+function leaveForList() {
+  if (SCREENS[current]?.chrome === 'setup') {
+    const message = isFinished(activeDevice())
+      ? 'Are you sure you want to leave?\n\nAnything not yet written to the board will not reach it.'
+      : 'Are you sure you want to exit setup?\n\nYour progress is saved, you can pick up from where you left off by clicking the display tile.';
+    if (!confirm(message)) return;
+  }
+  navigate('a1');
+}
+
 export function initRouter() {
   $$('#stepRail .step').forEach((cell) => {
     cell.addEventListener('click', () => {
@@ -173,7 +206,7 @@ export function initRouter() {
     });
   });
 
-  $('crumbAllDisplays')?.addEventListener('click', () => navigate('a1'));
+  $('crumbAllDisplays')?.addEventListener('click', leaveForList);
 
   // Renaming the board in Settings has to reach the crumb while the dialog is still
   // open. Both fields feed deviceLabel(), so both have to be watched.

@@ -29,16 +29,17 @@
 import { activateDevice, removeDevice } from '../device/activate.js';
 import { hasIoConfig, connectedUser } from '../device/credentials.js';
 import { openCredentialsGate } from './a1c.js';
+import { openFlash } from './a6a.js';
 import { feedKeyIn } from '../core/api.js';
 import { readFeedLast, readFeedData } from '../device/feeds.js';
 import { displayState, readReport, reportIsOverdue } from '../device/cycle.js';
 import { boardReportsState } from '../device/device.js';
 import { getState, subscribe } from '../core/state.js';
 import { deviceEntry, navigate, currentScreen } from '../core/router.js';
-import { DISPLAY_PRESETS } from '../device/presets.js';
+import { DISPLAY_PRESETS, presetCardPhoto } from '../device/presets.js';
 import { readPanelCache, writePanelCache } from './a8.js';
 import * as devices from '../device/devices.js';
-import { $, val, escapeHtml, escapeAttr, fmtAgo, fmtLocalTime, toast } from '../core/util.js';
+import { $, val, escapeHtml, escapeAttr, fmtAgo, fmtLocalTime, fmtLocalDateTime, toast } from '../core/util.js';
 
 /**
  * What a tile can say about a device without activating it.
@@ -57,7 +58,6 @@ function tileFacts(rec) {
   return {
     label: devices.deviceLabel(rec),
     hardware: preset?.spec || 'Panel set up by hand',
-    group: (rec.settings?.ioGroup || '').trim(),
     phase: reading.phase,
     when: whenLine(reading, rec),
   };
@@ -85,8 +85,8 @@ function thumbFor(rec) {
  */
 const PILL = {
   redrawing:  ['pill-on-air', 'On air'],
-  sleeping:   ['pill-asleep', 'Asleep'],
-  offline:    ['pill-asleep', 'Offline'],
+  sleeping:   ['pill-asleep', 'Sleeping 💤'],
+  offline:    ['pill-offline', 'Offline'],
   unreported: ['pill-asleep', 'No status'],
   unreachable:['pill-asleep', 'No status'],
   checking:   ['pill-asleep', 'Checking\u2026'],
@@ -98,9 +98,10 @@ function pillHTML(f) {
 }
 
 /**
- * A device tile: the picture, what the record knows, and a way out.
+ * A device tile: the picture, what the record knows, and the things you do to the board
+ * itself — re-flash it, move it to another network, remove it.
  *
- * The card cannot be one big button any more — Remove lives inside it, and a control
+ * The card cannot be one big button any more — those live inside it, and a control
  * inside a control is neither valid markup nor reachable by keyboard. So the opening
  * action is an empty button STRETCHED OVER the card (see .card-open), leaving the
  * picture and the meta as direct children of the card exactly as they were when the
@@ -116,17 +117,22 @@ function deviceTileHTML(rec) {
     : '<span class="thumb-empty">Nothing drawn yet</span>';
 
   return `<div class="device-card card blueprint" data-device="${escapeAttr(rec.id)}">
-    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
     <button type="button" class="card-open" aria-label="Open ${escapeAttr(f.label)}"></button>
     <span class="thumb">${glass}</span>
     <span class="meta">
       <span class="row">${pillHTML(f)}<span class="when">${escapeHtml(f.when)}</span></span>
       <span class="name">${escapeHtml(f.label)}</span>
       <span class="hardware">${escapeHtml(f.hardware)}</span>
-      ${f.group ? `<span class="group mono">${escapeHtml(f.group)}</span>` : ''}
     </span>
-    <button type="button" class="btn btn-sm btn-ghost card-remove" data-remove="${escapeAttr(rec.id)}"
-      aria-label="Remove ${escapeAttr(f.label)}">Remove</button>
+    <span class="card-actions">
+      <button type="button" class="btn btn-sm btn-ghost" data-firmware="${escapeAttr(rec.id)}"
+        aria-label="Update firmware on ${escapeAttr(f.label)}"
+        title="Flash the latest firmware release — also how you re-upload it">Update firmware</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-wifi="${escapeAttr(rec.id)}"
+        aria-label="Update Wi-Fi for ${escapeAttr(f.label)}">Update Wi-Fi</button>
+      <button type="button" class="btn btn-sm btn-danger card-remove" data-remove="${escapeAttr(rec.id)}"
+        aria-label="Remove ${escapeAttr(f.label)}">Remove</button>
+    </span>
   </div>`;
 }
 
@@ -140,17 +146,26 @@ function deviceTileHTML(rec) {
 function draftTileHTML(rec) {
   const label = devices.deviceLabel(rec);
   const named = label !== 'Untitled display';
+  // Nothing has been drawn on a draft, so the picture is the panel's product shot — the
+  // same one its card showed on A4. Only before a panel is picked is there nothing to show.
+  const photo = presetCardPhoto(rec.flow?.selectedPanel);
+  const glass = photo
+    ? `<img class="thumb-img" src="${escapeAttr(photo)}" alt="" decoding="async">`
+    : '<span class="thumb-empty">Setup unfinished</span>';
+  const thumbClass = photo ? 'thumb thumb-photo' : 'thumb';
   return `<div class="device-card card blueprint is-draft" data-draft="true">
-    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
     <button type="button" class="card-open" data-resume="${escapeAttr(rec.id)}"
       aria-label="Resume setup for ${escapeAttr(named ? label : 'this display')}"></button>
-    <span class="thumb"><span class="thumb-empty">Setup unfinished</span></span>
+    <span class="${thumbClass}">${glass}</span>
     <span class="meta">
-      <span class="row"><span class="tag tag-outline">In setup</span></span>
+      <span class="row"><span class="pill pill-setup">Setup in progress 🔧</span></span>
       <span class="name">${escapeHtml(named ? label : 'New display')}</span>
-      <span class="hardware">Pick up where you left off</span>
+      <span class="hardware">This device is not set up yet, click here to pick up where you left off</span>
     </span>
-    <button type="button" class="btn btn-sm btn-ghost card-remove" data-discard="${escapeAttr(rec.id)}">Discard</button>
+    <span class="card-actions">
+      <button type="button" class="btn btn-sm btn-danger card-remove" data-remove="${escapeAttr(rec.id)}"
+        aria-label="Remove ${escapeAttr(named ? label : 'this display')}">Remove</button>
+    </span>
   </div>`;
 }
 
@@ -285,7 +300,9 @@ function whenLine({ phase, st }, rec) {
       return Number.isFinite(st?.wakesAt) ? `wakes at ${at(st.wakesAt)}` : 'asleep';
     case 'offline': {
       const last = st?.reportedAt ?? st?.lastSleptAt ?? st?.lastWokeAt;
-      return last ? `silent since ${fmtAgo(last)}` : 'not reporting';
+      // A date and time, not "2d ago": an offline board is one you go and look at, and
+      // the moment it last spoke is what you check it against.
+      return last ? `last updated: ${fmtLocalDateTime(new Date(last))}` : 'not reporting';
     }
     // Same pill as 'unreported' — both mean we cannot say what the board is doing — but
     // the reason is different and belongs somewhere, so it goes on the detail line
@@ -519,20 +536,14 @@ function confirmRemoval(rec) {
 
 export function initA1({ onEnter }) {
   $('a1Grid').addEventListener('click', async (e) => {
-    // The two destructive controls come FIRST, both of them. Each sits inside a tile
-    // that also opens on click, so a check that ran after the open would never be
-    // reached — closest() finds the card from the button just as happily.
-    const discard = e.target.closest('[data-discard]');
-    if (discard) {
-      // No confirm: a draft is a setup that was started and abandoned, the tile says so,
-      // and devices.js has already thrown away the ones with nothing in them. Routed
-      // through removeDevice() all the same, because a draft is usually the ACTIVE
-      // record — see the note there about what a bare delete leaves behind.
-      await removeDevice(discard.dataset.discard);
-      render();
-      return;
-    }
-
+    // The tile's own controls come FIRST, Remove leading. Each sits inside a tile that
+    // also opens on click, so a check that ran after the open would never be reached —
+    // closest() finds the card from the button just as happily.
+    //
+    // One path for every tile, finished or still in setup: the same confirm, the same
+    // removeDevice() (which a draft needs anyway — it is usually the ACTIVE record, see the
+    // note there), and the same toast. A draft may already have its group and feeds on
+    // Adafruit IO from A5b, so it costs as much to remove as anything else.
     const remove = e.target.closest('[data-remove]');
     if (remove) {
       const rec = devices.getDevice(remove.dataset.remove);
@@ -541,6 +552,22 @@ export function initA1({ onEnter }) {
       await removeDevice(rec.id);
       render();
       toast(`Removed ${name}`);
+      return;
+    }
+
+    // Maintenance on a finished display: the same two setup screens, opened partway. The
+    // display is activated first because both screens work on whichever record is active.
+    const firmware = e.target.closest('[data-firmware]');
+    if (firmware) {
+      await activateDevice(firmware.dataset.firmware);
+      openFlash({ stage: 'flash' });
+      return;
+    }
+
+    const wifi = e.target.closest('[data-wifi]');
+    if (wifi) {
+      await activateDevice(wifi.dataset.wifi);
+      navigate('a5c');
       return;
     }
 

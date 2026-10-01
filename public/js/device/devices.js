@@ -68,10 +68,6 @@ export const SETTINGS_SCOPE = {
   pmDevice: 'device',
   ioGroup: 'device',
   sleepDuration: 'device',
-  // Whether this display's take is re-rendered from its feeds on the board's own cycle.
-  // Per-device, not per-account: one board watching a thermometer and another showing a
-  // fixed sign want different answers, and they are different boards.
-  liveRefresh: 'device',
 };
 
 export const ACCOUNT_FIELDS = Object.keys(SETTINGS_SCOPE).filter((k) => SETTINGS_SCOPE[k] === 'account');
@@ -162,6 +158,18 @@ export function patchActive(patch) {
   touch(rec);
   persist();
   return rec;
+}
+
+/**
+ * Whether this record is a finished display rather than one going through setup.
+ *
+ * A5C and A6-A are reached two ways: as steps of setup, and from an A1 tile to change
+ * the Wi-Fi or re-flash a display that is already done. The second kind must not
+ * record a setupStep — nothing would ever clear it, and every open of the display
+ * would land back on that screen instead of the editor.
+ */
+export function isFinished(rec) {
+  return rec?.status === 'ready' && !rec.setupStep;
 }
 
 export function setSetupStep(id, step) {

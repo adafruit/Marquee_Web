@@ -200,6 +200,14 @@ export function fmtLocalTime(date) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+/** Local date and time, e.g. "Sep 29, 9:47 AM" — for a moment that may not be today.
+ *  The year only when it is not this one. */
+export function fmtLocalDateTime(date) {
+  const opts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+  if (date.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return date.toLocaleString([], opts);
+}
+
 /** The same, WITH seconds — "9:47:12 AM". Minutes are right for "written 9:47 AM" and
  *  useless for a device report, where a whole wake lasts twenty seconds. */
 export function fmtLocalSeconds(date) {

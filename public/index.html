@@ -32,9 +32,9 @@
     <span class="sep">/</span>
     <span class="crumb crumb-current" id="crumbBoard">magtag</span>
     <span class="spacer"></span>
-    <!-- The way out of the editor loop, and the only one. Setup does not get it. -->
+    <!-- Back to the list, from every screen but the list. Setup screens confirm first (router.js). -->
     <button type="button" class="chrome-link hidden" id="crumbAllDisplays">‹ All displays</button>
-    <span class="pill pill-asleep" id="devicePill" hidden><span class="dot"></span><span data-role="text">Asleep</span></span>
+    <span class="pill pill-asleep" id="devicePill" hidden><span class="dot"></span><span data-role="text">Sleeping 💤</span></span>
   </header>
 
   <!-- ── editor rail ──────────────────────────────────────────────────────── -->
@@ -240,7 +240,7 @@
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">The board is on its own once it is flashed. It wakes, joins your network, reads the picture you pushed from Adafruit IO, draws it and goes back to sleep — none of which it can do without these.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">Changing networks later</div>
-          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Open Settings, choose "Start setup over", and change them here — then plug the board back in. Moving a board to a new network always means USB: there is no way to push credentials to a board that cannot reach the network yet.</p>
+          <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Choose “Update Wi-Fi” on the display’s tile in All displays and change them here, then plug the board back in so the new file can be written onto it. Moving a board to a new network always means USB: there is no way to push credentials to a board that cannot reach the network yet.</p>
           <div class="hr" style="margin:6px 0"></div>
           <div class="eyebrow">What won't work</div>
           <p style="font-size:12.5px; opacity:0.8; text-wrap:pretty">Captive portals — hotel, campus and most guest networks — need a browser to accept terms before traffic passes. Your board has no browser, so it will associate and then fail to reach Adafruit IO.</p>
@@ -722,17 +722,6 @@
         <!-- Empty and hidden at rest: renderNext() fills it only when there is a
              count to give, so the sentence beside it stands alone the rest of the time. -->
         <span class="action-label hidden" id="queueNote"></span>
-        <!-- The one control on this screen that is not a way out of it, and it is about
-             the CYCLE rather than about the canvas: with it on, the feeds behind the
-             dashboard are re-read each time the board goes to sleep and the take is
-             republished if the picture changed, so every wake draws current numbers.
-             Hidden entirely when nothing on the canvas is bound to a feed — a switch that
-             governs nothing is a claim this screen does not get to make. -->
-        <button type="button" class="btn sleep-chip live-chip hidden" id="liveChip"
-                aria-pressed="true" title="Re-read the feeds behind this dashboard on each of the board's cycles">
-          <span class="cap">Live data</span>
-          <span class="value" id="liveChipValue">On — refreshed each cycle</span>
-        </button>
         <span class="action-note">Anything you edit will be included on the next take</span>
         <button type="button" class="btn btn-primary blueprint btn-commit" id="editDashboard">Edit dashboard<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></button>
       </div>
@@ -895,13 +884,6 @@
         <input type="number" id="sleepDuration" value="300" min="0" max="4294967295" autocomplete="off">
       </label>
     </div>
-    <!-- Hidden, and the store rather than a control: the visible switch is the "Live
-         data" chip on Showtime, which writes here and dispatches `input` so this
-         field's own persistence runs — the same arrangement as #wakeInterval and
-         #sleepDuration above. "on" is the default because a display bound to a feed is
-         asking for its readings to be current; a display with nothing bound never
-         reaches the code that reads this. -->
-    <input type="hidden" id="liveRefresh" value="on" autocomplete="off">
     <p class="hint">Duration is the timer the device sleeps on, and is what "Wake and redraw" in the editor sets. It also picks the sleep mode, which is why there is no control for one: under 5 minutes the device light-sleeps, because waking in place beats paying for a boot; from 5 minutes up it deep-sleeps.</p>
 
     <div class="hr"></div>

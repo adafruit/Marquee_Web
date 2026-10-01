@@ -16,7 +16,7 @@ import { navigate } from '../core/router.js';
 import { layer, hideDitherPreview } from '../canvas/stage.js';
 import { select } from '../canvas/selection.js';
 import { resetCounter } from '../canvas/elements.js';
-import { refreshInterval, sleepModeFor, liveRefreshOn } from '../core/config.js';
+import { refreshInterval, sleepModeFor } from '../core/config.js';
 import {
   serialize, invalidateCanvasBaseline, saveCanvasNow, cancelCanvasSave,
 } from '../core/doc.js';
@@ -887,7 +887,6 @@ function liveStageBusy() {
  */
 function liveBlockedBecause() {
   const st = getState();
-  if (!liveRefreshOn()) return 'live data is switched off for this display';
   // A5b has not run, so the feeds behind the group key do not exist. The same guard, for
   // the same reason, as ensureStatusWatch().
   if (st.ioSetup === 'pending') return 'Adafruit IO setup has not been confirmed';

@@ -8,8 +8,8 @@
 
    The values below come from the "Industry" design system the handoff was drawn
    on (its styles.css under _ds/). Industry's accent is a desaturated steel, and
-   the design leans on that: one cool accent, one warm dot (the ON AIR lamp), and
-   nothing else saturated on the page. Swapping in a high-chroma brand color
+   the design leans on that: one cool accent, the status lamps (green on air, red
+   offline), and nothing else saturated on the page. Swapping in a high-chroma brand color
    (Adafruit pink #DD007A / blue #0062C7) works mechanically but changes that
    balance — if you do it, re-derive the whole --color-accent-100..900 ramp on a
    single lightness scale rather than tinting one step, or the accent-700/800
@@ -88,8 +88,11 @@
      itself fails contrast below heading sizes. */
   --color-accent-text: var(--color-accent-700);
 
-  /* Status. The lamp red is the only warm color in the interface. */
-  --color-lamp-on: #e05252;
+  /* Status lamps: green while the board is on air, red when it has gone quiet, grey
+     for asleep or unknown. Bright enough to read on the dark chrome bar, which is
+     where the on-air pill sits on every screen. */
+  --color-lamp-on: #4cc777;
+  --color-lamp-fault: #e05252;
   --color-lamp-off: var(--color-neutral-400);
   --color-check-pass: #3f8f5c;
   --color-check-wait: var(--color-neutral-400);
