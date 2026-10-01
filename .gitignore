@@ -24,3 +24,5 @@ public/__fixture/
 # --- Local secrets -----------------------------------------------------------
 # Holds IO_USERNAME / IO_KEY for local testing. Never committed.
 .env
+
+design-system/

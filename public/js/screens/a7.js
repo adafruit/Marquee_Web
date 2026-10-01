@@ -60,8 +60,8 @@ const PUSH_LABEL = 'Push to display';
 const QUEUE_LABEL = 'Queue for the next take';
 
 /**
- * The button carries four blueprint corner <i>s, so its label lives on a text
- * node — assigning textContent would delete them.
+ * The label lives on a text node rather than in textContent, so any markup added
+ * to the button beside it (an icon, say) survives a relabel.
  */
 function setPushLabel(text) {
   const btn = $('sendBmpSleep');

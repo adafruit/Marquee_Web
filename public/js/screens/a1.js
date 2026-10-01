@@ -115,8 +115,7 @@ function deviceTileHTML(rec) {
     ? `<img class="thumb-img" src="${escapeAttr(src)}" alt="">`
     : '<span class="thumb-empty">Nothing drawn yet</span>';
 
-  return `<div class="device-card card blueprint" data-device="${escapeAttr(rec.id)}">
-    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+  return `<div class="device-card card" data-device="${escapeAttr(rec.id)}">
     <button type="button" class="card-open" aria-label="Open ${escapeAttr(f.label)}"></button>
     <span class="thumb">${glass}</span>
     <span class="meta">
@@ -140,8 +139,7 @@ function deviceTileHTML(rec) {
 function draftTileHTML(rec) {
   const label = devices.deviceLabel(rec);
   const named = label !== 'Untitled display';
-  return `<div class="device-card card blueprint is-draft" data-draft="true">
-    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+  return `<div class="device-card card is-draft" data-draft="true">
     <button type="button" class="card-open" data-resume="${escapeAttr(rec.id)}"
       aria-label="Resume setup for ${escapeAttr(named ? label : 'this display')}"></button>
     <span class="thumb"><span class="thumb-empty">Setup unfinished</span></span>
@@ -154,8 +152,7 @@ function draftTileHTML(rec) {
   </div>`;
 }
 
-const ADD_TILE_HTML = `<button type="button" class="add-tile blueprint" id="a1Add">
-    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+const ADD_TILE_HTML = `<button type="button" class="add-tile" id="a1Add">
     <span class="plus">+</span>
     <span class="cap">Add a new marquee display</span>
     <span class="sub">Let's get started!</span>
