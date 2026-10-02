@@ -117,6 +117,12 @@ test('unknown directives, unknown zones and bad instants are null, never a guess
   assert.equal(strftime(undefined, '%H', 'UTC'), null);
 });
 
+test('a missing or non-string format is null, not the text "undefined"', () => {
+  assert.equal(strftime(EVENING, undefined, 'UTC'), null);
+  assert.equal(strftime(EVENING, null, 'UTC'), null);
+  assert.equal(strftime(EVENING, 42, 'UTC'), null);
+});
+
 test('zones: validity and the list', () => {
   assert.equal(isValidTz(''), true);
   assert.equal(isValidTz('Asia/Tokyo'), true);

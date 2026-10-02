@@ -97,14 +97,15 @@ function wallClock(ms, tz) {
 
 /**
  * Format instant `ms` (epoch milliseconds) with strftime string `fmt` in zone `tz`.
- * Returns null for an unknown zone or a directive this file doesn't implement — the same
- * "unknown, keep what you had" null every reader in the refresh path returns.
+ * Returns null for a missing/non-string format, an unknown zone or a directive this file
+ * doesn't implement — the same "unknown, keep what you had" null every reader in the
+ * refresh path returns.
  *
  * %l and %e are UNPADDED here, where C pads them with a space (" 9:05", "Dec  6"): on a
  * left-aligned panel label the space reads as a stray indent.
  */
 export function strftime(ms, fmt, tz = '') {
-  if (!Number.isFinite(ms)) return null;
+  if (!Number.isFinite(ms) || typeof fmt !== 'string') return null;
   const c = wallClock(ms, tz);
   if (!c) return null;
   const h12 = c.hour % 12 || 12;
@@ -117,7 +118,7 @@ export function strftime(ms, fmt, tz = '') {
     '%': '%',
   };
   let bad = false;
-  const out = String(fmt).replace(/%(.)/g, (_, k) => {
+  const out = fmt.replace(/%(.)/g, (_, k) => {
     if (k in map) return map[k];
     bad = true;
     return '';
