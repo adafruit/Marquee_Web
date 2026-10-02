@@ -38,6 +38,9 @@
  * feedKey to have derived it, which is why stripSamples() below is a function rather than
  * a lookup. `feedPrefix`/`feedSuffix` stay: they are how the user chose to wrap the value.
  *
+ * `datetime` gives up `timeValue`, the string IO last rendered. Its `text` is never
+ * serialized (the factory derives it), so there is nothing else to strip.
+ *
  * `linechart` gives up `series` (the fetched points) and keeps `feeds` (which feeds are
  * bound, which is a design decision) and `data` (the authored sample series, written only
  * when nothing is bound).
@@ -48,6 +51,8 @@ export const SAMPLE_KEYS = {
   battery: ['feedValue'],
   gauge: ['gaugeValue'],
   linechart: ['series'],
+  // The time IS the reading, and it changes on every take. Format and zone stay.
+  datetime: ['timeValue'],
 };
 
 /**

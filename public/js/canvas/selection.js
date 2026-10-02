@@ -15,9 +15,11 @@ import {
   isWidget, rebuildWidget, elementColor, setElementColor, wireNode, nextId,
   INDICATOR_OPS, MIN_WIDGET_W, indicatorValueKnown, batteryFraction,
   isFeedLinked, linkedLabelText, feedValueAttr, CHART_RANGES, CHART_RAW_MAX,
-  CHART_FONT_MIN, CHART_FONT_MAX, gaugeValue,
+  CHART_FONT_MIN, CHART_FONT_MAX, gaugeValue, applyTimeValue,
 } from './elements.js';
 import { openFeedPicker, refreshFeedElements, refreshChart } from '../device/feeds.js';
+import { listTimezones } from '../device/iotime.js';
+import { TIME_PRESETS, presetForFmt } from '../core/timefmt.js';
 import { GAUGE_ICONS, FA_LINK } from './icons.js';
 import { $, escapeHtml, escapeAttr, toast, clamp } from '../core/util.js';
 
@@ -38,7 +40,7 @@ export function select(node) {
       tr.enabledAnchors(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']);
     // An explicit allow-list: an etype omitted here silently gets keepRatio(false),
     // which would let the indicator lamp be dragged into an ellipse.
-    tr.keepRatio(etype === 'image' || etype === 'label' || etype === 'gauge'
+    tr.keepRatio(etype === 'image' || etype === 'label' || etype === 'datetime' || etype === 'gauge'
       || etype === 'linechart' || etype === 'indicator' || etype === 'battery');
     tr.nodes([node]);
   } else {
@@ -132,6 +134,56 @@ function bindFeedRow(bind, n, prefix) {
   });
 }
 
+/**
+ * Size, font, box width and alignment — the type rows every Konva.Text element shares.
+ * The ids are bound once below (pSize, pFont, pBoxW, pAlign), so the label and the
+ * datetime get the same behaviour from the same handlers.
+ */
+function textStyleRowsHTML(n) {
+  return `
+    <div class="prop-row">
+      <span class="label">Size</span><input type="number" id="pSize" value="${n.fontSize()}" min="4" max="512">
+      <select id="pFont" style="flex:1">
+        <option value="monospace" ${n.fontFamily() === 'monospace' ? 'selected' : ''}>Mono</option>
+        <option value="sans-serif" ${n.fontFamily() === 'sans-serif' ? 'selected' : ''}>Sans</option>
+        <option value="serif" ${n.fontFamily() === 'serif' ? 'selected' : ''}>Serif</option>
+      </select>
+    </div>
+    <div class="prop-row">
+      <span class="label">Box</span><input type="number" id="pBoxW" min="8"
+        value="${n.attrs.width !== undefined ? Math.round(n.width()) : ''}" placeholder="auto">
+      <select id="pAlign" style="flex:1">
+        <option value="left" ${n.align() === 'left' ? 'selected' : ''}>Left</option>
+        <option value="center" ${n.align() === 'center' ? 'selected' : ''}>Center</option>
+        <option value="right" ${n.align() === 'right' ? 'selected' : ''}>Right</option>
+      </select>
+    </div>`;
+}
+
+/**
+ * The timezone <select>'s options. "Auto" is labelled with the zone it actually
+ * resolves to, because a bare "Auto" leaves the user to find out what time the panel
+ * shows by pushing it. A saved zone missing from the list (a doc from a browser with a
+ * newer tz table) is still offered, so the select never silently shows a different
+ * value than the element carries.
+ */
+function tzOptionsHTML(current) {
+  const tz = listTimezones();
+  const auto = `Auto - ${tz.timezone}`;
+  const zones = [...tz.zones];
+  if (current && !zones.includes(current)) zones.unshift(current);
+  return `<option value=""${current ? '' : ' selected'}>${escapeHtml(auto)}</option>`
+    + zones.map((z) => `<option value="${escapeAttr(z)}"${z === current ? ' selected' : ''}>${escapeHtml(z)}</option>`).join('');
+}
+
+/** Re-read one datetime and report a failure — the inspector's half of the refresh. */
+async function rereadDatetime(n) {
+  const ok = await refreshFeedElements([n]);
+  if (selected === n) refreshProps();
+  if (!ok) toast('Could not read the time from Adafruit IO');
+  return ok;
+}
+
 export function refreshProps() {
   const body = $('propBody');
   if (!body) return;
@@ -178,24 +230,16 @@ export function refreshProps() {
         </div>
         <button type="button" class="btn btn-sm btn-block" id="pLblUnlink">Unlink from feed</button>`
         : `<button type="button" class="btn btn-sm btn-block" id="pLblFeed">${linkGlyph} Connect to IO Feed</button>`)
-      + `
-    <div class="prop-row">
-      <span class="label">Size</span><input type="number" id="pSize" value="${n.fontSize()}" min="4" max="512">
-      <select id="pFont" style="flex:1">
-        <option value="monospace" ${n.fontFamily() === 'monospace' ? 'selected' : ''}>Mono</option>
-        <option value="sans-serif" ${n.fontFamily() === 'sans-serif' ? 'selected' : ''}>Sans</option>
-        <option value="serif" ${n.fontFamily() === 'serif' ? 'selected' : ''}>Serif</option>
-      </select>
-    </div>
-    <div class="prop-row">
-      <span class="label">Box</span><input type="number" id="pBoxW" min="8"
-        value="${n.attrs.width !== undefined ? Math.round(n.width()) : ''}" placeholder="auto">
-      <select id="pAlign" style="flex:1">
-        <option value="left" ${n.align() === 'left' ? 'selected' : ''}>Left</option>
-        <option value="center" ${n.align() === 'center' ? 'selected' : ''}>Center</option>
-        <option value="right" ${n.align() === 'right' ? 'selected' : ''}>Right</option>
-      </select>
-    </div>`;
+      + textStyleRowsHTML(n);
+  } else if (etype === 'datetime') {
+    const preset = presetForFmt(n.getAttr('timeFmt'));
+    html += `
+    <label class="field"><span class="label">Type</span>
+      <select id="pDtFmt">${TIME_PRESETS.map((p) =>
+        `<option value="${p.id}"${p.id === preset.id ? ' selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
+    <label class="field"><span class="label">Timezone</span>
+      <select id="pDtTz">${tzOptionsHTML(n.getAttr('timeTz') || '')}</select></label>`
+      + textStyleRowsHTML(n);
   } else if (etype === 'indicator') {
     const bound = isFeedLinked(n);
     html += `
@@ -438,6 +482,21 @@ export function refreshProps() {
     n.setAttr('width', v >= 8 ? Math.round(v) : undefined); // blank = auto-size to text
   });
   bind('pAlign', (e) => n.align(e.target.value));
+
+  // ---- datetime ----
+  // Both are selects, so re-rendering the panel after the read cannot take focus from
+  // someone typing. The old reading is dropped first: it was rendered in the OLD format
+  // or zone, and the example of the new one is a truer placeholder while IO answers.
+  const setDatetime = (attr) => (e) => {
+    n.setAttr(attr, attr === 'timeFmt'
+      ? (TIME_PRESETS.find((p) => p.id === e.target.value) || TIME_PRESETS[0]).fmt
+      : e.target.value);
+    applyTimeValue(n, null);
+    refreshProps();
+    rereadDatetime(n);
+  };
+  bind('pDtFmt', setDatetime('timeFmt'));
+  bind('pDtTz', setDatetime('timeTz'));
   bind('pLen', (e) => n.width(Math.max(1, +e.target.value || 1)));
   bind('pThick', (e) => n.height(Math.max(1, +e.target.value || 1)));
   bind('pFlip', () => { const w = n.width(); n.width(n.height()); n.height(w); refreshProps(); });

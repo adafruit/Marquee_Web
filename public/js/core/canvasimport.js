@@ -18,7 +18,7 @@ import { PALETTES, logicalDimsOf } from '../canvas/palette.js';
 /** Every etype deserialize() has a factory for. Anything else would silently load as
  *  a label, which is worse than saying so and leaving it out. */
 export const KNOWN_ETYPES = new Set([
-  'label', 'divider', 'image', 'linechart', 'gauge', 'indicator', 'battery',
+  'label', 'divider', 'image', 'linechart', 'gauge', 'indicator', 'battery', 'datetime',
 ]);
 
 const ROTATIONS = new Set([0, 90, 180, 270]);
@@ -130,6 +130,7 @@ export function compareDisplay(src, dst) {
  *  scales, plus the fonts that ride inside a widget. */
 const SIZE_KEYS = {
   label: ['fontSize', 'width'],
+  datetime: ['fontSize', 'width'],
   divider: ['width', 'height'],
   image: ['w', 'h'],
   linechart: ['w', 'h', 'axisFontSize'],

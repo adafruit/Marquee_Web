@@ -15,6 +15,7 @@ import { FA_FAMILY, FA_WEIGHT, iconGlyph, DEFAULT_GAUGE_ICON, onFaReady } from '
 import {
   toast, clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, niceStep, snapToStep, fmtTicks, scaleUnit,
 } from '../core/util.js';
+import { normalizeDatetimeAttrs, placeholderText } from '../core/timefmt.js';
 
 let counter = 0;
 export const nextId = () => 'el' + (++counter);
@@ -59,6 +60,9 @@ export const feedValueAttr = (n) => FEED_VALUE_ATTR[n.getAttr('etype')] || 'feed
 
 /** Does this element take its content from a feed right now? */
 export const isFeedLinked = (n) => !!n.getAttr('feedKey');
+
+/** Is this a "Date & time" prop, whose text IO renders (see addDatetime)? */
+export const isDatetime = (n) => n.getAttr('etype') === 'datetime';
 
 /**
  * Smallest authored width per widget, used when baking a transform back into
@@ -172,6 +176,48 @@ export function addDivider(attrs = {}) {
     name: 'element', id: nextId(),
   }, attrs));
   node.setAttr('etype', 'divider');
+  wireNode(node);
+  layer.add(node);
+  return node;
+}
+
+// ---------- date & time -----------------------------------------------------
+//
+// A text block whose content is rendered by the Adafruit IO Time API — the preset's
+// strftime string, in the chosen zone. A plain Konva.Text like the label, so resize,
+// scale, colour and the dither preview all treat it as one.
+//
+// Its text is DERIVED, like a linked label's: it is re-read by refreshFeedElements()
+// before every push and every live take, which is the only time it changes. The board
+// draws a bitmap, so the panel does not tick between pushes.
+
+/** The text a datetime shows: IO's last answer, or its preset's example before one. */
+export function datetimeText(n) {
+  return n.getAttr('timeValue') ?? placeholderText(n.getAttr('timeFmt'));
+}
+
+/** The funnel from "IO answered" to "the element shows it". */
+export function applyTimeValue(n, s) {
+  n.setAttr('timeValue', s);
+  n.text(datetimeText(n));
+}
+
+export function addDatetime(attrs = {}) {
+  const { w, h } = logicalDims();
+  const a = normalizeDatetimeAttrs(attrs);
+  const node = new Konva.Text({
+    x: attrs.x ?? Math.round(w / 2 - 50), y: attrs.y ?? Math.round(h / 2 - 10),
+    fontSize: a.fontSize, fontFamily: a.fontFamily, align: a.align,
+    fill: a.fill ?? PALETTES[display.type][0], draggable: true,
+    name: 'element', id: nextId(),
+  });
+  // Only when authored: an unset width is what makes Konva auto-size to the text.
+  if (a.width !== undefined) node.width(a.width);
+  node.setAttr('etype', 'datetime');
+  node.setAttr('timeFmt', a.timeFmt);
+  node.setAttr('timeTz', a.timeTz);
+  node.setAttr('timeValue', a.timeValue);
+  node.text(datetimeText(node));
   wireNode(node);
   layer.add(node);
   return node;
@@ -1081,6 +1127,9 @@ export function wireNode(node) {
   node.on('click tap', (e) => { e.cancelBubble = true; select(node); });
   if (node.getAttr('etype') === 'label') {
     node.on('dblclick dbltap', () => editLabel(node));
+  } else if (isDatetime(node)) {
+    // Not editLabel: the text is IO's, and the next read would overwrite an edit.
+    node.on('dblclick dbltap', () => toast('The time comes from Adafruit IO — pick a type in the inspector'));
   }
 }
 
