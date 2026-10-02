@@ -57,6 +57,36 @@ keep in step.
 {"version":1,"display":{"width":122,"height":250,"rotation":270,"type":"tricolor",…},"elements":[{"etype":"label","x":68,"y":10,…}]}
 ```
 
+### The `datetime` element
+
+The toolbox's **Date & time** prop. A text block showing Adafruit IO's time
+(`/api/v2/time/millis`, read by `public/js/device/iotime.js`) formatted in the browser by
+`strftime()` in `public/js/core/timefmt.js`. It is read through the same
+`refreshFeedElements()` funnel as every feed binding, one request however many there are.
+
+Why not IO's own `/integrations/time/strftime`: its successful authenticated responses carry
+`Access-Control-Allow-Origin: https://io.adafruit.com`, so a browser on any other origin
+(localhost, Pages) cannot read them. The preflight and the 401 answer `*`; only the 200 is
+pinned. The bare `/api/v2/time/*` endpoints are unauthenticated and answer `*`. So it is re-read before
+every push and every live take, and **only** then: the board draws a bitmap, so the panel only
+refreshes the time when a new image is pushed.
+
+```json
+{"etype":"datetime","x":8,"y":4,"timeFmt":"Last Updated: %Y-%m-%d %H:%M","timeTz":"","timeValue":"Last Updated: 2026-10-02 21:05",
+ "fill":"#000000","fontSize":14,"fontFamily":"monospace","align":"left","width":140}
+```
+
+| field | meaning |
+|---|---|
+| `timeFmt` | a strftime string, always one of `TIME_PRESETS` in `public/js/core/timefmt.js`. Anything else loads as the default (Time). There is no free-form format. |
+| `timeTz` | a tz database name, or `""` for the timezone of the browser doing the push |
+| `timeValue` | the string IO last returned; `null` before the first read. A **sample** (see `core/samples.js`), so a new time is not a design change. |
+| `fill`, `fontSize`, `fontFamily`, `align` | as on a label |
+| `width` | present only when the box width is set; absent means the box auto-sizes to the text |
+
+`text` is not saved: it is `timeValue`, or the preset's example before the first read.
+`normalizeDatetimeAttrs()` is shared by the factory and `serialize()`, so the two agree.
+
 ## Cadence — why it is not the autosave
 
 `doc.js` debounces its save at 400ms, which is right for localStorage and would be one

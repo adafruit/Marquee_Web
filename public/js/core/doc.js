@@ -19,9 +19,10 @@ import { display, MODE_LABELS } from '../canvas/palette.js';
 import { layer, fitZoom, hideDitherPreview } from '../canvas/stage.js';
 import { select } from '../canvas/selection.js';
 import {
-  addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery, addImage,
+  addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery, addImage, addDatetime,
   remapColorsToPalette,
 } from '../canvas/elements.js';
+import { normalizeDatetimeAttrs } from './timefmt.js';
 import { applyDisplayToForm, setResolution, applyDither } from './config.js';
 import { activeDeviceId, saveCanvas } from '../device/devices.js';
 import { scheduleCanvasStatePublish } from '../device/canvasfeed.js';
@@ -54,6 +55,17 @@ export function serialize() {
           base.feedDecimals = n.getAttr('feedDecimals') ?? null;
           base.feedValue = n.getAttr('feedValue') ?? null;
         }
+      } else if (etype === 'datetime') {
+        // Through the same normalizer the factory uses, so a save and a load agree on
+        // every field. `text` is not saved: it is derived from timeValue (or the preset's
+        // example), and the factory recomputes it. `width` is left off when auto-sized.
+        const a = normalizeDatetimeAttrs({
+          timeFmt: n.getAttr('timeFmt'), timeTz: n.getAttr('timeTz'), timeValue: n.getAttr('timeValue'),
+          fill: n.fill(), fontSize: n.fontSize(), fontFamily: n.fontFamily(), align: n.align(),
+          width: n.attrs.width !== undefined ? n.width() : undefined,
+        });
+        if (a.width === undefined) delete a.width;
+        Object.assign(base, a);
       } else if (etype === 'divider') {
         Object.assign(base, { fill: n.fill(), width: n.width(), height: n.height() });
       } else if (etype === 'image') {
@@ -156,7 +168,7 @@ export function deserialize(doc, { keepDisplay = false } = {}) {
 
   const makers = {
     label: addLabel, divider: addDivider, linechart: addLineChart,
-    gauge: addGauge, indicator: addIndicator, battery: addBattery,
+    gauge: addGauge, indicator: addIndicator, battery: addBattery, datetime: addDatetime,
   };
   (doc.elements || []).forEach((el) => {
     if (el.etype === 'image') {

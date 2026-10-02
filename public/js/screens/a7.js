@@ -10,13 +10,14 @@
 import { editorOpts, drawGrid, applyZoom, fitZoom, zoom, showDitherPreview, hideDitherPreview, ditherPreviewOn, syncDitherPreviewBtn } from '../canvas/stage.js';
 import { select, refreshProps, duplicateSelected } from '../canvas/selection.js';
 import {
-  addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery,
+  addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery, addDatetime,
   loadImageFile, applyTemplate,
 } from '../canvas/elements.js';
 import { display } from '../canvas/palette.js';
+import { refreshFeedElements } from '../device/feeds.js';
 import { refreshInterval, sleepModeFor } from '../core/config.js';
 import { getState, subscribe } from '../core/state.js';
-import { $, $$, show, fmtInterval } from '../core/util.js';
+import { $, $$, show, fmtInterval, toast } from '../core/util.js';
 
 /**
  * Options offered by "Wake and redraw", in seconds. Must match the option values
@@ -237,6 +238,15 @@ export function initA7({ onEnter }) {
   $('addGaugeBtn').addEventListener('click', () => select(addGauge()));
   $('addIndicatorBtn').addEventListener('click', () => select(addIndicator()));
   $('addBatteryBtn').addEventListener('click', () => select(addBattery()));
+  // Dropped showing its preset's example, then read straight away so the canvas shows
+  // what IO will render. A failed read leaves the example and says why.
+  $('addDatetimeBtn').addEventListener('click', async () => {
+    const node = addDatetime();
+    select(node);
+    const ok = await refreshFeedElements([node]);
+    refreshProps();
+    if (!ok) toast('Could not read the time from Adafruit IO');
+  });
   $('duplicateBtn').addEventListener('click', duplicateSelected);
   $('addImageBtn').addEventListener('click', () => $('imgInput').click());
   $('imgInput').addEventListener('change', (e) => {

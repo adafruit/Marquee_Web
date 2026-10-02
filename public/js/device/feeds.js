@@ -11,8 +11,10 @@
 import { ioHost, ioLog, feedUrl, parseSharedFeed } from '../core/api.js';
 import { layer } from '../canvas/stage.js';
 import {
-  addLabel, rebuildWidget, applyFeedValue, FEED_ETYPES, CHART_RAW_MAX,
+  addLabel, rebuildWidget, applyFeedValue, applyTimeValue, FEED_ETYPES, CHART_RAW_MAX,
 } from '../canvas/elements.js';
+import { readIoMillis } from './iotime.js';
+import { strftime } from '../core/timefmt.js';
 import { display, PALETTES } from '../canvas/palette.js';
 import { select } from '../canvas/selection.js';
 import {
@@ -268,7 +270,7 @@ export function downsample(points, max) {
 
 /**
  * Every element with a live binding, split by HOW it is read: `targets` take a last
- * value, `charts` take a window.
+ * value, `charts` take a window, `datetimes` take the current time from IO's Time API.
  *
  * Exported because the question has a second asker. refreshFeedElements() below answers
  * "which of these do I re-read"; device.js's live take asks "is there anything here a feed
@@ -281,13 +283,32 @@ export function feedBoundElements(nodes) {
   return {
     targets: all.filter((n) => FEED_ETYPES.includes(n.getAttr('etype')) && n.getAttr('feedKey')),
     charts: all.filter((n) => n.getAttr('etype') === 'linechart' && (n.getAttr('feeds') || []).length),
+    // Always live: a datetime has no binding to be missing, the time is its content.
+    datetimes: all.filter((n) => n.getAttr('etype') === 'datetime'),
   };
+}
+
+/**
+ * Every datetime renders from ONE reading of IO's clock — one request however many there
+ * are, and every one of them showing the same instant.
+ */
+async function refreshDatetimes(datetimes) {
+  const ms = await readIoMillis();
+  if (ms === null) return false;
+  let ok = true;
+  for (const n of datetimes) {
+    const v = strftime(ms, n.getAttr('timeFmt'), n.getAttr('timeTz') || '');
+    // An unknown zone (a doc from a browser with a newer tz table) keeps its last text.
+    if (v === null) { ok = false; continue; }
+    applyTimeValue(n, v);
+  }
+  return ok;
 }
 
 /** Is there anything on this canvas that a feed could change? */
 export function hasFeedBindings() {
-  const { targets, charts } = feedBoundElements();
-  return !!(targets.length || charts.length);
+  const { targets, charts, datetimes } = feedBoundElements();
+  return !!(targets.length || charts.length || datetimes.length);
 }
 
 /**
@@ -297,8 +318,9 @@ export function hasFeedBindings() {
  * anyone counting widgets by hand.
  */
 export function feedReadCost() {
-  const { targets, charts } = feedBoundElements();
-  return targets.length + charts.reduce((n, c) => n + (c.getAttr('feeds') || []).length, 0);
+  const { targets, charts, datetimes } = feedBoundElements();
+  return targets.length + charts.reduce((n, c) => n + (c.getAttr('feeds') || []).length, 0)
+    + (datetimes.length ? 1 : 0);
 }
 
 /**
@@ -311,8 +333,8 @@ export function feedReadCost() {
  * request, because they need a window rather than a last value.
  */
 export async function refreshFeedElements(nodes) {
-  const { targets, charts } = feedBoundElements(nodes);
-  if (!targets.length && !charts.length) return true;
+  const { targets, charts, datetimes } = feedBoundElements(nodes);
+  if (!targets.length && !charts.length && !datetimes.length) return true;
   const results = await Promise.all([
     ...targets.map(async (n) => {
       const v = await readFeedValue(n.getAttr('feedKey'));
@@ -323,6 +345,8 @@ export async function refreshFeedElements(nodes) {
       return true;
     }),
     ...charts.map((n) => refreshChart(n)),
+    // Same best-effort rule: a failed time read keeps the text the element already had.
+    ...(datetimes.length ? [refreshDatetimes(datetimes)] : []),
   ]);
   return results.every(Boolean);
 }
