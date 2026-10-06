@@ -11,8 +11,10 @@
 import { ioHost, ioLog, feedUrl, parseSharedFeed } from '../core/api.js';
 import { layer } from '../canvas/stage.js';
 import {
-  addLabel, rebuildWidget, applyFeedValue, applyTimeValue, FEED_ETYPES, CHART_RAW_MAX,
+  addLabel, addFeedImage, imageToFeedImage, setFeedImageSrc, rebuildWidget, applyFeedValue,
+  applyTimeValue, FEED_ETYPES, CHART_RAW_MAX,
 } from '../canvas/elements.js';
+import { parseFeedImage, feedImageProblem } from '../core/feedimage.js';
 import { readIoMillis } from './iotime.js';
 import { strftime } from '../core/timefmt.js';
 import { display, PALETTES } from '../canvas/palette.js';
@@ -35,8 +37,10 @@ let feedPickerTarget = null;
 
 /**
  * 'bind' replaces the target's single binding; 'series' appends to its `feeds`
- * array. Held next to the target because they are one decision — a stale mode with
- * a fresh target would append to a gauge or overwrite a chart.
+ * array; 'image' binds a feed image (or drops one when there is no target), and
+ * refuses a feed whose value is not a picture. Held next to the target because they
+ * are one decision — a stale mode with a fresh target would append to a gauge or
+ * overwrite a chart.
  */
 let feedPickerMode = 'bind';
 
@@ -113,22 +117,30 @@ export function closeFeedPicker() {
  * The newest datum on a feed: `{ status, datum }`, where datum is null unless status is 2xx
  * and IO sent one back. Throws only when IO can't be reached.
  *
- * Neither endpoint answers for every feed, so this asks both. `/data/last` is the only one
- * that answers for a feed with history OFF (`/data` is always [] there — see readFeedLast).
- * But on a feed shared READ-ONLY with this account, IO 404s `/data/last` while the feed
- * record and `/data` both read fine. That behaviour isn't documented; it was checked against
- * a live share on 2026-09-30, and a writable share of the same feed answered `/data/last`.
- * So a 404 from `/data/last` gets one retry as `/data?limit=1` before it counts as "no data".
+ * `/data?limit=1` first, `/data/last` as the fallback. Neither endpoint answers for every
+ * feed, and which one fails has moved over time:
+ *
+ *   - On a feed shared READ-ONLY with this account, and on public feeds under another
+ *     owner, IO 404s `/data/last` while the feed record and `/data` both read fine
+ *     (checked against a live share on 2026-09-30; a writable share of the same feed
+ *     answered `/data/last`). That is why `/data` is asked first.
+ *   - `/data` used to answer `[]` for a feed with history OFF, which made `/data/last`
+ *     the only read that worked for the bitmap, canvas-state and image feeds. Checked
+ *     again on 2026-10-06 against three history-off feeds: `/data?limit=1` now returns
+ *     the current datum on all of them, with the same value and created_at as
+ *     `/data/last` — but with a datum `id` minted PER REQUEST, so on such a feed two
+ *     reads of one value carry two ids. The fallback stays in case the old behaviour
+ *     comes back; nothing reading a history-off feed may rely on its ids.
  */
 async function fetchLastDatum(feedKey, key) {
   const headers = { 'X-AIO-Key': key };
-  let res = await fetch(feedUrl(feedKey, '/data/last'), { headers });
-  if (res.status === 404) {
-    res = await fetch(feedUrl(feedKey, '/data?limit=1'), { headers });
-    if (!res.ok) return { status: res.status, datum: null };
+  let res = await fetch(feedUrl(feedKey, '/data?limit=1'), { headers });
+  if (res.ok) {
     const rows = await res.json().catch(() => null);
-    return { status: res.status, datum: Array.isArray(rows) && rows[0] ? rows[0] : null };
+    if (Array.isArray(rows) && rows[0]) return { status: res.status, datum: rows[0] };
   }
+  // Empty, or refused: the other spelling gets one try before this counts as "no data".
+  res = await fetch(feedUrl(feedKey, '/data/last'), { headers });
   if (!res.ok) return { status: res.status, datum: null };
   return { status: res.status, datum: await res.json().catch(() => null) };
 }
@@ -148,17 +160,18 @@ export async function readFeedValue(feedKey) {
 }
 
 /**
- * The newest datum as a POINT — value, id and timestamp — from `/data/last`.
+ * The newest datum as a POINT — value, id and timestamp — through fetchLastDatum().
  *
- * The one endpoint that answers when a feed has no history. IO only retains data points
- * for feeds with history ON, and history caps a datum at 1 KB — which a panel BMP is
- * twenty times over, so the image feed can never have it. `/data` on such a feed returns
- * an empty array while `/data/last` still returns the current value, and reading only the
- * former is what left "On the panel now" claiming nothing had ever been published to a feed
- * the board was actively drawing from.
+ * Exists for feeds with no history. IO only retains data points for feeds with history
+ * ON, and history caps a datum at 1 KB — which a panel BMP is twenty times over, so the
+ * image feed can never have it. Reading such a feed through readFeedData() (a plain
+ * `/data` listing) once returned an empty array while the current value sat there
+ * unread, which is what left "On the panel now" claiming nothing had ever been published
+ * to a feed the board was actively drawing from. fetchLastDatum() tries both spellings.
  *
  * One datum is all there is in that configuration: enough to say what is on the feed, never
- * enough to say what was on it before.
+ * enough to say what was on it before. And see the note on ids in fetchLastDatum — on a
+ * history-off feed the `id` here is not stable across reads.
  */
 export async function readFeedLast(feedKey) {
   const user = val('ioUser'), key = val('ioKey');
@@ -270,7 +283,8 @@ export function downsample(points, max) {
 
 /**
  * Every element with a live binding, split by HOW it is read: `targets` take a last
- * value, `charts` take a window, `datetimes` take the current time from IO's Time API.
+ * value, `charts` take a window, `datetimes` take the current time from IO's Time API,
+ * `images` take a last value too but have to DECODE it before it can show.
  *
  * Exported because the question has a second asker. refreshFeedElements() below answers
  * "which of these do I re-read"; device.js's live take asks "is there anything here a feed
@@ -285,7 +299,27 @@ export function feedBoundElements(nodes) {
     charts: all.filter((n) => n.getAttr('etype') === 'linechart' && (n.getAttr('feeds') || []).length),
     // Always live: a datetime has no binding to be missing, the time is its content.
     datetimes: all.filter((n) => n.getAttr('etype') === 'datetime'),
+    images: all.filter((n) => n.getAttr('etype') === 'feedimage' && n.getAttr('feedKey')),
   };
+}
+
+/**
+ * Re-read one feed image. The same best-effort contract as every other binding — an
+ * unreadable feed, a value that is not a picture, or a picture the browser cannot decode
+ * all LEAVE THE PREVIOUS PICTURE IN PLACE and return false — plus one economy: a value
+ * identical to the one already showing is not decoded again. A camera feed that has not
+ * taken a new frame costs one GET per cycle and nothing more.
+ */
+export async function refreshFeedImage(n) {
+  const v = await readFeedValue(n.getAttr('feedKey'));
+  if (v === null) return false;
+  const parsed = parseFeedImage(v);
+  if (!parsed.ok) {
+    console.warn(`[io] ${n.getAttr('feedKey')}: ${feedImageProblem(parsed.reason)}`);
+    return false;
+  }
+  if (parsed.dataUrl === n.getAttr('src') && n.getAttr('imageObj')) return true;
+  return setFeedImageSrc(n, parsed.dataUrl);
 }
 
 /**
@@ -307,8 +341,8 @@ async function refreshDatetimes(datetimes) {
 
 /** Is there anything on this canvas that a feed could change? */
 export function hasFeedBindings() {
-  const { targets, charts, datetimes } = feedBoundElements();
-  return !!(targets.length || charts.length || datetimes.length);
+  const { targets, charts, datetimes, images } = feedBoundElements();
+  return !!(targets.length || charts.length || datetimes.length || images.length);
 }
 
 /**
@@ -318,8 +352,9 @@ export function hasFeedBindings() {
  * anyone counting widgets by hand.
  */
 export function feedReadCost() {
-  const { targets, charts, datetimes } = feedBoundElements();
-  return targets.length + charts.reduce((n, c) => n + (c.getAttr('feeds') || []).length, 0)
+  const { targets, charts, datetimes, images } = feedBoundElements();
+  return targets.length + images.length
+    + charts.reduce((n, c) => n + (c.getAttr('feeds') || []).length, 0)
     + (datetimes.length ? 1 : 0);
 }
 
@@ -333,9 +368,10 @@ export function feedReadCost() {
  * request, because they need a window rather than a last value.
  */
 export async function refreshFeedElements(nodes) {
-  const { targets, charts, datetimes } = feedBoundElements(nodes);
-  if (!targets.length && !charts.length && !datetimes.length) return true;
+  const { targets, charts, datetimes, images } = feedBoundElements(nodes);
+  if (!targets.length && !charts.length && !datetimes.length && !images.length) return true;
   const results = await Promise.all([
+    ...images.map((n) => refreshFeedImage(n)),
     ...targets.map(async (n) => {
       const v = await readFeedValue(n.getAttr('feedKey'));
       if (v === null) return false;
@@ -472,6 +508,42 @@ async function pickFeed(feedKey, feedName) {
   ioLog('read   ', feedKey, 'last value (feed picker)');
   try {
     const { status, datum } = await fetchLastDatum(feedKey, key);
+
+    // A feed image. Unlike the bindings below, an EMPTY feed is a legitimate thing to
+    // bind — the camera has not taken its first frame yet — but a feed that holds a
+    // temperature is refused outright, since nothing that could ever arrive on it
+    // would be a picture. The value is checked before anything on the canvas changes.
+    if (feedPickerMode === 'image') {
+      const empty = status === 404 || !datum || datum.value == null || String(datum.value).trim() === '';
+      if (!empty && (status < 200 || status >= 300)) {
+        const msg = `IO replied ${status}`;
+        $('feedListStatus').textContent = msg;
+        toast(msg);
+        return;
+      }
+      const parsed = empty ? null : parseFeedImage(datum.value);
+      if (parsed && !parsed.ok) {
+        const msg = feedImageProblem(parsed.reason, `"${feedName}"`);
+        $('feedListStatus').textContent = msg;
+        toast(msg);
+        return;
+      }
+      let node = feedPickerTarget;
+      // "Connect to IO Feed" on a static image: it becomes a feed image where it stands.
+      if (node && node.getAttr('etype') === 'image') node = imageToFeedImage(node);
+      if (!node) node = addFeedImage();
+      node.setAttr('feedKey', feedKey);
+      node.setAttr('feedName', feedName);
+      rebuildWidget(node);                                   // the empty frame now says so
+      closeFeedPicker();
+      select(node);
+      if (!parsed) { toast(`Bound ${feedName} — no image on it yet`); return; }
+      const ok = await setFeedImageSrc(node, parsed.dataUrl);
+      select(node);                                          // the inspector's Value row
+      toast(ok ? `Bound ${feedName} — ${node.getAttr('natW')}×${node.getAttr('natH')} image`
+               : `Bound ${feedName}, but its image could not be decoded`);
+      return;
+    }
     if (status < 200 || status >= 300) {
       const msg = status === 404 ? `"${feedName}" has no data yet` : `IO replied ${status}`;
       $('feedListStatus').textContent = msg;

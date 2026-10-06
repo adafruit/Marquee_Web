@@ -16,6 +16,7 @@ import {
   toast, clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, niceStep, snapToStep, fmtTicks, scaleUnit,
 } from '../core/util.js';
 import { normalizeDatetimeAttrs, placeholderText } from '../core/timefmt.js';
+import { fitRect, FEED_IMAGE_FITS } from '../core/feedimage.js';
 
 let counter = 0;
 export const nextId = () => 'el' + (++counter);
@@ -28,7 +29,7 @@ export const resetCounter = () => { counter = 0; };
  * fontSize() (a Group has no such method), and through refreshProps into the
  * DIVIDER branch.
  */
-export const WIDGET_TYPES = ['linechart', 'gauge', 'indicator', 'battery'];
+export const WIDGET_TYPES = ['linechart', 'gauge', 'indicator', 'battery', 'feedimage'];
 export function isWidget(n) { return WIDGET_TYPES.includes(n.getAttr('etype')); }
 
 /**
@@ -41,7 +42,9 @@ export function isWidget(n) { return WIDGET_TYPES.includes(n.getAttr('etype')); 
  * read it again, which looked like a binding and behaved like a screenshot.
  *
  * `linechart` is NOT here: it needs a history window rather than a last value,
- * so it has its own path (see refreshChartElements in feeds.js).
+ * so it has its own path (see refreshChartElements in feeds.js). Nor is `feedimage`:
+ * it reads a last value like the others, but applying one means DECODING it, which is
+ * asynchronous — see refreshFeedImage in feeds.js.
  */
 export const FEED_ETYPES = ['label', 'indicator', 'battery', 'gauge'];
 
@@ -68,7 +71,14 @@ export const isDatetime = (n) => n.getAttr('etype') === 'datetime';
  * Smallest authored width per widget, used when baking a transform back into
  * attrs and by the inspector's size inputs. Anything unlisted floors at 40.
  */
-export const MIN_WIDGET_W = { indicator: 6, battery: 20 };
+export const MIN_WIDGET_W = { indicator: 6, battery: 20, feedimage: 8 };
+
+/**
+ * The widgets whose HEIGHT is authored too, with its floor. Every other widget derives
+ * its height from its width (a gauge is round, a lamp is square), so the transform bake
+ * only writes `h` for the etypes listed here.
+ */
+export const MIN_WIDGET_H = { linechart: 30, feedimage: 8 };
 
 export function elementColor(n) { return isWidget(n) ? n.getAttr('ink') : n.fill(); }
 
@@ -102,6 +112,7 @@ const WIDGET_BUILDERS = {
   gauge: buildGauge,
   indicator: buildIndicator,
   battery: buildBattery,
+  feedimage: buildFeedImage,
 };
 
 export function rebuildWidget(n) {
@@ -1076,6 +1087,150 @@ export function loadImageFile(file) {
   reader.readAsDataURL(file); // data URL so it round-trips through save/load
 }
 
+// ---------- feed image ------------------------------------------------------
+//
+// A picture read from an Adafruit IO feed — a camera project's latest frame, say. A
+// widget, not a Konva.Image, because the thing the user authors is a FRAME on the panel
+// and the picture is a sample that changes shape from one reading to the next; the
+// group's `w`×`h` is the frame, and each new picture is placed into it by fitRect().
+// The decoded <img> rides in the `imageObj` attr (never serialized); `src` is the data
+// URL that round-trips through canvas.json, as it does for a static image.
+
+/**
+ * Where a decode in flight for each node can be awaited. deserialize() needs it the way
+ * it needs a static image's decode: a caller photographing the canvas straight after a
+ * load must not capture the frame before its picture has arrived.
+ */
+const feedImageLoads = new WeakMap();
+
+/** Resolves once the picture `addFeedImage()` or `setFeedImageSrc()` last started decoding is in. */
+export function feedImageSettled(g) {
+  return feedImageLoads.get(g) || Promise.resolve(true);
+}
+
+function buildFeedImage(g) {
+  g.destroyChildren();
+  const w = Math.max(1, Math.round(g.getAttr('w') || 1));
+  const h = Math.max(1, Math.round(g.getAttr('h') || 1));
+  // Hit area spans the whole frame, so an empty one is still grabbable.
+  g.add(new Konva.Rect({ width: w, height: h, fill: '#000', opacity: 0 }));
+  const img = g.getAttr('imageObj');
+  if (img) {
+    const r = fitRect(g.getAttr('natW') || img.width, g.getAttr('natH') || img.height, w, h,
+      g.getAttr('fit') || 'contain');
+    const node = new Konva.Image({ image: img, x: r.x, y: r.y, width: r.w, height: r.h });
+    if (r.crop) node.crop(r.crop);
+    g.add(node);
+    return;
+  }
+  // No picture yet: an outline, so the frame is visible on the canvas — and on the panel,
+  // where an empty feed should look like an empty feed rather than like nothing at all.
+  // The same honesty as a linked label's em dash.
+  const ink = PALETTES[display.type][0];
+  g.add(new Konva.Rect({
+    x: 0.5, y: 0.5, width: w - 1, height: h - 1, stroke: ink, strokeWidth: 1, dash: [3, 3],
+  }));
+  if (w >= 40 && h >= 14) {
+    const fontSize = clamp(Math.round(Math.min(w / 8, h / 3)), 7, 14);
+    g.add(new Konva.Text({
+      text: g.getAttr('feedKey') ? 'no image yet' : 'IO image', fontSize, fontFamily: 'monospace',
+      fill: ink, width: w, y: Math.round((h - fontSize) / 2), align: 'center',
+    }));
+  }
+}
+
+/**
+ * Decode a data URL into the frame. Resolves true once the picture is showing, false
+ * when it could not be decoded — in which case the previous picture is LEFT IN PLACE,
+ * matching refreshFeedElements' rule that a failed read never blanks an element.
+ *
+ * Only the newest call per node lands: a slow decode must not overwrite a faster one
+ * that started after it.
+ */
+export function setFeedImageSrc(g, dataUrl) {
+  const img = new Image();
+  const p = new Promise((resolve) => {
+    img.onload = () => {
+      if (feedImageLoads.get(g) !== p) { resolve(false); return; }
+      g.setAttr('imageObj', img);
+      g.setAttr('natW', img.width);
+      g.setAttr('natH', img.height);
+      g.setAttr('src', dataUrl);
+      rebuildWidget(g);
+      resolve(true);
+    };
+    img.onerror = () => resolve(false);
+  });
+  feedImageLoads.set(g, p);
+  img.src = dataUrl;
+  return p;
+}
+
+export function addFeedImage(attrs = {}) {
+  const { w: cw, h: ch } = logicalDims();
+  // A third of the panel, landscape — big enough to read a camera frame, small enough
+  // to leave room for the caption that usually goes with one.
+  const w = attrs.w ?? Math.max(MIN_WIDGET_W.feedimage, Math.round(cw / 3));
+  const h = attrs.h ?? Math.max(MIN_WIDGET_H.feedimage, Math.round(w * 0.75));
+  const g = new Konva.Group({
+    x: attrs.x ?? Math.round((cw - w) / 2), y: attrs.y ?? Math.round((ch - h) / 2),
+    draggable: true, name: 'element', id: nextId(),
+  });
+  g.setAttr('etype', 'feedimage');
+  g.setAttr('w', w);
+  g.setAttr('h', h);
+  g.setAttr('fit', FEED_IMAGE_FITS.some((f) => f.id === attrs.fit) ? attrs.fit : 'contain');
+  g.setAttr('feedKey', attrs.feedKey ?? '');
+  g.setAttr('feedName', attrs.feedName ?? '');
+  g.setAttr('natW', attrs.natW ?? null);
+  g.setAttr('natH', attrs.natH ?? null);
+  g.setAttr('src', attrs.src ?? null);
+  // An already-decoded picture (the static-image conversion below) shows at once; a
+  // saved data URL decodes in the background and the frame fills in when it lands.
+  if (attrs.imageObj) g.setAttr('imageObj', attrs.imageObj);
+  buildFeedImage(g);
+  wireNode(g);
+  layer.add(g);
+  if (!attrs.imageObj && attrs.src) setFeedImageSrc(g, attrs.src);
+  return g;
+}
+
+/**
+ * Turn a static image into a feed image in place: same spot, same box, same picture
+ * until the first reading replaces it. The frame is the box the user had already sized,
+ * so nothing on the canvas moves.
+ */
+export function imageToFeedImage(node, attrs = {}) {
+  const g = addFeedImage({
+    x: node.x(), y: node.y(), w: Math.round(node.width()), h: Math.round(node.height()),
+    src: node.getAttr('src'), natW: node.getAttr('natW'), natH: node.getAttr('natH'),
+    imageObj: node.image(),
+    ...attrs,
+  });
+  g.zIndex(node.zIndex());
+  node.destroy();
+  return g;
+}
+
+/**
+ * The reverse: unlink a feed image and keep its picture as a plain, static image, drawn
+ * exactly where the frame was showing it (so a 'contain' fit's letterbox bars vanish
+ * and nothing visible moves). Returns the new node, or null — and leaves the frame in
+ * place — when there is no picture to keep.
+ */
+export function feedImageToImage(g) {
+  const img = g.getAttr('imageObj');
+  if (!img) return null;
+  const r = fitRect(g.getAttr('natW') || img.width, g.getAttr('natH') || img.height,
+    g.getAttr('w'), g.getAttr('h'), g.getAttr('fit') || 'contain');
+  const node = addImage(img, { x: g.x() + r.x, y: g.y() + r.y, w: r.w, h: r.h, src: g.getAttr('src') });
+  // A 'cover' fit was showing a window of the picture; a plain image shows all of it,
+  // so the size is kept and the picture inside it is simply no longer cropped.
+  node.zIndex(g.zIndex());
+  g.destroy();
+  return node;
+}
+
 // ---------- shared element wiring -------------------------------------------
 
 let activeAnchor = null;
@@ -1104,8 +1259,9 @@ export function wireNode(node) {
       // inline so adding a widget doesn't mean editing a ternary.
       const minW = MIN_WIDGET_W[node.getAttr('etype')] ?? 40;
       node.setAttr('w', Math.max(minW, Math.round(node.getAttr('w') * node.scaleX())));
-      if (node.getAttr('etype') === 'linechart')
-        node.setAttr('h', Math.max(30, Math.round(node.getAttr('h') * node.scaleY())));
+      const minH = MIN_WIDGET_H[node.getAttr('etype')];
+      if (minH !== undefined)
+        node.setAttr('h', Math.max(minH, Math.round(node.getAttr('h') * node.scaleY())));
       rebuildWidget(node);
     } else if (node.getAttr('etype') === 'image') {
       node.width(Math.max(1, Math.round(node.width() * node.scaleX())));
@@ -1242,6 +1398,9 @@ export function remapColorsToPalette() {
   const nearestNeutral = nearestIn(neutralShades());
   layer.find('.element').forEach((n) => {
     if (n.getAttr('etype') === 'image') return; // dithered at render time, no single ink
+    // Same for a feed image — but its empty-frame placeholder is drawn in the darkest
+    // ink of the palette at build time, so it is rebuilt to pick up the new one.
+    if (n.getAttr('etype') === 'feedimage') { rebuildWidget(n); return; }
     // An indicator carries THREE colors, so the single-color elementColor /
     // setElementColor pair can't express it — remap each one explicitly.
     if (n.getAttr('etype') === 'indicator') {
