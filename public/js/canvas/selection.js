@@ -17,7 +17,7 @@ import {
   isFeedLinked, linkedLabelText, feedValueAttr, CHART_RANGES, CHART_RAW_MAX,
   CHART_FONT_MIN, CHART_FONT_MAX, gaugeValue, applyTimeValue,
 } from './elements.js';
-import { feedImageToImage, MIN_WIDGET_H } from './elements.js';
+import { feedImageToImage, bindFeedImage, MIN_WIDGET_H } from './elements.js';
 import { FEED_IMAGE_FITS, FEED_IMAGE_TYPES, sniffImageType } from '../core/feedimage.js';
 import { openFeedPicker, refreshFeedElements, refreshChart } from '../device/feeds.js';
 import { listTimezones } from '../device/iotime.js';
@@ -597,8 +597,8 @@ export function refreshProps() {
       select(img);
       toast(`Unlinked from ${name} — the picture is now a plain image`);
     } else {
-      n.setAttr('feedKey', '');
-      n.setAttr('feedName', '');
+      // Through bindFeedImage so a read still in flight for the old feed is dropped.
+      bindFeedImage(n, '', '');
       rebuildWidget(n);
       refreshProps();
       toast(`Unlinked from ${name}`);

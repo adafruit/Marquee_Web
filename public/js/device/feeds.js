@@ -11,8 +11,9 @@
 import { ioHost, ioLog, feedUrl, parseSharedFeed } from '../core/api.js';
 import { layer } from '../canvas/stage.js';
 import {
-  addLabel, addFeedImage, imageToFeedImage, setFeedImageSrc, rebuildWidget, applyFeedValue,
-  applyTimeValue, FEED_ETYPES, CHART_RAW_MAX,
+  addLabel, addFeedImage, imageToFeedImage, setFeedImageSrc, decodeImage, applyFeedImage,
+  bindFeedImage, feedImageGen, rebuildWidget, applyFeedValue, applyTimeValue, FEED_ETYPES,
+  CHART_RAW_MAX,
 } from '../canvas/elements.js';
 import { parseFeedImage, feedImageProblem } from '../core/feedimage.js';
 import { readIoMillis } from './iotime.js';
@@ -107,10 +108,19 @@ export async function openFeedPicker(target = null, { mode = 'bind' } = {}) {
   }
 }
 
+/**
+ * Which pick is the live one. pickFeed() awaits a network read before it touches the
+ * canvas, and both the mode and the target can change under it — a second click in the
+ * list, or the picker closing. Each pick takes a number on the way in and checks it on
+ * the way out; closing the picker takes the next number, so nothing pending can land.
+ */
+let pickSeq = 0;
+
 export function closeFeedPicker() {
   closeModal('feedDataModal');
   feedPickerTarget = null;
   feedPickerMode = 'bind';
+  pickSeq++;
 }
 
 /**
@@ -311,15 +321,23 @@ export function feedBoundElements(nodes) {
  * taken a new frame costs one GET per cycle and nothing more.
  */
 export async function refreshFeedImage(n) {
-  const v = await readFeedValue(n.getAttr('feedKey'));
+  // The binding as it was when the read went out. A frame rebound (or unlinked) while
+  // the request was in flight must not take the answer: the generation covers the read
+  // here and the decode inside setFeedImageSrc.
+  const key = n.getAttr('feedKey');
+  const gen = feedImageGen(n);
+  const v = await readFeedValue(key);
+  if (feedImageGen(n) !== gen || n.getAttr('feedKey') !== key) return false;
   if (v === null) return false;
   const parsed = parseFeedImage(v);
   if (!parsed.ok) {
-    console.warn(`[io] ${n.getAttr('feedKey')}: ${feedImageProblem(parsed.reason)}`);
+    console.warn(`[io] ${key}: ${feedImageProblem(parsed.reason)}`);
     return false;
   }
   if (parsed.dataUrl === n.getAttr('src') && n.getAttr('imageObj')) return true;
-  return setFeedImageSrc(n, parsed.dataUrl);
+  const ok = await setFeedImageSrc(n, parsed.dataUrl);
+  if (!ok) console.warn(`[io] ${key}: the picture could not be decoded, or the frame was rebound meanwhile — keeping the previous one`);
+  return ok;
 }
 
 /**
@@ -424,11 +442,11 @@ export function initFeeds() {
   wireModal('feedDataModal', ['feedDataClose']);
   // The shared Escape handler closes the modal; clearing the pending target is
   // this picker's own business.
-  onModalEscape('feedDataModal', () => { feedPickerTarget = null; });
+  onModalEscape('feedDataModal', () => { feedPickerTarget = null; pickSeq++; });
   $('feedDataModal')?.addEventListener('click', (e) => {
-    if (e.target === $('feedDataModal')) feedPickerTarget = null;
+    if (e.target === $('feedDataModal')) { feedPickerTarget = null; pickSeq++; }
   });
-  $('feedDataClose')?.addEventListener('click', () => { feedPickerTarget = null; });
+  $('feedDataClose')?.addEventListener('click', () => { feedPickerTarget = null; pickSeq++; });
 
   $('addFeedData')?.addEventListener('click', () => openFeedPicker(null));
   $('feedFilter')?.addEventListener('input', renderFeedList);
@@ -476,12 +494,20 @@ export function initFeeds() {
  */
 async function pickFeed(feedKey, feedName) {
   const key = val('ioKey');
+  // This pick's view of the picker, taken before anything is awaited. The module-level
+  // mode and target belong to whichever pick is CURRENT, and a second click or a close
+  // can replace them while this one's read is still in flight; a pick that comes back to
+  // find its number gone leaves the canvas alone.
+  const seq = ++pickSeq;
+  const mode = feedPickerMode;
+  const target = feedPickerTarget;
+  const stale = () => seq !== pickSeq;
 
   // A chart series is a history pull, not a last value, and an empty feed is
   // still a legitimate series to add — so this mode returns before the
   // /data/last fetch below, which treats "no value" as a failure.
-  if (feedPickerMode === 'series' && feedPickerTarget) {
-    const node = feedPickerTarget;
+  if (mode === 'series' && target) {
+    const node = target;
     const feeds = (node.getAttr('feeds') || []).map((f) => ({ ...f }));
     if (feeds.some((f) => f.key === feedKey)) {
       toast(`"${feedName}" is already on this chart`);
@@ -497,7 +523,7 @@ async function pickFeed(feedKey, feedName) {
     });
     node.setAttr('feeds', feeds);
     const ok = await refreshChart(node);
-    closeFeedPicker();
+    if (!stale()) closeFeedPicker();
     select(node);
     toast(ok ? `Added ${feedName} to the chart`
              : `Added ${feedName}, but its history could not be read`);
@@ -508,19 +534,25 @@ async function pickFeed(feedKey, feedName) {
   ioLog('read   ', feedKey, 'last value (feed picker)');
   try {
     const { status, datum } = await fetchLastDatum(feedKey, key);
+    if (stale()) return;
 
     // A feed image. Unlike the bindings below, an EMPTY feed is a legitimate thing to
     // bind — the camera has not taken its first frame yet — but a feed that holds a
     // temperature is refused outright, since nothing that could ever arrive on it
-    // would be a picture. The value is checked before anything on the canvas changes.
-    if (feedPickerMode === 'image') {
-      const empty = status === 404 || !datum || datum.value == null || String(datum.value).trim() === '';
-      if (!empty && (status < 200 || status >= 300)) {
-        const msg = `IO replied ${status}`;
+    // would be a picture. Everything is checked, and the picture DECODED, before
+    // anything on the canvas changes: a refused or undecodable feed leaves a static
+    // image static and an existing binding as it was.
+    if (mode === 'image') {
+      const ok2xx = status >= 200 && status < 300;
+      // 404 is "no data yet" (fetchLastDatum tried both spellings); anything else that
+      // is not a success is a failed read, not an empty feed.
+      if (!ok2xx && status !== 404) {
+        const msg = status === 401 ? 'IO rejected the key (401) — check credentials' : `IO replied ${status}`;
         $('feedListStatus').textContent = msg;
         toast(msg);
         return;
       }
+      const empty = status === 404 || !datum || datum.value == null || String(datum.value).trim() === '';
       const parsed = empty ? null : parseFeedImage(datum.value);
       if (parsed && !parsed.ok) {
         const msg = feedImageProblem(parsed.reason, `"${feedName}"`);
@@ -528,20 +560,29 @@ async function pickFeed(feedKey, feedName) {
         toast(msg);
         return;
       }
-      let node = feedPickerTarget;
+      let img = null;
+      if (parsed) {
+        $('feedListStatus').textContent = 'Decoding image…';
+        img = await decodeImage(parsed.dataUrl);
+        if (stale()) return;
+        if (!img) {
+          const msg = `"${feedName}" holds a picture this browser could not decode`;
+          $('feedListStatus').textContent = msg;
+          toast(msg);
+          return;
+        }
+      }
+      let node = target;
       // "Connect to IO Feed" on a static image: it becomes a feed image where it stands.
       if (node && node.getAttr('etype') === 'image') node = imageToFeedImage(node);
       if (!node) node = addFeedImage();
-      node.setAttr('feedKey', feedKey);
-      node.setAttr('feedName', feedName);
-      rebuildWidget(node);                                   // the empty frame now says so
+      bindFeedImage(node, feedKey, feedName);
+      if (img) applyFeedImage(node, img, parsed.dataUrl);
+      else rebuildWidget(node);                              // the empty frame now says so
       closeFeedPicker();
       select(node);
-      if (!parsed) { toast(`Bound ${feedName} — no image on it yet`); return; }
-      const ok = await setFeedImageSrc(node, parsed.dataUrl);
-      select(node);                                          // the inspector's Value row
-      toast(ok ? `Bound ${feedName} — ${node.getAttr('natW')}×${node.getAttr('natH')} image`
-               : `Bound ${feedName}, but its image could not be decoded`);
+      toast(img ? `Bound ${feedName} — ${img.width}×${img.height} image`
+                : `Bound ${feedName} — no image on it yet`);
       return;
     }
     if (status < 200 || status >= 300) {
@@ -553,8 +594,8 @@ async function pickFeed(feedKey, feedName) {
     const value = datum && datum.value != null ? String(datum.value) : '';
     if (value === '') { toast(`"${feedName}" has no value`); return; }
 
-    if (feedPickerTarget) {
-      const node = feedPickerTarget;
+    if (target) {
+      const node = target;
       node.setAttr('feedKey', feedKey);
       node.setAttr('feedName', feedName);
       applyFeedValue(node, value);
@@ -575,6 +616,7 @@ async function pickFeed(feedKey, feedName) {
     select(node);
     toast(`Added ${feedName} = ${value}`);
   } catch {
+    if (stale()) return;
     $('feedListStatus').textContent = 'Could not reach Adafruit IO';
     toast(`Could not reach ${ioHost()} — check the network`);
   }

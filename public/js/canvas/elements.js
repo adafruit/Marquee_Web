@@ -1140,29 +1140,65 @@ function buildFeedImage(g) {
 }
 
 /**
+ * Decode a data URL into an <img>, or null when the browser cannot. parseFeedImage() only
+ * checks the signature, so a truncated file passes it and fails here; callers that are
+ * about to change the canvas on the strength of a picture decode it FIRST.
+ */
+export function decodeImage(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Which binding a frame is on, as a counter. Bumped by bindFeedImage() on every bind and
+ * unbind, and captured by the asynchronous paths (a feed read, a decode) when they start:
+ * a result that comes back under a different generation belongs to a binding that no
+ * longer exists and is dropped. A frame rebound from feed A to feed B while A's read was
+ * in flight must never end up showing A's picture.
+ */
+export function feedImageGen(g) { return g.getAttr('feedGen') || 0; }
+
+/** Point a frame at a feed (or at nothing), invalidating whatever was in flight for it. */
+export function bindFeedImage(g, feedKey, feedName) {
+  g.setAttr('feedKey', feedKey || '');
+  g.setAttr('feedName', feedName || '');
+  g.setAttr('feedGen', feedImageGen(g) + 1);
+}
+
+/** Put a decoded picture into the frame, synchronously. */
+export function applyFeedImage(g, img, dataUrl) {
+  g.setAttr('imageObj', img);
+  g.setAttr('natW', img.width);
+  g.setAttr('natH', img.height);
+  g.setAttr('src', dataUrl);
+  rebuildWidget(g);
+}
+
+/**
  * Decode a data URL into the frame. Resolves true once the picture is showing, false
- * when it could not be decoded — in which case the previous picture is LEFT IN PLACE,
- * matching refreshFeedElements' rule that a failed read never blanks an element.
+ * when it could not be decoded or no longer belongs — in which case the previous picture
+ * is LEFT IN PLACE, matching refreshFeedElements' rule that a failed read never blanks an
+ * element.
  *
- * Only the newest call per node lands: a slow decode must not overwrite a faster one
- * that started after it.
+ * Only the newest call per node lands, and a superseded call resolves with the NEWEST
+ * call's outcome rather than its own: the caller is a take about to photograph the
+ * canvas, and "done" has to mean the frame shows the latest picture, not that this
+ * particular decode finished. The binding generation is checked as well, so a decode
+ * started under a binding that has since been changed or removed is dropped.
  */
 export function setFeedImageSrc(g, dataUrl) {
-  const img = new Image();
-  const p = new Promise((resolve) => {
-    img.onload = () => {
-      if (feedImageLoads.get(g) !== p) { resolve(false); return; }
-      g.setAttr('imageObj', img);
-      g.setAttr('natW', img.width);
-      g.setAttr('natH', img.height);
-      g.setAttr('src', dataUrl);
-      rebuildWidget(g);
-      resolve(true);
-    };
-    img.onerror = () => resolve(false);
+  const gen = feedImageGen(g);
+  const p = decodeImage(dataUrl).then((img) => {
+    if (feedImageLoads.get(g) !== p) return feedImageLoads.get(g) || false;
+    if (!img || feedImageGen(g) !== gen || !g.getLayer()) return false;
+    applyFeedImage(g, img, dataUrl);
+    return true;
   });
   feedImageLoads.set(g, p);
-  img.src = dataUrl;
   return p;
 }
 
@@ -1219,13 +1255,25 @@ export function imageToFeedImage(node, attrs = {}) {
  * place — when there is no picture to keep.
  */
 export function feedImageToImage(g) {
-  const img = g.getAttr('imageObj');
+  let img = g.getAttr('imageObj');
   if (!img) return null;
   const r = fitRect(g.getAttr('natW') || img.width, g.getAttr('natH') || img.height,
     g.getAttr('w'), g.getAttr('h'), g.getAttr('fit') || 'contain');
-  const node = addImage(img, { x: g.x() + r.x, y: g.y() + r.y, w: r.w, h: r.h, src: g.getAttr('src') });
-  // A 'cover' fit was showing a window of the picture; a plain image shows all of it,
-  // so the size is kept and the picture inside it is simply no longer cropped.
+  let src = g.getAttr('src');
+  // A 'cover' fit was showing a WINDOW of the picture. A plain image has no crop, so the
+  // window is baked into a new picture — what was on the glass stays on the glass, and
+  // the static image's own data URL carries it through save and load without the
+  // document format learning a crop.
+  if (r.crop) {
+    const c = document.createElement('canvas');
+    c.width = r.crop.width;
+    c.height = r.crop.height;
+    c.getContext('2d').drawImage(img, r.crop.x, r.crop.y, r.crop.width, r.crop.height,
+      0, 0, r.crop.width, r.crop.height);
+    img = c;
+    src = c.toDataURL('image/png');
+  }
+  const node = addImage(img, { x: g.x() + r.x, y: g.y() + r.y, w: r.w, h: r.h, src });
   node.zIndex(g.zIndex());
   g.destroy();
   return node;

@@ -162,10 +162,19 @@ export function fitRect(natW, natH, frameW, frameH, fit = 'contain') {
   if (fit === 'stretch') return { x: 0, y: 0, w: fw, h: fh };
   if (fit === 'cover') {
     const scale = Math.max(fw / nw, fh / nh);
-    const cw = Math.min(nw, Math.round(fw / scale)), ch = Math.min(nh, Math.round(fh / scale));
+    // At least one source pixel each way, and never more than the picture has: a 1×1
+    // picture in a 120×8 frame would otherwise round to a zero-high window placed
+    // outside the picture, which Konva cannot draw. The origin is clamped the same way
+    // so the window always lies inside the picture.
+    const cw = Math.min(nw, Math.max(1, Math.round(fw / scale)));
+    const ch = Math.min(nh, Math.max(1, Math.round(fh / scale)));
     return {
       x: 0, y: 0, w: fw, h: fh,
-      crop: { x: Math.round((nw - cw) / 2), y: Math.round((nh - ch) / 2), width: cw, height: ch },
+      crop: {
+        x: Math.min(nw - cw, Math.max(0, Math.round((nw - cw) / 2))),
+        y: Math.min(nh - ch, Math.max(0, Math.round((nh - ch) / 2))),
+        width: cw, height: ch,
+      },
     };
   }
   const scale = Math.min(fw / nw, fh / nh);

@@ -116,7 +116,9 @@ and that is the size of image this element can show.
 | `natW`, `natH` | the picture's own size, from which `fit` places it. |
 
 Unlinking a feed image that holds a picture turns it back into a plain `image` element,
-sized and placed exactly where the frame was drawing it. The decoded `<img>` is never saved;
+sized and placed exactly where the frame was drawing it; a `cover` fit's window is baked
+into the static image's own picture, so what was on the glass stays on the glass without
+the document learning a crop field. The decoded `<img>` is never saved;
 the data URL is enough to rebuild it, and `deserialize()` waits for that decode the way it
 waits for a static image's.
 

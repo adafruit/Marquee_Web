@@ -194,3 +194,21 @@ test('a 65 KB bitmap — the small WipperSnapper logo — is well inside it', ()
   assert.equal(r.mime, 'image/bmp');
   assert.equal(r.bytes, 54 + Math.ceil((229 * 3) / 4) * 4 * 97);
 });
+
+test('cover never produces an empty or out-of-picture crop, however extreme the shapes', () => {
+  // The cases Copilot's review pointed at: a 1×1 picture in a wide, short frame rounded to
+  // a zero-high window placed outside the picture, and the transposed case to zero width.
+  const inside = (nw, nh, r) => r.crop.width >= 1 && r.crop.height >= 1
+    && r.crop.x >= 0 && r.crop.y >= 0 && r.crop.x + r.crop.width <= nw && r.crop.y + r.crop.height <= nh;
+  for (const [nw, nh, fw, fh] of [
+    [1, 1, 120, 8], [1, 1, 8, 120], [2, 1, 300, 1], [1, 2, 1, 300], [3, 7, 1000, 1], [7, 3, 1, 1000],
+    [550, 248, 1, 1], [550, 248, 1, 400], [550, 248, 400, 1], [4, 3, 100, 100],
+  ]) {
+    const r = fitRect(nw, nh, fw, fh, 'cover');
+    assert.ok(inside(nw, nh, r), `${nw}x${nh} into ${fw}x${fh}: ${JSON.stringify(r.crop)}`);
+    assert.deepEqual([r.x, r.y, r.w, r.h], [0, 0, fw, fh]);
+  }
+  assert.deepEqual(fitRect(1, 1, 120, 8, 'cover').crop, { x: 0, y: 0, width: 1, height: 1 });
+  // The ordinary case is untouched by the clamp.
+  assert.deepEqual(fitRect(400, 300, 100, 100, 'cover').crop, { x: 50, y: 0, width: 300, height: 300 });
+});
