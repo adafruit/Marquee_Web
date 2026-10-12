@@ -1,10 +1,10 @@
-// firmware.js against a stubbed fetch. Node 18+ has fetch, Response, ReadableStream and
+// lib/firmware.js against a stubbed fetch. Node 18+ has fetch, Response, ReadableStream and
 // crypto.subtle globally, and public/js/package.json marks the tree as ES modules, so the
 // browser module loads here unchanged. Run with `npm test`.
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchManifest, fetchReleaseFirmware, describeFirmwareError, FIRMWARE_BASE } from '../public/js/device/firmware.js';
+import { fetchManifest, fetchReleaseFirmware, describeFirmwareError, FIRMWARE_BASE } from '../public/js/lib/firmware.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });

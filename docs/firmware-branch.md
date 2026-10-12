@@ -7,7 +7,7 @@ via `raw.githubusercontent.com`.
 
 - **Producer:** the `publish` job in Adafruit_Marquee's `.github/workflows/build.yml`, which
   runs on every published GitHub Release.
-- **Consumer:** `public/js/device/firmware.js` in the editor.
+- **Consumer:** `public/js/lib/firmware.js` (wrapped by `device/firmware.js` in the editor).
 
 ## Why not the Release page
 
@@ -37,7 +37,7 @@ manifest.json                                    the LATEST release — overwrit
 ```
 
 `<env>` is the PlatformIO environment: `magtag`, `adafruit_feather_esp32s3`, `x4pro`. The
-editor maps a display preset onto one of these in `firmwareFor()` (`public/js/device/flash.js`):
+editor maps a display preset onto one of these in `firmwareFor()` (`public/js/lib/flash.js`):
 MagTag → `magtag`, X4 Pro → `x4pro`, every bare panel → `adafruit_feather_esp32s3`.
 
 ## `manifest.json` (schema 1)
@@ -88,7 +88,7 @@ MagTag → `magtag`, X4 Pro → `x4pro`, every bare panel → `adafruit_feather_
    partition whose bytes in the file are all `0xFF`; the rest goes to its own address. On the
    X4 Pro `nvs` is where the factory stores the panel calibration, and that is why the "erase
    the whole chip" option is hidden for that board (`allowErase: false` in the board table in
-   `public/js/device/flash.js`) and refused by `flashDevice()`.
+   `public/js/lib/flash.js`) and refused by `writeImage()`.
 7. `validateFirmware()` also compares the flash size stamped in the bootloader header with the
    board's: the two ESP32-S3 builds (4 MB Feather, 16 MB X4 Pro) pass every other check
    for each other's board and would not boot.

@@ -37,7 +37,7 @@ Then decide whether it goes on the menu. `FEATURED_KEYS` is the shortlist screen
 everything else in the catalog stays reachable by preset key but is not shown to a first-time
 user.
 
-## 3. Edit the Board Table — `public/js/device/flash.js` (Products Only)
+## 3. Edit the Board Table — `public/js/lib/flash.js` (Products Only)
 
 Make 2 edits here:
 
