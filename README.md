@@ -33,6 +33,19 @@ magick in.png -dither FloydSteinberg -define dither:diffusion-amount=N% \
   -remap eink-<type>.png gif:- | magick gif:- -compress none BMP3:-
 ```
 
+## Shared Library
+
+`public/js/lib/` is the part of the editor other hosts reuse: Adafruit IO's editor and
+its server-side renderer copy it in at a pinned commit. It holds the element model
+(`scene.js`: build, rebuild and serialize every element, and lay out a whole document),
+the renderer (`render.js`, `bitmap.js`), palettes, formatting and the panel catalog.
+
+Two rules, enforced by `test/lib-boundary.test.js`: a `lib/` module imports only other
+`lib/` modules, and never touches the page (`document`, `window`, `localStorage`). Konva
+is passed in by the caller rather than imported, so each host brings its own copy.
+Editor state, the stage and DOM wiring stay in `canvas/`, `core/`, `device/` and
+`screens/`.
+
 ## Credential Storage
 
 Your Adafruit IO Key and Wi-Fi credentials are stored in your browser's `localStorage` and written to the hardware's USB MSC volume.
