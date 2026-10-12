@@ -10,7 +10,7 @@
 
 import { ioHost, ioLog, bitmapFeedKey, IO_MAX_NO_HISTORY } from '../core/api.js';
 import { display, logicalDims, ditherLabel, PALETTES } from './palette.js';
-import { renderIndexedBmp, RENDER_METHOD } from './bitmap.js';
+import { renderIndexedBmp, RENDER_METHOD } from '../lib/bitmap.js';
 import { captureClean } from './stage.js';
 import { selected, select } from './selection.js';
 import { refreshFeedElements } from '../device/feeds.js';

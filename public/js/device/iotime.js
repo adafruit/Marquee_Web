@@ -4,14 +4,14 @@
  * Reads `/api/v2/time/millis`, which is unauthenticated and CORS-open. The richer
  * `/integrations/time/*` endpoints (strftime, the zone list, the IP-guessed zone) would
  * have been the natural fit, but their successful responses are pinned to the
- * io.adafruit.com origin and a browser anywhere else drops them — see core/timefmt.js,
+ * io.adafruit.com origin and a browser anywhere else drops them — see lib/timefmt.js,
  * which does the formatting instead.
  *
  * Imports nothing that touches the DOM, so the live test can drive it from node.
  */
 
 import { ioHost } from '../core/api.js';
-import { strftime, browserTz, supportedTimezones, ioMillisUrl } from '../core/timefmt.js';
+import { strftime, browserTz, supportedTimezones, ioMillisUrl } from '../lib/timefmt.js';
 
 /**
  * IO's current time, epoch milliseconds. Resolves to a number, or null on any failure —

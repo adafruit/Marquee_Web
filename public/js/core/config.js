@@ -12,7 +12,7 @@ import { display, logicalDims, landscapeAtZero, ditherLabel, ditherChipLabel } f
 import { fitZoom, updateDims, suspendDitherPreview, scheduleDitherRefresh } from '../canvas/stage.js';
 import { remapColorsToPalette } from '../canvas/elements.js';
 import { refreshProps } from '../canvas/selection.js';
-import { DISPLAY_PRESETS, PRESET_KEYS } from '../device/presets.js';
+import { DISPLAY_PRESETS, PRESET_KEYS } from '../lib/presets.js';
 import { getState, setState } from './state.js';
 import { patchActive } from '../device/devices.js';
 import { syncCfg } from '../device/cfg.js';

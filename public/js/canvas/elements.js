@@ -17,7 +17,7 @@ import { FA_FAMILY, FA_WEIGHT, iconGlyph, DEFAULT_GAUGE_ICON, onFaReady } from '
 import {
   toast, clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, niceStep, snapToStep, fmtTicks, scaleUnit,
 } from '../core/util.js';
-import { normalizeDatetimeAttrs, placeholderText } from '../core/timefmt.js';
+import { normalizeDatetimeAttrs, placeholderText } from '../lib/timefmt.js';
 
 let counter = 0;
 export const nextId = () => 'el' + (++counter);

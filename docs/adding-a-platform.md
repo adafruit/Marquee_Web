@@ -15,7 +15,7 @@ Everything that is not mapped to a product board in `flash.js` is assumed to be 
 
 The editor cannot flash a board that has no build on the `firmware` [branch of the Adafruit_Marquee firmware repository](https://github.com/adafruit/Adafruit_Marquee/tree/firmware). Hardware support must be added here, and a new release created before making changes to the editor.
 
-## 2. Add a Catalog Entry — `public/js/device/presets.js`
+## 2. Add a Catalog Entry — `public/js/lib/presets.js`
 
 Add an object to `DISPLAY_PRESETS`, keyed by a short preset key (i.e: `magtag2`). Copy the nearest
 existing entry and change every field:

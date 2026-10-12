@@ -19,7 +19,7 @@
  * public/img/panels/). A preset without one falls back to the grey placeholder.
  */
 
-import { FEATURED_KEYS, searchPresets, presetCardLabel, presetCardMeta, presetCardPhoto } from '../device/presets.js';
+import { FEATURED_KEYS, searchPresets, presetCardLabel, presetCardMeta, presetCardPhoto } from '../lib/presets.js';
 import { applyDisplayPreset } from '../core/config.js';
 import { getState, setState } from '../core/state.js';
 import { navigate } from '../core/router.js';

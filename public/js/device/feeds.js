@@ -14,7 +14,7 @@ import {
   addLabel, rebuildWidget, applyFeedValue, applyTimeValue, FEED_ETYPES, CHART_RAW_MAX,
 } from '../canvas/elements.js';
 import { readIoMillis } from './iotime.js';
-import { strftime } from '../core/timefmt.js';
+import { strftime } from '../lib/timefmt.js';
 import { display, PALETTES } from '../canvas/palette.js';
 import { select } from '../canvas/selection.js';
 import {

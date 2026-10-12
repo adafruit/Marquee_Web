@@ -22,12 +22,12 @@ import {
   addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery, addImage, addDatetime,
   remapColorsToPalette,
 } from '../canvas/elements.js';
-import { placeInSavedOrder } from '../canvas/zorder.js';
-import { normalizeDatetimeAttrs } from './timefmt.js';
+import { placeInSavedOrder } from '../lib/zorder.js';
+import { normalizeDatetimeAttrs } from '../lib/timefmt.js';
 import { applyDisplayToForm, setResolution, applyDither } from './config.js';
 import { activeDeviceId, saveCanvas } from '../device/devices.js';
 import { scheduleCanvasStatePublish } from '../device/canvasfeed.js';
-import { validateCanvasDoc, compareDisplay, fitDoc } from './canvasimport.js';
+import { validateCanvasDoc, compareDisplay, fitDoc } from '../lib/canvasimport.js';
 import {
   $, copyFromButton, toast, escapeHtml, openModal, closeModal, wireModal, segValue, setSegValue, show,
 } from './util.js';

@@ -19,9 +19,9 @@ import {
 } from './elements.js';
 import { openFeedPicker, refreshFeedElements, refreshChart } from '../device/feeds.js';
 import { listTimezones } from '../device/iotime.js';
-import { TIME_PRESETS, presetForFmt } from '../core/timefmt.js';
+import { TIME_PRESETS, presetForFmt } from '../lib/timefmt.js';
 import { GAUGE_ICONS, FA_LINK } from './icons.js';
-import { Z_OPS, restack, canRestack, stackPosition } from './zorder.js';
+import { Z_OPS, restack, canRestack, stackPosition } from '../lib/zorder.js';
 import { $, escapeHtml, escapeAttr, toast, clamp } from '../core/util.js';
 
 export let selected = null;

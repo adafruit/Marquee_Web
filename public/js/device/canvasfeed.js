@@ -25,7 +25,7 @@ import { canvasStateFeedKey, IO_MAX_NO_HISTORY } from '../core/api.js';
 import { MARQUEE_FEEDS, createGroupFeed } from './provision.js';
 import { publishToIO } from '../canvas/render.js';
 import { readFeedLast } from './feeds.js';
-import { withoutSamples } from '../core/samples.js';
+import { withoutSamples } from '../lib/samples.js';
 import { val, toast, fmtBytes } from '../core/util.js';
 
 /** Idle time after the last edit before the scene goes up. Long enough that a drag,

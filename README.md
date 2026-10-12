@@ -25,7 +25,7 @@ npm start
 ## Bitmap Rendering
 
 Everything you draw on the canvas is rendered, dithered, palette-remapped by
-`public/js/canvas/bitmap.js`. 
+`public/js/lib/bitmap.js`. 
 
 `bitmap.js` is a pure-JS port of a subset of the ImageMagick CI pipeline and implements the following `magick` (ImageMagick) command only:
 ```

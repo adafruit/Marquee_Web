@@ -1,5 +1,5 @@
 /**
- * The "Date & time" prop — public/js/core/timefmt.js.
+ * The "Date & time" prop — public/js/lib/timefmt.js.
  *
  * Offline: every preset rendered at fixed instants in several zones, every directive
  * strftime() implements, and every widget property through the normalizer that both
@@ -11,9 +11,9 @@ import assert from 'node:assert/strict';
 import {
   TIME_PRESETS, DEFAULT_PRESET, presetForFmt, placeholderText, normalizeDatetimeAttrs,
   strftime, STRFTIME_DIRECTIVES, isValidTz, browserTz, supportedTimezones, ioMillisUrl,
-} from '../public/js/core/timefmt.js';
-import { stripSamples, sameDesign } from '../public/js/core/samples.js';
-import { KNOWN_ETYPES } from '../public/js/core/canvasimport.js';
+} from '../public/js/lib/timefmt.js';
+import { stripSamples, sameDesign } from '../public/js/lib/samples.js';
+import { KNOWN_ETYPES } from '../public/js/lib/canvasimport.js';
 
 const HOST = 'io.adafruit.com';
 
