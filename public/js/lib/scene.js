@@ -16,6 +16,7 @@ import {
 } from './format.js';
 import { normalizeDatetimeAttrs, placeholderText } from './timefmt.js';
 import { FA_FAMILY, FA_WEIGHT, iconGlyph, DEFAULT_GAUGE_ICON } from './icons.js';
+import { FONT_MONO, normalizeFontFamily } from './fonts.js';
 
 /** The darkest ink of the panel's palette, which every palette has. */
 const inkOf = (display) => (PALETTES[display?.type] || PALETTES.mono)[0];
@@ -127,8 +128,8 @@ export const seriesDash = (i) => SERIES_DASH[i % SERIES_DASH.length];
 
 // The chart's text (tick numbers, X/Y captions, legend, block title) is sized and
 // set per chart; these are the defaults and the range the inspector allows. 7px
-// monospace is what every chart drew before the option existed, so older layouts
-// are unchanged. The title stays TITLE_STEP px larger than the rest so it still
+// mono is what every chart drew before the option existed, so older layouts keep
+// their proportions. The title stays TITLE_STEP px larger than the rest so it still
 // reads as the heading.
 const AXIS_FONT_DEFAULT = 7;
 export const CHART_FONT_MIN = 5, CHART_FONT_MAX = 24;
@@ -274,7 +275,7 @@ function buildLineChart(Konva, g) {
   const yLabel = g.getAttr('yLabel') || '';
   const requestedFont = clamp(Math.round(+g.getAttr('axisFontSize') || AXIS_FONT_DEFAULT),
                               CHART_FONT_MIN, CHART_FONT_MAX);
-  const axisFamily = g.getAttr('axisFontFamily') || 'monospace';
+  const axisFamily = normalizeFontFamily(g.getAttr('axisFontFamily'));
 
   g.add(new Konva.Rect({ width: w, height: h, fill: '#000', opacity: 0 })); // hit area
 
@@ -564,7 +565,7 @@ function buildGauge(Konva, g) {
 
   if (title) {
     g.add(new Konva.Text({
-      text: title, fontSize: titleFont, fontFamily: 'monospace', fill: ink,
+      text: title, fontSize: titleFont, fontFamily: FONT_MONO, fill: ink,
       x: 0, y: 0, width: w, align: 'center',
     }));
   }
@@ -601,13 +602,13 @@ function buildGauge(Konva, g) {
   }
   g.add(new Konva.Text({
     text: frac === null ? '—' : fmtDecimals(gaugeValue(g), decimals),
-    fontSize: valueFont, fontFamily: 'monospace', fill: valueInk,
+    fontSize: valueFont, fontFamily: FONT_MONO, fill: valueInk,
     x: 0, y, width: w, align: 'center',
   }));
   y += valueFont + gap;
   if (label) {
     g.add(new Konva.Text({
-      text: label, fontSize: labelFont, fontFamily: 'monospace', fill: ink,
+      text: label, fontSize: labelFont, fontFamily: FONT_MONO, fill: ink,
       x: 0, y, width: w, align: 'center',
     }));
   }
@@ -751,7 +752,7 @@ function buildBattery(Konva, g) {
 
   if (g.getAttr('showPct')) {
     g.add(new Konva.Text({
-      text: pctText, fontSize, fontFamily: 'monospace', fill: ink,
+      text: pctText, fontSize, fontFamily: FONT_MONO, fill: ink,
       x: w + gap, y: Math.round((bodyH - fontSize) / 2), width: textW, align: 'left',
     }));
   }
@@ -788,8 +789,9 @@ export function rebuildWidget(Konva, n) {
 
 export function createLabel(Konva, attrs = {}, display, nodeProps = {}) {
   const node = new Konva.Text(Object.assign({
-    text: 'Label', fontSize: 20, fontFamily: 'monospace', fill: inkOf(display),
+    text: 'Label', fontSize: 20, fontFamily: FONT_MONO, fill: inkOf(display),
   }, nodeProps, attrs));
+  node.fontFamily(normalizeFontFamily(node.fontFamily()));
   node.setAttr('etype', 'label');
   // The feed binding is set through attrs rather than the Konva.Text constructor
   // so the names stay together and a plain label still gets them as empty rather
@@ -871,7 +873,7 @@ export function createLineChart(Konva, attrs = {}, display, nodeProps = {}) {
   g.setAttr('gridLines', attrs.gridLines ?? false);
   g.setAttr('keyLegend', attrs.keyLegend ?? false);
   g.setAttr('axisFontSize', attrs.axisFontSize ?? AXIS_FONT_DEFAULT);
-  g.setAttr('axisFontFamily', attrs.axisFontFamily ?? 'monospace');
+  g.setAttr('axisFontFamily', normalizeFontFamily(attrs.axisFontFamily));
   // Legacy sample data, only reached when no feeds are bound (see chartSeries).
   g.setAttr('data', attrs.data ?? []);
   buildLineChart(Konva, g);

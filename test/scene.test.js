@@ -36,17 +36,17 @@ const INK = '#2F2429', RED = '#D72627';
 
 /** One fully specified element of every type, as canvas.json saves it. */
 const ELEMENTS = [
-  { etype: 'label', x: 4, y: 6, fill: INK, text: '21.5C', fontSize: 16, fontFamily: 'monospace', align: 'left',
+  { etype: 'label', x: 4, y: 6, fill: INK, text: '21.5C', fontSize: 16, fontFamily: 'IBM Plex Mono', align: 'left',
     width: 90, feedKey: 'temp', feedName: 'Temp', feedPrefix: '', feedSuffix: 'C', feedDecimals: 1,
     feedValue: '21.47', background: RED, padding: 3 },
   { etype: 'datetime', x: 8, y: 4, timeFmt: '%H:%M', timeTz: 'America/New_York', timeValue: '14:05',
-    fill: INK, fontSize: 14, fontFamily: 'monospace', align: 'left' },
+    fill: INK, fontSize: 14, fontFamily: 'IBM Plex Mono', align: 'left' },
   { etype: 'divider', x: 10, y: 40, fill: INK, width: 200, height: 2 },
   { etype: 'linechart', x: 120, y: 60, w: 160, h: 58, ink: INK, title: 'Temp',
     feeds: [{ key: 'temp', name: 'Temp', color: INK }, { key: 'hum', name: 'Humidity', color: RED }],
     series: { temp: [{ t: '2026-10-12T10:00:00Z', v: 20 }, { t: '2026-10-12T11:00:00Z', v: 22 }], hum: [] },
     hours: 24, xLabel: '', yLabel: 'C', yMin: '', yMax: 30, yScale: 'linear', decimals: 1,
-    rawOnly: false, stepped: true, gridLines: true, keyLegend: false, axisFontSize: 8, axisFontFamily: 'monospace' },
+    rawOnly: false, stepped: true, gridLines: true, keyLegend: false, axisFontSize: 8, axisFontFamily: 'IBM Plex Serif' },
   { etype: 'gauge', x: 200, y: 10, w: 80, ink: INK, title: 'Wind', min: 0, max: 50, ringWidth: 10,
     gaugeLabel: 'mph', lowWarn: '', highWarn: 40, decimals: 0, showIcon: true, icon: 'wind',
     warnColor: RED, alarmColor: RED, feedKey: 'wind', feedName: 'Wind', gaugeValue: '12' },
@@ -87,6 +87,17 @@ test('missing attrs default to the panel\'s ink and background, never to random 
   const lamp = createElement(Konva, { etype: 'indicator' }, { ...display, background: RED });
   assert.equal(lamp.getAttr('offColor'), RED);
   assert.deepEqual([lamp.x(), lamp.y()], [0, 0]);
+});
+
+test('a document saved before the fonts were bundled loads in their Plex equivalents', () => {
+  const label = createElement(Konva, { etype: 'label', x: 0, y: 0, text: 'a', fontFamily: 'sans-serif' }, display);
+  const time = createElement(Konva, { etype: 'datetime', x: 0, y: 0, fontFamily: 'serif' }, display);
+  const chart = createElement(Konva, { etype: 'linechart', x: 0, y: 0, axisFontFamily: 'monospace' }, display);
+  const unknown = createElement(Konva, { etype: 'label', x: 0, y: 0, text: 'b', fontFamily: 'Comic Sans' }, display);
+  assert.deepEqual(
+    [label.fontFamily(), time.fontFamily(), chart.getAttr('axisFontFamily'), unknown.fontFamily()],
+    ['IBM Plex Sans', 'IBM Plex Serif', 'IBM Plex Mono', 'IBM Plex Mono']);
+  assert.equal(serializeElement(label).fontFamily, 'IBM Plex Sans');   // and saves under the new name
 });
 
 test('a gauge saved before the gaugeValue rename still loads its reading', () => {

@@ -145,7 +145,7 @@ test('an unknown format normalizes to the default preset — there is no custom 
 test('defaults from an empty object', () => {
   assert.deepEqual(normalizeDatetimeAttrs({}), {
     timeFmt: DEFAULT_PRESET.fmt, timeTz: '', timeValue: null, fill: undefined,
-    fontSize: 20, fontFamily: 'monospace', align: 'left', width: undefined,
+    fontSize: 20, fontFamily: 'IBM Plex Mono', align: 'left', width: undefined,
   });
   assert.deepEqual(normalizeDatetimeAttrs(), normalizeDatetimeAttrs({}));
 });
@@ -154,7 +154,7 @@ test('every widget property survives a save/load round trip', () => {
   const variants = [];
   for (const p of TIME_PRESETS)
     for (const timeTz of ['', 'UTC', 'America/New_York'])
-      for (const fontFamily of ['monospace', 'sans-serif', 'serif'])
+      for (const fontFamily of ['IBM Plex Mono', 'IBM Plex Sans', 'IBM Plex Serif'])
         for (const align of ['left', 'center', 'right'])
           for (const width of [undefined, 120])
             variants.push({ timeFmt: p.fmt, timeTz, fontFamily, align, width,
@@ -177,7 +177,7 @@ test('timeValue: unread stays null, never "" or 0', () => {
 test('bad style values fall back rather than reaching Konva', () => {
   const a = normalizeDatetimeAttrs({ fontSize: 2, fontFamily: 'Comic Sans', align: 'justify', width: 3, timeTz: 7 });
   assert.equal(a.fontSize, 20);
-  assert.equal(a.fontFamily, 'monospace');
+  assert.equal(a.fontFamily, 'IBM Plex Mono');
   assert.equal(a.align, 'left');
   assert.equal(a.width, undefined);
   assert.equal(a.timeTz, '');

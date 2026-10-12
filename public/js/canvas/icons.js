@@ -1,9 +1,10 @@
 /**
- * The Font Awesome face's load gate. The glyph table itself is lib/icons.js,
+ * The load gate for the faces canvas text needs. The icon glyph table is lib/icons.js,
  * re-exported here so editor code has one place to import from.
  */
 
 import { FA_FAMILY, FA_WEIGHT } from '../lib/icons.js';
+import { FONT_FILES } from '../lib/fonts.js';
 
 export {
   FA_FAMILY, FA_WEIGHT, FA_LINK, GAUGE_ICONS, DEFAULT_GAUGE_ICON, iconGlyph,
@@ -11,26 +12,27 @@ export {
 
 // ---------- the font-ready gate ---------------------------------------------
 //
-// Canvas text needs the face actually loaded, and @font-face loading is lazy: the
-// first paint after a cold load would draw a substitute glyph, and the dither
-// preview would cache that. So icon-bearing widgets are re-built once the face
-// resolves.
+// Canvas text needs its faces actually loaded, and @font-face loading is lazy: the first
+// paint after a cold load would draw substitute glyphs, and the dither preview would cache
+// that. So text and icon-bearing widgets are re-built once every face has resolved: the
+// icon font and the IBM Plex faces text draws in (lib/fonts.js).
 
 let readyPromise = null;
 
-export function faReady() {
+export function fontsReady() {
   if (readyPromise) return readyPromise;
+  const faces = [`${FA_WEIGHT} 16px "${FA_FAMILY}"`, ...FONT_FILES.map((f) => `${f.weight} 16px "${f.family}"`)];
   readyPromise = document.fonts
-    ? document.fonts.load(`${FA_WEIGHT} 16px "${FA_FAMILY}"`).then(() => true, () => false)
+    ? Promise.all(faces.map((face) => document.fonts.load(face))).then(() => true, () => false)
     : Promise.resolve(false);
   return readyPromise;
 }
 
 /**
- * Run `fn` once the face has resolved. Never rejects: a failed load leaves the
- * browser's substitute glyph, which is visible and reportable, rather than
+ * Run `fn` once the faces have resolved. Never rejects: a failed load leaves the
+ * browser's substitute glyphs, which are visible and reportable, rather than
  * throwing from inside a widget rebuild.
  */
-export function onFaReady(fn) {
-  faReady().then(fn);
+export function onFontsReady(fn) {
+  fontsReady().then(fn);
 }

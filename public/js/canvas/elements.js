@@ -13,7 +13,7 @@ import {
   layer, tr, snap, zoom, suspendDitherPreview, scheduleDitherRefresh, syncDisplayBackground,
 } from './stage.js';
 import { select, refreshProps } from './selection.js';
-import { onFaReady } from './icons.js';
+import { onFontsReady } from './icons.js';
 import { toast, clamp } from '../core/util.js';
 import * as scene from '../lib/scene.js';
 import {
@@ -369,22 +369,27 @@ export function editLabel(node) {
   ta.addEventListener('blur', () => finish(true));
 }
 
-// ---------- icon font gate ---------------------------------------------------
+// ---------- font gate --------------------------------------------------------
 
 /**
- * Re-draw every gauge showing an icon once the Font Awesome face has actually
- * loaded. @font-face loading is lazy and Konva paints icons as canvas text, so the
- * first build after a cold load would rasterise the browser's substitute glyph —
- * and the dither preview would then cache that as if it were the artwork.
+ * Re-draw text once the faces have actually loaded. @font-face loading is lazy and Konva
+ * measures and paints text on the canvas, so anything built after a cold load was laid
+ * out in the browser's substitute face — and the dither preview would then cache that as
+ * if it were the artwork. Widgets rebuild; a text element is made to measure again.
  *
- * Called once from boot. Cheap when nothing uses an icon: no icon, no rebuild.
+ * Called once from boot.
  */
-export function initIconFont() {
-  onFaReady(() => {
-    const withIcons = layer.find('.element')
-      .filter((n) => n.getAttr('etype') === 'gauge' && n.getAttr('showIcon'));
-    if (!withIcons.length) return;
-    withIcons.forEach(rebuildWidget);
+export function initFonts() {
+  onFontsReady(() => {
+    layer.find('.element').forEach((n) => {
+      if (isWidget(n)) rebuildWidget(n);
+      else if (n.getAttr('etype') === 'label' || isDatetime(n)) {
+        // Konva only re-measures on a change, and setting the same family is not one
+        const family = n.fontFamily();
+        n.fontFamily('');
+        n.fontFamily(family);
+      }
+    });
     layer.draw();
   });
 }

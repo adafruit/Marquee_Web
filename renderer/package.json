@@ -1,0 +1,18 @@
+{
+  "name": "marquee-renderer",
+  "private": true,
+  "type": "module",
+  "description": "Renders a Marquee canvas.json to the panel's BMP on a server, with the editor's own lib/",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:update": "node --test --test-update-snapshots \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "konva": "10.3.0",
+    "skia-canvas": "^3.0.0"
+  },
+  "allowScripts": {
+    "skia-canvas@3.0.8": true
+  }
+}
