@@ -192,11 +192,21 @@ What keeps them in step:
   a pixel difference threshold — Chrome's Skia and skia-canvas anti-alias text slightly
   differently, and dithering amplifies small differences.
 
-Two known host differences remain. Chart axis labels use the host's *locale* (`en-US` on
-Lambda; the user's in the browser), so a non-US browser and the server can format an axis
-time differently. And until the editor adopts the account's zone, a date & time element
-with no zone set reads in the browser's zone on a manual push and the account's on a live
-take.
+Known host differences:
+
+- **Small text draws lighter on the server.** Measured on 2026-10-15 with headless Chromium
+  against the renderer, same scene, dither off: shapes are pixel-identical, and every
+  difference (about 1.3% of the panel) is in text. Large text matches by eye, but the
+  smallest text — chart tick labels, a gauge's unit — comes out faint enough to
+  nearly vanish once it is reduced to the panel's few colours. Tuning skia-canvas's
+  `textContrast` / `textGamma` closed under a tenth of the gap and `fontHinting` none of
+  it. Browsers also differ from each other by OS, so this is about legibility rather than
+  exact parity; worth fixing before charts with small axis text go live.
+- Chart axis labels use the host's *locale* (`en-US` on
+  Lambda; the user's in the browser), so a non-US browser and the server can format an axis
+  time differently.
+- Until the editor adopts the account's zone, a date & time element with no zone set reads
+  in the browser's zone on a manual push and the account's on a live take.
 
 Bindings live in `lib/` too (`lib/bindings.js`: `feedReads(doc)`, `bakeReadings(doc,
 readings)`), absorbing `feedBoundElements`, `downsample` and the chart row parsing from
