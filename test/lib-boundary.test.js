@@ -1,8 +1,8 @@
 /**
  * The boundary around public/js/lib/.
  *
- * lib/ is the code other hosts share: Adafruit IO's editor and its server-side renderer
- * copy it in at a pinned commit. So it may only import other lib/ modules (and, later,
+ * lib/ is the code other hosts share: the server renderer (renderer/, the Lambda Adafruit
+ * IO invokes) runs it as-is. So it may only import other lib/ modules (and, later,
  * `konva` by bare name, which each host resolves itself), and it may not reach for the
  * page: no document, window or localStorage. Editor state and DOM wiring stay in
  * canvas/, core/, device/ and screens/.

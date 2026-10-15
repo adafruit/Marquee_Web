@@ -142,8 +142,8 @@ export const CHART_RANGES = [
   { hours: 24 * 30, label: '30 days' },
 ];
 
-/** IO's own ceiling on a raw (unaggregated) chart pull. */
-export const CHART_RAW_MAX = 640;
+// IO's own ceiling on a raw (unaggregated) chart pull lives with the bindings it governs.
+export { CHART_RAW_MAX } from '../lib/bindings.js';
 
 export function addLineChart(attrs = {}) {
   const { w, h } = logicalDims();
