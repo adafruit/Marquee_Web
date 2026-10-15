@@ -2,8 +2,9 @@
 
 How a display stays current with its bound feeds while nobody has the editor open.
 
-- **Status:** proposed. Nothing here is built yet. The renderer half exists on the
-  `refactor-modules` branch (`renderer/`, `public/js/lib/`); the IO half does not.
+- **Status:** the Marquee Web half is built and ships switched off — the browser keeps
+  running the live take until `IO_RUNS_LIVE_TAKE` is flipped (see "Backwards
+  compatibility"). The IO half is proposed; nothing in io-rails exists yet.
 - **Scope:** a stop-gap until Marquee is fully integrated into Adafruit IO / Learn. The
   editor stays a static site on GitHub Pages; only the *live take* moves to a server.
 
@@ -138,15 +139,21 @@ reports status, it is a safety net.
 
 ```
 plan:   { op: "plan", doc }
-          → { reads: [{ feed, kind: "last" | "chart", hours, raw }], datetime: bool }
+          → { reads: [{ id, feed, kind: "last" } | { id, feed, kind: "chart", hours, raw, limit? }],
+              datetime: bool }
 
 render: { doc, readings, now, timeZone }
           → { base64, sha, bytes, width, height } | { error }
 
-        readings = { last:  { "<feedKey>": "<value>" | null },
-                     chart: { "<feedKey>": { columns, data } } }
+        readings = { last:  { "<id>": "<value>" | null },
+                     chart: { "<id>": { columns, data } | null } }
 ```
 
+`renderer/README.md` is the full contract, with examples.
+
+- Readings are filed under the read's `id`, not its feed key: two charts on one feed can
+  ask for different windows (`temp@6h`, `temp@24h/raw`). A last-value read's id is the
+  feed key itself.
 - `doc` is `canvas-state` verbatim. Panel, palette and dither come from `doc.display`,
   which `serialize()` writes in full.
 - `readings.chart` is IO's own chart shape — what `/data/chart` returns and what the
@@ -155,7 +162,9 @@ render: { doc, readings, now, timeZone }
 - A missing or `null` reading keeps the value already in the doc: one failed read never
   blanks an element, the rule `refreshFeedElements()` follows today.
 - `timeZone` stands in for `timeTz: ""`, which in the browser meant "the pushing
-  browser's zone". The editor should use the account's zone too, so a date & time
+  browser's zone". It also sets the zone a chart's time axis reads in — the axis used to
+  format in the host's own zone, which on Lambda is UTC; found by comparing the container
+  against a local render. The editor should use the account's zone too, so a date & time
   element reads the same whoever published last.
 - Invoked synchronously (`RequestResponse`); request and response both fit easily inside
   Lambda's 6 MB limit (`canvas-state` is capped at 512 KB).
@@ -172,13 +181,22 @@ Unchanged: [`marquee-status.md`](marquee-status.md), [`marquee-sleep.md`](marque
 - **Lambda** — Konva on skia-canvas, with the same bundled IBM Plex and Font Awesome
   files (`lib/fonts.js`).
 
-Three things keep them in step:
+What keeps them in step:
 
 - `test/lib-boundary.test.js`: `lib/` imports only `lib/` and never touches the page;
-- the renderer's snapshot test, which pins the server's own bytes;
-- a browser-vs-server comparison (Puppeteer) on the same scene, passing under a pixel
-  difference threshold — Chrome's Skia and skia-canvas anti-alias text slightly
+- the renderer's snapshot test, which pins the server's own bytes. Every canvas is pinned
+  to skia-canvas's CPU rasterizer, so a laptop with a GPU, CI and Lambda agree on them;
+- the `Renderer` workflow, which runs those tests and builds the image whenever
+  `renderer/`, `lib/` or the fonts change;
+- **not yet:** a browser-vs-server comparison (Puppeteer) on the same scene, passing under
+  a pixel difference threshold — Chrome's Skia and skia-canvas anti-alias text slightly
   differently, and dithering amplifies small differences.
+
+Two known host differences remain. Chart axis labels use the host's *locale* (`en-US` on
+Lambda; the user's in the browser), so a non-US browser and the server can format an axis
+time differently. And until the editor adopts the account's zone, a date & time element
+with no zone set reads in the browser's zone on a manual push and the account's on a live
+take.
 
 Bindings live in `lib/` too (`lib/bindings.js`: `feedReads(doc)`, `bakeReadings(doc,
 readings)`), absorbing `feedBoundElements`, `downsample` and the chart row parsing from
@@ -231,12 +249,15 @@ that is off or idle costs nothing.
 
 **Marquee Web** (`refactor-modules`, then main)
 
-- `lib/bindings.js`; the editor's `refreshFeedElements` rebuilt on it.
-- Renderer: the `readings` input, the `plan` op, input validation.
-- Lambda container image and the CI that builds it.
-- The browser-vs-server comparison test.
-- A config flag that retires the browser live take once IO's is on. Manual push stays.
-- Date & time elements default to the account's zone rather than the browser's.
+- Done: `lib/bindings.js`, with the editor's refresh rebuilt on it.
+- Done: renderer `readings` input, `plan` op, input validation, CPU-pinned rendering,
+  account zone on chart axes.
+- Done: Lambda container image (`renderer/Dockerfile`), checked through the Lambda
+  runtime emulator, and the `Renderer` workflow that tests and builds it.
+- Done: `IO_RUNS_LIVE_TAKE` in `device/device.js`, off.
+- To do: pushing the image to ECR (a deploy, so deliberately not in CI yet).
+- To do: the browser-vs-server comparison test.
+- To do: date & time elements default to the account's zone rather than the browser's.
 
 **io-rails**
 
@@ -250,6 +271,20 @@ that is off or idle costs nothing.
 - `rake marquee:sweep` in `config/schedule.rb`.
 
 **io-node:** none. **Firmware:** none.
+
+## Backwards compatibility
+
+The Marquee Web changes can merge before IO is ready. Nothing the editor does changes:
+
+- the live take still runs in the browser — `IO_RUNS_LIVE_TAKE` is `false`;
+- the editor's refresh reads the same endpoints and writes the same attrs; it now gets its
+  predicates, chart parsing, downsampling and series merge from `lib/bindings.js` instead
+  of its own copies;
+- the documents it saves are unchanged — the chart's render-time zone is not a saved attr;
+- the renderer still accepts a document with readings already baked in and no
+  `readings`, which is what its earlier contract asked for.
+
+When IO's worker is live, flip `IO_RUNS_LIVE_TAKE` and the browser stands down.
 
 ## Rollout
 

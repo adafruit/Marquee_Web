@@ -844,6 +844,14 @@ const LIVE_MIN_GAP_MS = 30000;
  *  moment to photograph the stage in — see liveStageBusy(). */
 const LIVE_BUSY_RETRY_MS = 4000;
 
+/** Adafruit IO runs the live take itself, on the server (docs/server-live-take.md).
+ *
+ *  Off until it does: the browser keeps doing it, exactly as before. On, the browser stands
+ *  down, because two publishers on one bitmap feed would each undo the other's de-dupe and
+ *  double the writes. IO turns it on for every display at once, so this is one switch rather
+ *  than a per-display handshake. Manual push is unaffected either way. */
+export const IO_RUNS_LIVE_TAKE = false;
+
 let liveTimer = null;
 let liveRunning = false;
 let liveAgain = false;
@@ -886,6 +894,7 @@ function liveStageBusy() {
  * Ordered cheapest and most decisive first.
  */
 function liveBlockedBecause() {
+  if (IO_RUNS_LIVE_TAKE) return 'Adafruit IO keeps this display live';
   const st = getState();
   // A5b has not run, so the feeds behind the group key do not exist. The same guard, for
   // the same reason, as ensureStatusWatch().
