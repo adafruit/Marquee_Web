@@ -10,6 +10,7 @@ self-contained; start with whichever side you are writing.
 | [`marquee-status.md`](marquee-status.md) | The `{group}.status` feed — how a board reports what it is actually doing. |
 | [`cfg-marquee.md`](cfg-marquee.md) | The `cfg-marquee.json` file on the board — account, group key, network, panel and pins, written onto the board's `MARQUEE` USB drive at the end of setup. |
 | [`firmware-branch.md`](firmware-branch.md) | Where A6-A fetches firmware from — the `firmware` branch of Adafruit_Marquee, its `manifest.json`, and why not the Release assets. |
+| [`server-live-take.md`](server-live-take.md) | Design, not a spec — moving the live take from the browser into Adafruit IO (Sidekiq) with rendering in AWS Lambda, so a display stays current with no editor open. Proposed. |
 | [`adding-a-platform.md`](adding-a-platform.md) | Guide, not a spec — the checklist for teaching the editor a new board or panel: catalog entry, flash table, form options, orientation, tests. |
 
 The first three are plain Adafruit IO feeds under one group key: the editor publishes
