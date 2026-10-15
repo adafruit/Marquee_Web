@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FontLibrary } from 'skia-canvas';
 
-import { render, atTime } from '../render.js';
+import { render, atTime, plan, MAX_SIDE } from '../render.js';
 import { handler } from '../lambda.js';
 import { FONT_FILES } from '../../public/js/lib/fonts.js';
 
@@ -92,4 +92,73 @@ test('a bad request is an error, and the Lambda handler returns it rather than t
   await assert.rejects(render({ doc: scene([]), display: { width: 10 } }), /display/);
   assert.match((await handler({ doc: null })).error, /version 1/);
   assert.equal((await handler(JSON.stringify({ doc: scene([]), display }))).width, 296);
+});
+
+test('readings are written in before rendering; a missing one keeps the saved value', async () => {
+  const doc = scene([
+    { etype: 'label', x: 4, y: 4, fontSize: 24, fill: INK, feedKey: 'temp', feedValue: '20' },
+    { etype: 'linechart', x: 4, y: 40, w: 200, h: 80, ink: INK, feeds: [{ key: 'temp' }], hours: 6, series: {} },
+  ]);
+  const saved = await render({ doc, display });
+  assert.equal((await render({ doc, readings: {}, display })).sha, saved.sha);
+  assert.equal((await render({ doc, readings: { last: { temp: null } }, display })).sha, saved.sha);
+
+  const fresh = await render({ doc, readings: { last: { temp: '99' } }, display });
+  assert.notEqual(fresh.sha, saved.sha);
+  // The same reading baked into the document by hand draws the same picture.
+  const baked = await render({ doc: { ...doc, elements: [{ ...doc.elements[0], feedValue: '99' }, doc.elements[1]] }, display });
+  assert.equal(fresh.sha, baked.sha);
+
+  const chart = { columns: ['date', 'value'], data: [['2026-10-12T10:00:00Z', '1'], ['2026-10-12T11:00:00Z', '5']] };
+  const charted = await render({ doc, readings: { chart: { 'temp@6h': chart } }, display });
+  assert.notEqual(charted.sha, saved.sha);
+});
+
+test('plan: what a document reads, through the handler too', async () => {
+  const doc = scene([
+    { etype: 'gauge', feedKey: 'wind' },
+    { etype: 'linechart', feeds: [{ key: 'alice/hum' }], rawOnly: true },
+    { etype: 'datetime' },
+  ]);
+  const expected = {
+    reads: [
+      { id: 'wind', feed: 'wind', kind: 'last' },
+      { id: 'alice/hum@24h/raw', feed: 'alice/hum', kind: 'chart', hours: 24, raw: true, limit: 640 },
+    ],
+    datetime: true,
+  };
+  assert.deepEqual(plan({ doc }), expected);
+  assert.deepEqual(await handler({ op: 'plan', doc }), expected);
+  assert.match((await handler({ op: 'plan', doc: {} })).error, /version 1/);
+  assert.match((await handler({ op: 'nope', doc })).error, /unknown op/);
+});
+
+test('hostile input: only data: images, and only panels the editor could make', async () => {
+  const image = (src) => scene([{ etype: 'image', x: 0, y: 0, w: 40, h: 40, natW: 2, natH: 2, src }]);
+  const blank = await render({ doc: scene([]), display });
+  for (const src of ['http://169.254.169.254/latest/meta-data', 'file:///etc/passwd', '/etc/passwd']) {
+    assert.equal((await render({ doc: image(src), display })).sha, blank.sha, src);
+  }
+  await assert.rejects(render({ doc: scene([]), display: { ...display, width: MAX_SIDE + 1 } }), /pixels a side/);
+  await assert.rejects(render({ doc: scene([]), display: { ...display, height: 4.5 } }), /pixels a side/);
+  await assert.rejects(render({ doc: scene([]), display: { ...display, type: 'rainbow' } }), /unknown display type/);
+});
+
+test('a chart\'s time axis reads in the account\'s zone, never the server\'s', async () => {
+  const doc = scene([{ etype: 'linechart', x: 4, y: 4, w: 280, h: 110, ink: INK, feeds: [{ key: 't' }], hours: 6,
+    series: { t: [{ t: '2026-10-12T10:00:00Z', v: 1 }, { t: '2026-10-12T14:00:00Z', v: 5 }] } }]);
+  const tz = process.env.TZ;
+  try {
+    process.env.TZ = 'America/Chicago';
+    const a = await render({ doc, display, timeZone: 'Europe/Berlin' });
+    process.env.TZ = 'Asia/Tokyo';
+    const b = await render({ doc, display, timeZone: 'Europe/Berlin' });
+    const c = await render({ doc, display, timeZone: 'America/New_York' });
+    assert.equal(a.sha, b.sha);
+    assert.notEqual(b.sha, c.sha);
+    // An unknown zone is UTC, not an error.
+    assert.equal((await render({ doc, display, timeZone: 'Mars/Olympus' })).sha, (await render({ doc, display, timeZone: 'UTC' })).sha);
+  } finally {
+    if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+  }
 });

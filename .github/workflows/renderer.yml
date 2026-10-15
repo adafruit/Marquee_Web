@@ -1,0 +1,35 @@
+# Tests the server renderer and builds its Lambda image whenever anything it draws with
+# changes. The Pages workflow's `npm test` covers lib/ under plain node, but not lib/ on
+# Konva + skia-canvas, which is what Adafruit IO runs.
+#
+# Build only: pushing the image to ECR is a deploy, and deploys are deliberate.
+name: Renderer
+
+on:
+  push:
+    branches: [main]
+    paths: ['renderer/**', 'public/js/lib/**', 'public/fonts/**', '.dockerignore', '.github/workflows/renderer.yml']
+  pull_request:
+    paths: ['renderer/**', 'public/js/lib/**', 'public/fonts/**', '.dockerignore', '.github/workflows/renderer.yml']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: renderer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm test
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f renderer/Dockerfile -t marquee-renderer:${{ github.sha }} .
