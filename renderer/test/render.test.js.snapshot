@@ -1,0 +1,3 @@
+exports[`the same document renders to the same bytes 1`] = `
+"4833aa2c263a6189e396908c34e7f1705093cf008700dfaca1db60847c7dcb62"
+`;

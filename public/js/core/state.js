@@ -7,7 +7,7 @@
  * to the tab drops you back where you were rather than at the start of setup.
  */
 
-import { stripSamples } from './samples.js';
+import { stripSamples } from '../lib/samples.js';
 
 const KEY = 'marquee.flow';
 

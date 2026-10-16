@@ -4,7 +4,7 @@ What the board reads at boot: which panel it is driving and how it is wired, whi
 network to join, and which Adafruit IO account and group to fetch from. One JSON file,
 written to the board's filesystem at flash time.
 
-- **Producer:** `device/cfg.js` in the editor (`public/js/device/cfg.js`). Every device
+- **Producer:** `lib/cfg.js` assembles it (`buildMarqueeConfig`); in the editor `device/cfg.js` fills it from the Settings form. Every device
   record carries the file as `rec.cfg`, rebuilt from the live settings after each step
   of setup. A6-A shows it under **Show JSON config** and writes it onto the board's USB
   drive (`device/drive.js`), or offers it as a download to copy over by hand.

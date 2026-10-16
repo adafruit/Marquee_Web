@@ -9,8 +9,8 @@
  */
 
 import { ioHost, ioLog, bitmapFeedKey, IO_MAX_NO_HISTORY } from '../core/api.js';
-import { display, logicalDims, ditherLabel, PALETTES } from './palette.js';
-import { renderIndexedBmp, RENDER_METHOD } from './bitmap.js';
+import { display, logicalDims, ditherLabel } from './palette.js';
+import { encodeBitmap } from '../lib/render.js';
 import { captureClean } from './stage.js';
 import { selected, select } from './selection.js';
 import { refreshFeedElements } from '../device/feeds.js';
@@ -19,14 +19,6 @@ import {
 } from '../core/util.js';
 
 // ---------- the authoritative render ----------------------------------------
-
-function bytesToBase64(bytes) {
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(s);
-}
 
 /**
  * Render the clean 1:1 capture with the current display settings.
@@ -48,11 +40,7 @@ export function renderBitmap() {
   });
   const w = canvas.width, h = canvas.height;
   const rgba = canvas.getContext('2d').getImageData(0, 0, w, h).data;
-  const { bmp, indices, colormap } = renderIndexedBmp(rgba, w, h, PALETTES[display.type], {
-    method: RENDER_METHOD[display.dither] || 'floyd',
-    diffusion: display.diffusion,
-    orderedMap: display.orderedMap,
-  });
+  const { bmp, base64: b64, indices, colormap } = encodeBitmap(rgba, w, h, display);
 
   // Preview: the indexed pixels painted back out as truecolor.
   const out = document.createElement('canvas');
@@ -65,7 +53,6 @@ export function renderBitmap() {
   }
   ctx.putImageData(img, 0, 0);
 
-  const b64 = bytesToBase64(bmp);
   return {
     bmp: b64,
     png: out.toDataURL('image/png').split(',')[1],

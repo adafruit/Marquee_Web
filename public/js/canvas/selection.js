@@ -19,9 +19,10 @@ import {
 } from './elements.js';
 import { openFeedPicker, refreshFeedElements, refreshChart } from '../device/feeds.js';
 import { listTimezones } from '../device/iotime.js';
-import { TIME_PRESETS, presetForFmt } from '../core/timefmt.js';
+import { TIME_PRESETS, presetForFmt } from '../lib/timefmt.js';
 import { GAUGE_ICONS, FA_LINK } from './icons.js';
-import { Z_OPS, restack, canRestack, stackPosition } from './zorder.js';
+import { FONTS } from '../lib/fonts.js';
+import { Z_OPS, restack, canRestack, stackPosition } from '../lib/zorder.js';
 import { $, escapeHtml, escapeAttr, toast, clamp } from '../core/util.js';
 
 export let selected = null;
@@ -147,10 +148,8 @@ function textStyleRowsHTML(n) {
   return `
     <div class="prop-row">
       <span class="label">Size</span><input type="number" id="pSize" value="${n.fontSize()}" min="4" max="512">
-      <select id="pFont" style="flex:1">
-        <option value="monospace" ${n.fontFamily() === 'monospace' ? 'selected' : ''}>Mono</option>
-        <option value="sans-serif" ${n.fontFamily() === 'sans-serif' ? 'selected' : ''}>Sans</option>
-        <option value="serif" ${n.fontFamily() === 'serif' ? 'selected' : ''}>Serif</option>
+      <select id="pFont" style="flex:1">${FONTS.map(({ family, label }) =>
+        `<option value="${family}"${n.fontFamily() === family ? ' selected' : ''}>${label}</option>`).join('')}
       </select>
     </div>
     <div class="prop-row">
@@ -405,8 +404,8 @@ export function refreshProps() {
       <div class="prop-row">
         <span class="label">Chart text</span>
         <input type="number" id="pChFontSize" aria-label="Chart text size" value="${n.getAttr('axisFontSize') ?? 7}" min="${CHART_FONT_MIN}" max="${CHART_FONT_MAX}">
-        <select id="pChFont" aria-label="Chart font family" style="flex:1">${[['monospace', 'Mono'], ['sans-serif', 'Sans'], ['serif', 'Serif']].map(([v, l]) =>
-          `<option value="${v}"${(n.getAttr('axisFontFamily') || 'monospace') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+        <select id="pChFont" aria-label="Chart font family" style="flex:1">${FONTS.map(({ family, label }) =>
+          `<option value="${family}"${n.getAttr('axisFontFamily') === family ? ' selected' : ''}>${label}</option>`).join('')}</select>
       </div>
       <p class="hint" id="pChFontFit"></p>
       <div class="prop-grid">

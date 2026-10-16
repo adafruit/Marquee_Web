@@ -1,7 +1,7 @@
 /**
  * Adafruit IO, the one service this editor talks to. The browser calls it directly
  * for feed reads and datum publishes; there is no server of our own — rendering
- * happens in the page (canvas/bitmap.js) and state lives in localStorage.
+ * happens in the page (lib/bitmap.js) and state lives in localStorage.
  */
 
 /**

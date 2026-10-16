@@ -36,7 +36,7 @@ import { displayState, readReport, reportIsOverdue } from '../device/cycle.js';
 import { boardReportsState } from '../device/device.js';
 import { getState, subscribe } from '../core/state.js';
 import { deviceEntry, navigate, currentScreen } from '../core/router.js';
-import { DISPLAY_PRESETS, presetCardPhoto } from '../device/presets.js';
+import { DISPLAY_PRESETS, presetCardPhoto } from '../lib/presets.js';
 import { readPanelCache, writePanelCache } from './a8.js';
 import * as devices from '../device/devices.js';
 import { $, val, escapeHtml, escapeAttr, fmtAgo, fmtLocalTime, fmtLocalDateTime, toast } from '../core/util.js';

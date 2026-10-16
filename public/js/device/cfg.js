@@ -24,60 +24,29 @@ import { getState } from '../core/state.js';
 import { activeDevice, patchActive } from './devices.js';
 import { $, val } from '../core/util.js';
 
-export const CFG_VERSION = 2;
-export const CFG_FILENAME = 'cfg-marquee.json';
+import { buildMarqueeConfig as assembleConfig, pinToInt } from '../lib/cfg.js';
 
-/** `mode` as the firmware spells it. Only gray4 differs from the editor's name. */
-const MODE_NAMES = { mono: 'mono', gray4: 'grayscale4', tricolor: 'tricolor', quadcolor: 'quadcolor' };
-
-const EMPTY_NETWORK = () => ({ wifi_ssid: '', wifi_password: '' });
+// The file's shape and assembly are lib/cfg.js; this module reads the live stores into it.
+export { CFG_VERSION, CFG_FILENAME, pinToInt } from '../lib/cfg.js';
 
 /**
- * A pin field as an integer GPIO number.
- *
- * The form spells pins the way the device's parsePin() reads them — "D8" — and the
- * config file wants the bare number. Blank and "-1" both mean "not wired" and become
- * -1, as does anything that is not a pin at all: a typo should produce a pin the board
- * refuses rather than one it silently drives.
- */
-export function pinToInt(raw) {
-  const s = String(raw ?? '').trim();
-  if (!s || s === '-1') return -1;
-  const m = /^D?(\d+)$/i.exec(s);
-  return m ? Number(m[1]) : -1;
-}
-
-/**
- * Has A4 chosen a panel for this device yet?
- *
- * Before that, the descriptor form holds whatever the PREVIOUS device left in it —
- * loadConfig(null) deliberately leaves a fresh draft's form alone — and a config that
- * printed those pins would be describing the wrong board.
+ * Has a panel been picked? The panel half of the file stays null until A4 has run, so a
+ * record mid-setup does not ship the MagTag defaults the form happens to hold.
  */
 function panelChosen() {
   return !!getState().selectedPanel || !!activeDevice()?.displayConfig;
 }
 
-function buildDisplay() {
-  const out = {
+/** The Settings form, in lib/cfg.js's panel shape. */
+function panelFromForm() {
+  return {
     driver: val('pmDriver') || 'SSD1680',
     panel: val('pmPanel') || '',
     width: Number($('resW')?.value) || 0,
     height: Number($('resH')?.value) || 0,
-    // Clockwise degrees, as the form and canvas.json carry them: 0, 90, 180 or 270.
     rotation: Number($('rotSel')?.value) || 0,
-    mode: MODE_NAMES[val('dtype')] || val('dtype') || 'mono',
-  };
-  // Absent means "no shift", so a blank or zero field stays out of the file entirely —
-  // the same rule the Settings hint states for the descriptor.
-  const colstart = Number.parseInt(val('pmColstart'), 10);
-  if (Number.isFinite(colstart) && colstart !== 0) out.colstart = colstart;
-  return out;
-}
-
-function buildInterface() {
-  return {
-    type: 'spi_epd',
+    mode: val('dtype') || 'mono',
+    colstart: Number.parseInt(val('pmColstart'), 10),
     spi_bus: Number($('spiBus')?.value) || 0,
     pins: {
       cs: pinToInt(val('pinCs')),
@@ -99,20 +68,12 @@ function buildInterface() {
  * a panel, so the debug view says "not yet" rather than showing another board's pins.
  */
 export function buildMarqueeConfig({ network } = {}) {
-  const chosen = panelChosen();
-  return {
-    cfg_version: CFG_VERSION,
-    // The group key. One name, four feeds — the board derives {name}.bitmap and the
-    // rest from it, exactly as api.js does on this side.
+  return assembleConfig({
     name: ioGroupKey(),
-    display: chosen ? buildDisplay() : null,
-    interface: chosen ? buildInterface() : null,
-    network: { ...EMPTY_NETWORK(), ...(network || {}) },
-    adafruit_io: {
-      username: val('ioUser'),
-      key: $('ioKey')?.value || '',
-    },
-  };
+    panel: panelChosen() ? panelFromForm() : null,
+    network,
+    adafruitIo: { username: val('ioUser'), key: $('ioKey')?.value || '' },
+  });
 }
 
 /**

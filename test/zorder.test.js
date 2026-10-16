@@ -1,5 +1,5 @@
 /**
- * Stacking order — public/js/canvas/zorder.js, and the order deserialize() rebuilds a
+ * Stacking order — public/js/lib/zorder.js, and the order deserialize() rebuilds a
  * document in (public/js/core/doc.js).
  *
  * zorder.js imports nothing and only touches the nodes it is handed, so it runs under
@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
-import { zOrderTarget, restack, canRestack, stackPosition, placeInSavedOrder } from '../public/js/canvas/zorder.js';
+import { zOrderTarget, restack, canRestack, stackPosition, placeInSavedOrder } from '../public/js/lib/zorder.js';
 
 // The UMD bundle registers on the global when there is no CommonJS/AMD loader,
 // which is exactly how the page's classic <script> tag loads it.

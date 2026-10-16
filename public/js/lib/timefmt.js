@@ -21,6 +21,8 @@
  * samples.js and canvasimport.js are kept that way. Intl is part of the language.
  */
 
+import { normalizeFontFamily } from './fonts.js';
+
 export const TIME_PRESETS = [
   { id: 'time',    label: 'Time',              fmt: '%l:%M %p',              example: '12:00 PM' },
   { id: 'time24',  label: 'Time (24h)',        fmt: '%H:%M',                 example: '12:00' },
@@ -147,7 +149,7 @@ export function normalizeDatetimeAttrs(a = {}) {
       ? null : String(a.timeValue),
     fill: typeof a.fill === 'string' && a.fill ? a.fill : undefined,
     fontSize: Number.isFinite(fontSize) && fontSize >= 4 ? Math.round(fontSize) : 20,
-    fontFamily: ['monospace', 'sans-serif', 'serif'].includes(a.fontFamily) ? a.fontFamily : 'monospace',
+    fontFamily: normalizeFontFamily(a.fontFamily),
     align: ['left', 'center', 'right'].includes(a.align) ? a.align : 'left',
     width: Number.isFinite(width) && width >= 8 ? Math.round(width) : undefined,
   };

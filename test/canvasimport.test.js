@@ -1,12 +1,12 @@
 /**
- * Importing a canvas.json — public/js/core/canvasimport.js.
+ * Importing a canvas.json — public/js/lib/canvasimport.js.
  *
  * canvasimport.js imports only palette.js, which imports nothing, so it runs under
  * plain node the way samples.js does.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateCanvasDoc, compareDisplay, fitDoc } from '../public/js/core/canvasimport.js';
+import { validateCanvasDoc, compareDisplay, fitDoc } from '../public/js/lib/canvasimport.js';
 import { logicalDimsOf } from '../public/js/canvas/palette.js';
 
 const label = (x, y, extra = {}) => ({ etype: 'label', x, y, text: 'hi', fontSize: 20, ...extra });

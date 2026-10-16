@@ -25,13 +25,37 @@ npm start
 ## Bitmap Rendering
 
 Everything you draw on the canvas is rendered, dithered, palette-remapped by
-`public/js/canvas/bitmap.js`. 
+`public/js/lib/bitmap.js`. 
 
 `bitmap.js` is a pure-JS port of a subset of the ImageMagick CI pipeline and implements the following `magick` (ImageMagick) command only:
 ```
 magick in.png -dither FloydSteinberg -define dither:diffusion-amount=N% \
   -remap eink-<type>.png gif:- | magick gif:- -compress none BMP3:-
 ```
+
+## Shared Library
+
+`public/js/lib/` is the part of the editor other hosts reuse: Adafruit IO's editor and
+its server-side renderer copy it in at a pinned commit. It holds the element model
+(`scene.js`: build, rebuild and serialize every element, and lay out a whole document),
+the renderer (`render.js`, `bitmap.js`), palettes, formatting and the panel catalog.
+
+Text draws in bundled faces, IBM Plex Mono, Sans and Serif (`lib/fonts.js`, files in
+`public/fonts/`), so the editor and a server render show the same glyphs.
+
+Two rules, enforced by `test/lib-boundary.test.js`: a `lib/` module imports only other
+`lib/` modules, and never touches the page (`document`, `window`, `localStorage`). Konva
+is passed in by the caller rather than imported, so each host brings its own copy.
+Editor state, the stage and DOM wiring stay in `canvas/`, `core/`, `device/` and
+`screens/`.
+
+## Server Renderer
+
+`renderer/` renders a canvas.json to the panel's BMP with no browser, using `lib/` itself
+(Konva on [skia-canvas](https://skia-canvas.org)). Adafruit IO runs it to keep displays
+current while nobody has the editor open. It is the one part of the repo with dependencies,
+kept in its own `package.json` so the editor stays install-free. See
+[`renderer/README.md`](renderer/README.md).
 
 ## Credential Storage
 

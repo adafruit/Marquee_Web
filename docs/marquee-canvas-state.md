@@ -63,7 +63,7 @@ There is no `z` field. `elements` is written bottom-first, in the order the node
 the editor's content layer, so the array order **is** the z-order and a reader that
 draws them in sequence gets the same overlap the editor showed. `deserialize()` keeps
 it: an image is only built once its data URL decodes, after everything else, so
-`placeInSavedOrder()` (`public/js/canvas/zorder.js`) slots each one back down beneath
+`placeInSavedOrder()` (`public/js/lib/zorder.js`) slots each one back down beneath
 the first later element already on the canvas instead of leaving it on top. The editor
 reorders with the inspector's **Layer** row, the right-click menu, or
 <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>]</kbd> / <kbd>[</kbd> (add <kbd>Shift</kbd> for
@@ -73,7 +73,7 @@ front / back); each is an ordinary edit, so it autosaves and mirrors like any ot
 
 The toolbox's **Date & time** prop. A text block showing Adafruit IO's time
 (`/api/v2/time/millis`, read by `public/js/device/iotime.js`) formatted in the browser by
-`strftime()` in `public/js/core/timefmt.js`. It is read through the same
+`strftime()` in `public/js/lib/timefmt.js`. It is read through the same
 `refreshFeedElements()` funnel as every feed binding, one request however many there are.
 
 Why not IO's own `/integrations/time/strftime`: its successful authenticated responses carry
@@ -85,15 +85,16 @@ refreshes the time when a new image is pushed.
 
 ```json
 {"etype":"datetime","x":8,"y":4,"timeFmt":"Last Updated: %Y-%m-%d %H:%M","timeTz":"","timeValue":"Last Updated: 2026-10-02 21:05",
- "fill":"#000000","fontSize":14,"fontFamily":"monospace","align":"left","width":140}
+ "fill":"#000000","fontSize":14,"fontFamily":"IBM Plex Mono","align":"left","width":140}
 ```
 
 | field | meaning |
 |---|---|
-| `timeFmt` | a strftime string, always one of `TIME_PRESETS` in `public/js/core/timefmt.js`. Anything else loads as the default (Time). There is no free-form format. |
+| `timeFmt` | a strftime string, always one of `TIME_PRESETS` in `public/js/lib/timefmt.js`. Anything else loads as the default (Time). There is no free-form format. |
 | `timeTz` | a tz database name, or `""` for the timezone of the browser doing the push |
-| `timeValue` | the string IO last returned; `null` before the first read. A **sample** (see `core/samples.js`), so a new time is not a design change. |
+| `timeValue` | the string IO last returned; `null` before the first read. A **sample** (see `lib/samples.js`), so a new time is not a design change. |
 | `fill`, `fontSize`, `fontFamily`, `align` | as on a label |
+| `fontFamily` | one of the bundled faces in `lib/fonts.js`: `IBM Plex Mono`, `IBM Plex Sans`, `IBM Plex Serif`. A document saved before they were bundled says `monospace`, `sans-serif` or `serif`, and loads as the matching Plex face |
 | `width` | present only when the box width is set; absent means the box auto-sizes to the text |
 
 `text` is not saved: it is `timeValue`, or the preset's example before the first read.
@@ -116,7 +117,7 @@ elements on the board's own cycle (see "The live take" in
 [`marquee-sleep.md`](marquee-sleep.md)). `serialize()` bakes each bound element's last
 reading into the document, so every refresh is a document change — and without this the
 feed would carry a fresh copy of the whole scene, embedded images and all, once per board
-cycle, forever, per open tab. `core/samples.js` names the keys that hold a reading rather
+cycle, forever, per open tab. `lib/samples.js` names the keys that hold a reading rather
 than a design decision, and a document differing in nothing else is not published.
 
 What the feed then holds is the scene as of the last real edit. That is the right split —
@@ -176,7 +177,7 @@ when IO has nothing to say.
 
 ## Importing a file
 
-`Import JSON` in the editor (`core/doc.js`, validated by `core/canvasimport.js`) loads a
+`Import JSON` in the editor (`core/doc.js`, validated by `lib/canvasimport.js`) loads a
 `canvas.json` onto the canvas and needs nothing from this feed: it ends in the same
 `saveCanvasNow()` as any edit, so the imported scene goes to localStorage first and up
 here on the usual leash above. Like a hydrate it loads with `keepDisplay: true` — the

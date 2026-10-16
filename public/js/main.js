@@ -23,7 +23,7 @@ import { initConfig } from './core/config.js';
 import { initDoc, saveCanvasNow } from './core/doc.js';
 import { initRender } from './canvas/render.js';
 import { initFeeds } from './device/feeds.js';
-import { initIconFont } from './canvas/elements.js';
+import { initFonts } from './canvas/elements.js';
 import { initDevice } from './device/device.js';
 import { initKeyboard, initDeselect, initContextMenu } from './canvas/selection.js';
 import { initRouter, navigate, onEnter, syncNav, isNavigable, wasOnList } from './core/router.js';
@@ -249,7 +249,7 @@ async function boot() {
   // After the restore, not before: it re-draws the gauges that show an icon once the
   // Font Awesome face resolves, and on a cold load those gauges don't exist yet when
   // boot starts. Deliberately not awaited — the editor must not wait on a font.
-  initIconFont();
+  initFonts();
 }
 
 boot().catch((err) => {

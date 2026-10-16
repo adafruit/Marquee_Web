@@ -8,7 +8,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TIME_PRESETS, strftime } from '../public/js/core/timefmt.js';
+import { TIME_PRESETS, strftime } from '../public/js/lib/timefmt.js';
 import { readIoMillis, readIoTime } from '../public/js/device/iotime.js';
 
 const skip = !process.env.IO_LIVE && 'set IO_LIVE=1 to run';

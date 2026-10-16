@@ -1,5 +1,5 @@
-// flash.js's board table, validation and write-piece logic. Nothing here touches a serial port:
-// flashDevice() is not exercised (it needs navigator.serial and the esptool bundle), the pure
+// lib/flash.js's board table, validation and write-piece logic. Nothing here touches a serial
+// port: writeImage() is not exercised (it needs a granted port and the esptool bundle), the pure
 // parts around it are. Run with `npm test`.
 
 import { test } from 'node:test';
@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {
   firmwareFor, validateFirmware, imageToWrite, readPartitions, findPartitionAt, headerFlashSize,
   describeFlashError, FIRMWARE_ARTIFACT,
-} from '../public/js/device/flash.js';
+} from '../public/js/lib/flash.js';
 
 const APP_OFFSET = 0x10000;
 

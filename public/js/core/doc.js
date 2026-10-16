@@ -22,12 +22,12 @@ import {
   addLabel, addDivider, addLineChart, addGauge, addIndicator, addBattery, addImage, addDatetime,
   remapColorsToPalette,
 } from '../canvas/elements.js';
-import { placeInSavedOrder } from '../canvas/zorder.js';
-import { normalizeDatetimeAttrs } from './timefmt.js';
+import { placeInSavedOrder } from '../lib/zorder.js';
+import { serializeElement } from '../lib/scene.js';
 import { applyDisplayToForm, setResolution, applyDither } from './config.js';
 import { activeDeviceId, saveCanvas } from '../device/devices.js';
 import { scheduleCanvasStatePublish } from '../device/canvasfeed.js';
-import { validateCanvasDoc, compareDisplay, fitDoc } from './canvasimport.js';
+import { validateCanvasDoc, compareDisplay, fitDoc } from '../lib/canvasimport.js';
 import {
   $, copyFromButton, toast, escapeHtml, openModal, closeModal, wireModal, segValue, setSegValue, show,
 } from './util.js';
@@ -36,118 +36,7 @@ export function serialize() {
   return {
     version: 1,
     display: { ...display },
-    elements: layer.find('.element').map((n) => {
-      const etype = n.getAttr('etype');
-      const base = { etype, x: n.x(), y: n.y() };
-      if (etype === 'label') {
-        Object.assign(base, {
-          fill: n.fill(), text: n.text(), fontSize: n.fontSize(),
-          fontFamily: n.fontFamily(), align: n.align(),
-        });
-        if (n.attrs.width !== undefined) base.width = Math.round(n.width());
-        // A linked label remembers where its text came from, how it wraps the value,
-        // and the sample itself — the last of these is what makes a new reading part
-        // of the pushed document rather than a live-only detail.
-        if (n.getAttr('feedKey')) {
-          base.feedKey = n.getAttr('feedKey');
-          base.feedName = n.getAttr('feedName') || '';
-          base.feedPrefix = n.getAttr('feedPrefix') || '';
-          base.feedSuffix = n.getAttr('feedSuffix') || '';
-          base.feedDecimals = n.getAttr('feedDecimals') ?? null;
-          base.feedValue = n.getAttr('feedValue') ?? null;
-        }
-      } else if (etype === 'datetime') {
-        // Through the same normalizer the factory uses, so a save and a load agree on
-        // every field. `text` is not saved: it is derived from timeValue (or the preset's
-        // example), and the factory recomputes it. `width` is left off when auto-sized.
-        const a = normalizeDatetimeAttrs({
-          timeFmt: n.getAttr('timeFmt'), timeTz: n.getAttr('timeTz'), timeValue: n.getAttr('timeValue'),
-          fill: n.fill(), fontSize: n.fontSize(), fontFamily: n.fontFamily(), align: n.align(),
-          width: n.attrs.width !== undefined ? n.width() : undefined,
-        });
-        if (a.width === undefined) delete a.width;
-        Object.assign(base, a);
-      } else if (etype === 'divider') {
-        Object.assign(base, { fill: n.fill(), width: n.width(), height: n.height() });
-      } else if (etype === 'image') {
-        Object.assign(base, {
-          src: n.getAttr('src'), w: Math.round(n.width()), h: Math.round(n.height()),
-          natW: n.getAttr('natW'), natH: n.getAttr('natH'),
-        });
-      } else if (etype === 'indicator') {
-        // Explicit branch: the generic widget shape below is {ink,title,w}+value,
-        // which would drop the feed binding, the condition and the on/off colors.
-        // The sampled `value` is included deliberately — it is what makes a state
-        // change part of the pushed document rather than a live-only detail.
-        Object.assign(base, {
-          w: n.getAttr('w'), ink: n.getAttr('ink'),
-          onColor: n.getAttr('onColor'), offColor: n.getAttr('offColor'),
-          op: n.getAttr('op'), cmp: n.getAttr('cmp'),
-          feedKey: n.getAttr('feedKey') || '', feedName: n.getAttr('feedName') || '',
-          value: n.getAttr('value') ?? null,
-        });
-      } else if (etype === 'battery') {
-        // Same reasoning as the indicator: the generic widget shape would drop the
-        // feed binding, every condition and the default shade. `conds` is copied
-        // rather than passed by reference so the saved doc can't alias live attrs.
-        Object.assign(base, {
-          w: n.getAttr('w'), ink: n.getAttr('ink'),
-          showPct: !!n.getAttr('showPct'),
-          conds: (n.getAttr('conds') || []).map((c) => ({ op: c.op, cmp: c.cmp, color: c.color })),
-          defaultShade: n.getAttr('defaultShade'),
-          feedKey: n.getAttr('feedKey') || '', feedName: n.getAttr('feedName') || '',
-          feedValue: n.getAttr('feedValue') ?? null,
-        });
-      } else if (etype === 'gauge') {
-        // Explicit, for the reason given on the indicator: the generic widget shape
-        // is {ink,title,w}, which would drop the binding, the range, the thresholds
-        // and the icon. The bounds and warning values are saved as the RAW authored
-        // strings — '' means "not set" and must not round-trip as 0.
-        Object.assign(base, {
-          w: n.getAttr('w'), ink: n.getAttr('ink'), title: n.getAttr('title') || '',
-          min: n.getAttr('min'), max: n.getAttr('max'),
-          ringWidth: n.getAttr('ringWidth'),
-          gaugeLabel: n.getAttr('gaugeLabel') || '',
-          lowWarn: n.getAttr('lowWarn') ?? '', highWarn: n.getAttr('highWarn') ?? '',
-          decimals: n.getAttr('decimals'),
-          showIcon: !!n.getAttr('showIcon'), icon: n.getAttr('icon'),
-          warnColor: n.getAttr('warnColor'), alarmColor: n.getAttr('alarmColor'),
-          feedKey: n.getAttr('feedKey') || '', feedName: n.getAttr('feedName') || '',
-          gaugeValue: n.getAttr('gaugeValue') ?? null,
-        });
-      } else if (etype === 'linechart') {
-        // `feeds` and `series` are copied rather than passed by reference so the
-        // saved doc can't alias live attrs — same as the battery's `conds`.
-        Object.assign(base, {
-          w: n.getAttr('w'), h: n.getAttr('h'), ink: n.getAttr('ink'),
-          title: n.getAttr('title') || '',
-          feeds: (n.getAttr('feeds') || []).map((f) => ({ key: f.key, name: f.name, color: f.color })),
-          series: Object.fromEntries(Object.entries(n.getAttr('series') || {})
-            .map(([k, pts]) => [k, (pts || []).map((p) => ({ t: p.t, v: p.v }))])),
-          hours: n.getAttr('hours'),
-          xLabel: n.getAttr('xLabel') || '', yLabel: n.getAttr('yLabel') || '',
-          yMin: n.getAttr('yMin') ?? '', yMax: n.getAttr('yMax') ?? '',
-          yScale: n.getAttr('yScale'), decimals: n.getAttr('decimals'),
-          rawOnly: !!n.getAttr('rawOnly'), stepped: !!n.getAttr('stepped'),
-          gridLines: !!n.getAttr('gridLines'), keyLegend: !!n.getAttr('keyLegend'),
-          axisFontSize: n.getAttr('axisFontSize'), axisFontFamily: n.getAttr('axisFontFamily'),
-        });
-        // The legacy sample series is only reachable when no feeds are bound (see
-        // chartSeries), so it is only worth saving in that case — carrying it
-        // alongside real data would be dead weight in every write to the device.
-        if (!(n.getAttr('feeds') || []).length) base.data = n.getAttr('data');
-      } else {
-        Object.assign(base, { ink: n.getAttr('ink'), title: n.getAttr('title'), w: n.getAttr('w') });
-        base.value = n.getAttr('value');
-      }
-      // The text box (see applyTextBox in elements.js). Written only when set, so a
-      // plain label serializes exactly as it did before the option existed.
-      if (etype === 'label' || etype === 'datetime') {
-        if (n.getAttr('background')) base.background = n.getAttr('background');
-        if (n.padding()) base.padding = n.padding();
-      }
-      return base;
-    }),
+    elements: layer.find('.element').map(serializeElement),
   };
 }
 

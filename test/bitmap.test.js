@@ -1,5 +1,5 @@
 /**
- * Byte-identity regression for public/js/canvas/bitmap.js.
+ * Byte-identity regression for public/js/lib/bitmap.js.
  *
  * Every golden in test/fixtures/golden/ was produced by ImageMagick 7.1.2-27 Q16-HDRI
  * (macOS build) with the pipeline the editor used to shell out to:
@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { renderIndexedBmp } from '../public/js/canvas/bitmap.js';
+import { renderIndexedBmp } from '../public/js/lib/bitmap.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const INPUTS = path.join(here, 'fixtures', 'inputs');

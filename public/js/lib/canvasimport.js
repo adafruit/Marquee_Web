@@ -13,7 +13,7 @@
  * travels with the artwork.
  */
 
-import { PALETTES, logicalDimsOf, isHexColor } from '../canvas/palette.js';
+import { PALETTES, logicalDimsOf, isHexColor } from './palette.js';
 
 /** Every etype deserialize() has a factory for. Anything else would silently load as
  *  a label, which is worse than saying so and leaving it out. */

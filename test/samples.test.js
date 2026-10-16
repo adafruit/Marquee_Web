@@ -1,5 +1,5 @@
 /**
- * What counts as a reading, and what counts as an edit — public/js/core/samples.js.
+ * What counts as a reading, and what counts as an edit — public/js/lib/samples.js.
  *
  * The first test in this repo that covers app logic rather than the render pipeline, and
  * it exists because this is the one part of the live-take change whose failure mode is
@@ -11,7 +11,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SAMPLE_KEYS, stripSamples, withoutSamples, sameDesign } from '../public/js/core/samples.js';
+import { SAMPLE_KEYS, stripSamples, withoutSamples, sameDesign } from '../public/js/lib/samples.js';
 
 const doc = (...elements) => ({ version: 1, display: { type: 'mono', w: 296, h: 128 }, elements });
 
