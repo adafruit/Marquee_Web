@@ -56,7 +56,9 @@ export const FEED_ETYPES = ['label', 'indicator', 'battery', 'gauge'];
 const FEED_VALUE_ATTR = {
   indicator: 'value', battery: 'feedValue', label: 'feedValue', gauge: 'gaugeValue',
 };
-export const feedValueAttr = (n) => FEED_VALUE_ATTR[n.getAttr('etype')] || 'feedValue';
+/** The attr an element of this etype keeps its reading in, for a saved element as well as a node. */
+export const valueAttrOf = (etype) => FEED_VALUE_ATTR[etype] || 'feedValue';
+export const feedValueAttr = (n) => valueAttrOf(n.getAttr('etype'));
 
 /** Does this element take its content from a feed right now? */
 export const isFeedLinked = (n) => !!n.getAttr('feedKey');
@@ -241,12 +243,14 @@ function chartTimeDomain(all) {
  * grid line) and thinned until they fit, since a 250px panel has room for a few
  * times, not one per sample. A window of a day and a half or less reads as clock
  * times; anything longer as dates, because "14:00" repeated across a week says
- * nothing. Both come from the browser's locale, which is where the bitmap is drawn.
+ * nothing. Both come from the host's locale. The zone is `timeZone` when the host
+ * names one — a server has no useful zone of its own — and the host's otherwise, which
+ * in the editor is the browser drawing the bitmap.
  */
-function timeTickLabels(time, plotW, font) {
+function timeTickLabels(time, plotW, font, timeZone) {
   const fmt = time.hi - time.lo <= 36 * 3600e3
-    ? (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    : (ms) => new Date(ms).toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+    ? (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone })
+    : (ms) => new Date(ms).toLocaleDateString([], { month: 'numeric', day: 'numeric', timeZone });
   for (const n of [5, 3, 2]) {
     const labels = Array.from({ length: n }, (_, i) => {
       const frac = i / (n - 1);
@@ -319,7 +323,7 @@ function buildLineChart(Konva, g) {
     // whenever the samples carry real timestamps (the legacy sample data doesn't),
     // and the X caption on its own row beneath them, as the Y has its own gutter.
     const plotW = Math.max(4, w - left - 1);
-    const timeLabels = withTimes && time ? timeTickLabels(time, plotW, tickFont) : [];
+    const timeLabels = withTimes && time ? timeTickLabels(time, plotW, tickFont, g.getAttr('axisTimeZone')) : [];
     const timeRowH = timeLabels.length ? tickFont + 1 : 0;
     const bottom = 1 + timeRowH + (xLabel ? axisFont + 1 : 0) + legendH;
     return { axisFont, titleFont, tickFont, yGutter, tickW, left, top, legendH,
@@ -874,6 +878,10 @@ export function createLineChart(Konva, attrs = {}, display, nodeProps = {}) {
   g.setAttr('keyLegend', attrs.keyLegend ?? false);
   g.setAttr('axisFontSize', attrs.axisFontSize ?? AXIS_FONT_DEFAULT);
   g.setAttr('axisFontFamily', normalizeFontFamily(attrs.axisFontFamily));
+  // The zone the time axis reads in: the host's, passed on the display at render time.
+  // Not a design attr, so serializeElement never saves it; undefined in the editor, which
+  // leaves the browser's own zone in charge.
+  g.setAttr('axisTimeZone', display?.timeZone || undefined);
   // Legacy sample data, only reached when no feeds are bound (see chartSeries).
   g.setAttr('data', attrs.data ?? []);
   buildLineChart(Konva, g);

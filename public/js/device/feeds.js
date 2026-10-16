@@ -11,8 +11,11 @@
 import { ioHost, ioLog, feedUrl, parseSharedFeed } from '../core/api.js';
 import { layer } from '../canvas/stage.js';
 import {
-  addLabel, rebuildWidget, applyFeedValue, applyTimeValue, FEED_ETYPES, CHART_RAW_MAX,
+  addLabel, rebuildWidget, applyFeedValue, applyTimeValue,
 } from '../canvas/elements.js';
+import {
+  CHART_RAW_MAX, readsLast, readsChart, readsTime, chartWindow, chartCap, chartPoints, mergeSeries,
+} from '../lib/bindings.js';
 import { readIoMillis } from './iotime.js';
 import { strftime } from '../lib/timefmt.js';
 import { display, PALETTES } from '../canvas/palette.js';
@@ -235,38 +238,13 @@ export async function readFeedHistory(feedKey, { hours = 24, raw = false } = {})
       feedUrl(feedKey, `/data/chart?${qs}`),
       { headers: { 'X-AIO-Key': key } });
     if (!res.ok) return null;
-    const body = await res.json().catch(() => null);
-    if (!body || !Array.isArray(body.data)) return null;
-    const cols = body.columns || ['date', 'value'];
-    const ti = cols.indexOf('date');
-    // 'avg' is the aggregate that represents the window; 'value' is the raw case.
-    const vi = ['value', 'avg', 'max', 'min'].map((c) => cols.indexOf(c)).find((i) => i >= 0);
-    if (vi === undefined || vi < 0) return null;
-    return body.data
-      .map((row) => ({ t: ti >= 0 ? row[ti] : null, v: Number(row[vi]) }))
-      .filter((p) => Number.isFinite(p.v))
-      // Sorted oldest-first, explicitly. The chart joins points in array order, so
-      // a descending response would draw the window backwards.
-      // /data/chart ascends today; /data descends, and that is one query away.
-      .sort((a, b) => (Date.parse(a.t) || 0) - (Date.parse(b.t) || 0));
+    // Columns by name, oldest first: see chartPoints() in lib/bindings.js.
+    return chartPoints(await res.json().catch(() => null));
   } catch { return null; }
 }
 
-/**
- * Thin a series to at most `max` points, keeping the FIRST and LAST so the window's
- * endpoints stay exact.
- *
- * Charts are 120-300px wide, so anything denser than that draws multiple samples
- * into one column — and canvas.json is the wire format to the device, so the
- * invisible points cost bytes for nothing.
- */
-export function downsample(points, max) {
-  if (!Array.isArray(points) || points.length <= max || max < 2) return points || [];
-  const out = [];
-  const step = (points.length - 1) / (max - 1);
-  for (let i = 0; i < max; i++) out.push(points[Math.round(i * step)]);
-  return out;
-}
+// Shared with the server renderer; re-exported for anything that imported it from here.
+export { downsample } from '../lib/bindings.js';
 
 /**
  * Every element with a live binding, split by HOW it is read: `targets` take a last
@@ -280,11 +258,13 @@ export function downsample(points, max) {
  */
 export function feedBoundElements(nodes) {
   const all = nodes || layer.find('.element');
+  // The same predicates feedReads() applies to a saved document, so the editor and a
+  // server render agree on what is bound.
   return {
-    targets: all.filter((n) => FEED_ETYPES.includes(n.getAttr('etype')) && n.getAttr('feedKey')),
-    charts: all.filter((n) => n.getAttr('etype') === 'linechart' && (n.getAttr('feeds') || []).length),
+    targets: all.filter((n) => readsLast(n.getAttrs())),
+    charts: all.filter((n) => readsChart(n.getAttrs())),
     // Always live: a datetime has no binding to be missing, the time is its content.
-    datetimes: all.filter((n) => n.getAttr('etype') === 'datetime'),
+    datetimes: all.filter((n) => readsTime(n.getAttrs())),
   };
 }
 
@@ -365,21 +345,15 @@ export async function refreshChart(g) {
     rebuildWidget(g);
     return true;
   }
-  const hours = g.getAttr('hours') ?? 24;
-  const raw = !!g.getAttr('rawOnly');
-  const cap = Math.max(2, Math.round(g.getAttr('w') || 120));
-  const series = { ...(g.getAttr('series') || {}) };
+  const { hours, raw } = chartWindow(g.getAttrs());
+  const fetched = {};
   const oks = await Promise.all(feeds.map(async (f) => {
     const pts = await readFeedHistory(f.key, { hours, raw });
     if (pts === null) return false;
-    series[f.key] = downsample(pts, cap).map((p) => ({ t: p.t, v: p.v }));
+    fetched[f.key] = pts;
     return true;
   }));
-  // Drop cached series for feeds that are no longer bound, or an unbound-then-
-  // rebound feed would silently resurrect stale points.
-  const live = new Set(feeds.map((f) => f.key));
-  Object.keys(series).forEach((k) => { if (!live.has(k)) delete series[k]; });
-  g.setAttr('series', series);
+  g.setAttr('series', mergeSeries(g.getAttr('series'), feeds, fetched, chartCap(g.getAttrs())));
   rebuildWidget(g);
   return oks.every(Boolean);
 }

@@ -1,0 +1,8 @@
+# Only what renderer/Dockerfile copies. Everything else stays out of the build context.
+*
+!renderer/package.json
+!renderer/package-lock.json
+!renderer/*.js
+!public/js/package.json
+!public/js/lib/
+!public/fonts/

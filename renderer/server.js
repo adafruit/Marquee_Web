@@ -1,6 +1,7 @@
 /**
  * The Lambda handler behind plain HTTP, for local development (an io-docker service):
- * POST /render with render()'s input as JSON, get its output back. GET /health answers ok.
+ * POST /render with render()'s input as JSON, or POST /plan with { doc }, and get the
+ * handler's output back. GET /health answers ok.
  */
 
 import { createServer } from 'node:http';
@@ -18,7 +19,8 @@ const send = (res, status, body) => {
 
 createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') return send(res, 200, { ok: true });
-  if (req.method !== 'POST' || req.url !== '/render') return send(res, 404, { error: 'not found' });
+  const op = req.method === 'POST' && { '/render': 'render', '/plan': 'plan' }[req.url];
+  if (!op) return send(res, 404, { error: 'not found' });
 
   const chunks = [];
   let size = 0;
@@ -35,7 +37,7 @@ createServer((req, res) => {
     } catch {
       return send(res, 400, { error: 'expected JSON' });
     }
-    const out = await handler(input);
+    const out = await handler({ ...input, op });
     send(res, out.error ? 422 : 200, out);
   });
 }).listen(PORT, () => console.log(`marquee renderer listening on :${PORT}`));
