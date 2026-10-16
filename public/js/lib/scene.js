@@ -69,16 +69,26 @@ export const isFeedLinked = (n) => !!n.getAttr('feedKey');
 /** Is this a "Date & time" prop, whose text IO renders (see createDatetime)? */
 export const isDatetime = (n) => n.getAttr('etype') === 'datetime';
 
+/** Is there a reading to show? A reading of 0 is one. null, undefined and '' are not. */
+const hasReading = (raw) => raw !== null && raw !== undefined && String(raw) !== '';
+
+/**
+ * A linked label that has no reading to show, because its feed is empty or has not been
+ * read. It draws a "no data" state (see drawTextBox), so an empty feed looks like an
+ * empty feed and not like a label someone forgot to fill in (#24).
+ */
+export const labelHasNoData = (n) => n.getAttr('etype') === 'label' && isFeedLinked(n)
+  && !hasReading(n.getAttr('feedValue'));
+
 /**
  * The text a linked label shows: the sample wrapped in its optional prefix and
- * suffix. An unknown value renders as an em dash rather than an empty label,
+ * suffix. An unknown value renders as a question mark rather than an empty label,
  * because a label that collapses to zero width is indistinguishable from one the
- * user deleted.
+ * user deleted. The prefix and suffix stay, so the label still says what it is for.
  */
 export function linkedLabelText(n) {
   const raw = n.getAttr('feedValue');
-  const body = (raw === null || raw === undefined || String(raw) === '')
-    ? '—' : fmtFeedText(raw, n.getAttr('feedDecimals'));
+  const body = hasReading(raw) ? fmtFeedText(raw, n.getAttr('feedDecimals')) : '?';
   return `${n.getAttr('feedPrefix') || ''}${body}${n.getAttr('feedSuffix') || ''}`;
 }
 
@@ -101,7 +111,22 @@ function drawTextBox(ctx, shape) {
     ctx.setAttr('fillStyle', bg);
     ctx.fillRect(0, 0, shape.width(), shape.height());
   }
-  shape._sceneFunc(ctx);
+  if (!labelHasNoData(shape)) { shape._sceneFunc(ctx); return; }
+  // No data: a dashed outline round the box, in a colour picked against the page, and the
+  // text in the mark's colour, so it shows even where the label's own ink is the page's.
+  // Drawn on the panel too, like the empty feed image.
+  const { outline, mark } = noDataColors(shape.getAttr('display'), bg);
+  ctx.setAttr('strokeStyle', outline);
+  ctx.setAttr('lineWidth', 1);
+  ctx.setLineDash([3, 3]);
+  ctx.strokeRect(0.5, 0.5, Math.max(0, shape.width() - 1), Math.max(0, shape.height() - 1));
+  ctx.setLineDash([]);
+  // Konva.Text takes its colour from fill(), so the mark goes in for this one draw. It is
+  // written to attrs directly because fill(x) fires a change, which autosave hears, and
+  // the saved fill is the user's ink.
+  const ink = shape.attrs.fill;
+  shape.attrs.fill = mark;
+  try { shape._sceneFunc(ctx); } finally { shape.attrs.fill = ink; }
 }
 
 /**
@@ -792,18 +817,24 @@ function paletteRed(type) {
 }
 
 /**
- * The colours of the "no picture" placeholder on this display's page: the outline and
- * the question mark. Both are picked against the page, so the frame never vanishes into
- * it (#24 calls out black ink on a black page). The mark is red where the panel has red
- * and the page is not already red. Otherwise it uses the outline's colour.
+ * The colours of a "no data" placeholder on this display's page: the outline and the
+ * mark. The outline is picked against the page, so it never vanishes into it (#24 calls
+ * out black ink on a black page). The mark is red where the panel has red and the
+ * surface under it is not already red. Otherwise it is the ink that stands out most on
+ * that surface. The surface is the page, or `under` when the mark sits on a box of its
+ * own (a label's background).
  */
-export function feedImagePlaceholderColors(display) {
+export function noDataColors(display, under) {
   const type = display?.type || 'mono';
-  const bg = paletteBackground(display?.background ?? PAPER, type);
-  const outline = contrastInk(type, bg);
+  const page = paletteBackground(display?.background ?? PAPER, type);
+  const surface = under ? paletteBackground(under, type) : page;
+  const outline = contrastInk(type, page);
   const red = paletteRed(type);
-  return { outline, mark: red && red !== bg ? red : outline };
+  return { outline, mark: red && red !== surface ? red : contrastInk(type, surface) };
 }
+
+/** The empty feed image's colours: its outline and question mark, on the page. */
+export const feedImagePlaceholderColors = (display) => noDataColors(display);
 
 function buildFeedImage(Konva, g) {
   g.destroyChildren();
@@ -882,10 +913,14 @@ export function createLabel(Konva, attrs = {}, display, nodeProps = {}) {
   node.setAttr('feedSuffix', attrs.feedSuffix ?? '');
   node.setAttr('feedDecimals', attrs.feedDecimals ?? null);   // null = as sent
   node.setAttr('feedValue', attrs.feedValue ?? null);
+  // Kept on the node (never saved) so the "no data" state can pick its colours against
+  // the page, as the feed image does. The editor passes its live descriptor.
+  node.setAttr('display', display);
   // A linked label's text is DERIVED, so recompute it on load rather than
   // trusting the saved string: the prefix/suffix could have been edited in the
-  // same session that the value last changed.
-  if (isFeedLinked(node) && node.getAttr('feedValue') !== null) node.text(linkedLabelText(node));
+  // same session that the value last changed. With no reading as well: a document with
+  // its samples stripped has no text either, and would otherwise load as 'Label'.
+  if (isFeedLinked(node)) node.text(linkedLabelText(node));
   applyTextBox(node, attrs);
   return node;
 }
@@ -1246,17 +1281,18 @@ export function buildScene(Konva, doc, { display = doc.display || {}, images = {
   const group = new Konva.Group();
   // The page colour is part of the artwork, so it comes from the document — snapped
   // to this panel's palette, and PAPER for a document from before the field.
-  group.add(new Konva.Rect({
-    x: 0, y: 0, width: w, height: h,
-    fill: paletteBackground(doc.display?.background ?? PAPER, display.type),
-  }));
+  const background = paletteBackground(doc.display?.background ?? PAPER, display.type);
+  group.add(new Konva.Rect({ x: 0, y: 0, width: w, height: h, fill: background }));
+  // The elements are handed that page too. A "no data" placeholder picks its colours
+  // against it, and a server's display (the panel) carries no page colour of its own.
+  const page = { ...display, background };
   (doc.elements || []).forEach((el, i) => {
     if (el.etype === 'image') {
-      if (images[i]) group.add(createImage(Konva, images[i], el, display));
+      if (images[i]) group.add(createImage(Konva, images[i], el, page));
     } else if (el.etype === 'feedimage') {
-      group.add(createFeedImage(Konva, { ...el, imageObj: images[i] || null }, display));
+      group.add(createFeedImage(Konva, { ...el, imageObj: images[i] || null }, page));
     } else {
-      group.add(createElement(Konva, el, display));
+      group.add(createElement(Konva, el, page));
     }
   });
   return { group, width: w, height: h };

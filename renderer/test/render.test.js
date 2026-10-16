@@ -38,6 +38,29 @@ const header = (base64) => {
   return { magic: bmp.subarray(0, 2).toString(), width: bmp.readInt32LE(18), height: bmp.readInt32LE(22), bpp: bmp.readUInt16LE(28) };
 };
 
+/** How many pixels of a rendered BMP are each colour, as '#RRGGBB' keys. Palette BMPs only. */
+const countColors = ({ base64 }) => {
+  const bmp = Buffer.from(base64, 'base64');
+  const width = bmp.readInt32LE(18), height = Math.abs(bmp.readInt32LE(22));
+  const bpp = bmp.readUInt16LE(28), dataAt = bmp.readUInt32LE(10);
+  const hex = (n) => n.toString(16).padStart(2, '0').toUpperCase();
+  const palette = [];
+  for (let o = 14 + bmp.readUInt32LE(14); o < dataAt; o += 4) {   // B, G, R, 0
+    palette.push(`#${hex(bmp[o + 2])}${hex(bmp[o + 1])}${hex(bmp[o])}`);
+  }
+  const rowBytes = Math.ceil((width * bpp) / 32) * 4;
+  const counts = {};
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const bit = x * bpp;
+      const byte = bmp[dataAt + y * rowBytes + (bit >> 3)];
+      const index = (byte >> (8 - bpp - (bit & 7))) & ((1 << bpp) - 1);
+      counts[palette[index]] = (counts[palette[index]] || 0) + 1;
+    }
+  }
+  return counts;
+};
+
 test('every element type renders to a BMP the size of the panel', async () => {
   const out = await render({ doc: EVERYTHING, display, now: NOON });
   // a MagTag at rotation 0 is landscape
@@ -96,6 +119,37 @@ test('a feed image draws the picture read from its feed, and its placeholder wit
   // The reference is never fetched, whatever it says.
   const hostile = scene([{ etype: 'feedimage', x: 0, y: 0, w: 40, h: 40, feedKey: '', src: 'http://169.254.169.254/' }]);
   assert.equal((await render({ doc: hostile, display })).sha, empty.sha);
+});
+
+test('a linked label with no reading draws its no-data state, even black on a black page (#24)', async () => {
+  // The request's display is the panel, with no page colour: the page is the document's.
+  const { background, ...panel } = { ...display, type: 'mono' };
+  const BLACK = INK;   // the mono panel's black
+  const onBlack = (elements) => scene(elements, { display: { background: BLACK } });
+  const label = { etype: 'label', x: 4, y: 4, fontSize: 24, fill: BLACK, feedKey: 'temp', feedValue: null };
+  const blank = await render({ doc: onBlack([]), display: panel });
+  const empty = await render({ doc: onBlack([label]), display: panel });
+  // Black text on a black page would leave the page as it was. The no-data state does not.
+  assert.notEqual(empty.sha, blank.sha, 'the empty label shows on a black page');
+  const read = await render({ doc: onBlack([label]), readings: { last: { temp: '21' } }, display: panel });
+  assert.notEqual(read.sha, empty.sha);
+  // With a reading, black on black is what the user drew, and the page is all there is.
+  assert.equal(read.sha, blank.sha);
+  // A plain label with the same text is not a placeholder: '?' alone, with no outline.
+  const plain = await render({ doc: onBlack([{ ...label, feedKey: '', text: '?' }]), display: panel });
+  assert.equal(plain.sha, blank.sha);
+});
+
+test('a linked label with no reading is marked in red on a tricolor panel', async () => {
+  const label = { etype: 'label', x: 4, y: 4, fontSize: 24, fill: INK, feedKey: 'temp', feedValue: null };
+  const count = async (el) => countColors(await render({ doc: scene([el]), display }));
+  const empty = await count(label);
+  // The same '?' unlinked, in ink and in red. Antialiased edges snap to the nearest panel
+  // colour, so a few pixels of the other colour turn up in either; the margins allow that.
+  const inInk = await count({ ...label, feedKey: '', text: '?' });
+  const inRed = await count({ ...label, feedKey: '', text: '?', fill: RED });
+  assert.ok(empty[RED] > 5 * (inInk[RED] ?? 0), `the mark is red: ${empty[RED]} red px vs ${inInk[RED]}`);
+  assert.ok(empty[INK] > (inRed[INK] ?? 0) + 15, `and outlined in ink: ${empty[INK]} ink px vs ${inRed[INK]}`);
 });
 
 test('the display decides the palette: mono comes out 1 bit per pixel', async () => {

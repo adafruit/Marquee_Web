@@ -831,6 +831,9 @@ export function duplicateSelected() {
   // Drop the listeners clone() copied, but only the ones wireNode() adds —
   // leave Konva's internal .konva handlers intact.
   clone.off('dragstart dragmove dragend transformstart transformend click tap dblclick dbltap');
+  // clone() deep-copied the display descriptor a label or feed image keeps for its
+  // placeholder colours. Hand the copy the live one, so it follows the page.
+  if (clone.getAttr('display')) clone.setAttr('display', display);
   wireNode(clone);
   layer.add(clone);
   select(clone);

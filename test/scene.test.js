@@ -29,6 +29,7 @@ const { Konva } = globalThis;
 
 const {
   createElement, createImage, serializeElement, buildScene, rebuildWidget, feedImagePlaceholderColors,
+  labelHasNoData, noDataColors,
 } = await import('../public/js/lib/scene.js');
 
 const display = { width: 128, height: 296, rotation: 0, panel: 'magtag', type: 'tricolor', background: '#F2F4EF' };
@@ -222,6 +223,104 @@ test('buildScene: a feed image is always drawn, with its picture when the host d
   assert.deepEqual(els.map((n) => n.getAttr('etype')), ['feedimage', 'feedimage']);
   assert.ok(!els[0].getAttr('imageObj'));
   assert.deepEqual(childTypes(els[1]), ['Rect', 'Image']);
+});
+
+// ---- a linked label with no data (#24) ----
+
+const linked = { etype: 'label', x: 4, y: 4, fill: INK, text: '21.5C', fontSize: 16, fontFamily: 'IBM Plex Mono',
+  align: 'left', feedKey: 'temp', feedName: 'Temp', feedPrefix: 'T ', feedSuffix: 'C', feedDecimals: 1, feedValue: null };
+
+/**
+ * Draw a label through its sceneFunc on a context that only records: what was stroked, in
+ * which colour and dash, and the colour the text went down in.
+ */
+function drawLabel(node) {
+  const calls = [];
+  const attrs = {};
+  const ctx = new Proxy({}, {
+    get: (_, prop) => {
+      if (prop === 'setAttr') return (k, v) => { attrs[k] = v; };
+      if (prop === 'fillStrokeShape') return (shape) => calls.push(['text', shape.fill()]);
+      if (prop === 'strokeRect') return (...r) => calls.push(['outline', attrs.strokeStyle, ...r]);
+      if (prop === 'setLineDash') return (d) => calls.push(['dash', d]);
+      return () => {};
+    },
+  });
+  node.sceneFunc().call(node, ctx, node);
+  return calls;
+}
+
+test('linked label, no reading: a question mark between its prefix and suffix', () => {
+  for (const feedValue of [null, undefined, '']) {
+    const node = createElement(Konva, { ...linked, feedValue }, display);
+    assert.equal(node.text(), 'T ?C', String(feedValue));
+    assert.equal(labelHasNoData(node), true);
+  }
+  // A document with its samples stripped has no text and no value. It still says '?'.
+  const { text, feedValue, ...stripped } = linked;
+  assert.equal(createElement(Konva, stripped, display).text(), 'T ?C');
+});
+
+test('linked label: a reading of zero is data', () => {
+  for (const feedValue of ['0', 0]) {
+    const node = createElement(Konva, { ...linked, feedValue }, display);
+    assert.equal(labelHasNoData(node), false);
+    assert.equal(node.text(), 'T 0.0C');
+  }
+});
+
+test('only a linked label has a no-data state', () => {
+  assert.equal(labelHasNoData(createElement(Konva, { etype: 'label', text: 'hi' }, display)), false);
+  assert.equal(labelHasNoData(createElement(Konva, { ...linked, feedValue: '21.47' }, display)), false);
+  assert.equal(labelHasNoData(createElement(Konva, { etype: 'datetime' }, display)), false);
+});
+
+test('linked label, no reading: a dashed outline against the page, and the text in red', () => {
+  const node = createElement(Konva, linked, display);
+  const calls = drawLabel(node);
+  const outline = calls.find((c) => c[0] === 'outline');
+  assert.equal(outline[1], INK);
+  assert.deepEqual(outline.slice(2), [0.5, 0.5, node.width() - 1, node.height() - 1]);
+  assert.deepEqual(calls.find((c) => c[0] === 'dash')[1], [3, 3]);
+  assert.deepEqual(calls.filter((c) => c[0] === 'text').map((c) => c[1]), [RED]);
+  // The red was for the draw only. The user's ink is what stays, and what is saved.
+  assert.equal(node.fill(), INK);
+  assert.equal(serializeElement(node).fill, INK);
+});
+
+test('linked label with a reading draws as it always did: no outline, its own ink', () => {
+  const calls = drawLabel(createElement(Konva, { ...linked, feedValue: '21.47' }, display));
+  assert.deepEqual(calls, [['text', INK]]);
+});
+
+test('linked label, no reading, black ink on a black page: it still shows', () => {
+  const mono = { ...display, type: 'mono', background: '#2F2429' };
+  const calls = drawLabel(createElement(Konva, linked, mono));
+  assert.equal(calls.find((c) => c[0] === 'outline')[1], '#F2F4EF');
+  assert.deepEqual(calls.filter((c) => c[0] === 'text').map((c) => c[1]), ['#F2F4EF']);
+});
+
+test('linked label, no reading: the mark is never red on a red box', () => {
+  const calls = drawLabel(createElement(Konva, { ...linked, background: RED }, display));
+  const [mark] = calls.filter((c) => c[0] === 'text').map((c) => c[1]);
+  assert.notEqual(mark, RED);
+  assert.deepEqual(noDataColors(display, RED), { outline: INK, mark: '#F2F4EF' });
+});
+
+test('linked label: the page it was handed is never saved, and nothing new is', () => {
+  const node = createElement(Konva, linked, display);
+  assert.equal(node.getAttr('display'), display);
+  assert.deepEqual(serializeElement(node), { ...linked, text: 'T ?C' });
+});
+
+test('buildScene: elements see the document\'s page, not the panel\'s missing one', () => {
+  // A server hands buildScene the panel, which has no page colour. The document has one.
+  const panel = { ...display, type: 'mono' };
+  delete panel.background;
+  const doc = { display: { background: '#2F2429' }, elements: [linked] };
+  const [, label] = buildScene(Konva, doc, { display: panel }).group.getChildren();
+  assert.equal(label.getAttr('display').background, '#2F2429');
+  assert.equal(drawLabel(label).find((c) => c[0] === 'outline')[1], '#F2F4EF');
 });
 
 test('feedimage: an unsized frame is a third of the panel, centred', () => {

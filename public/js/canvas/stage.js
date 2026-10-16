@@ -149,11 +149,14 @@ export function updateDims() {
 export function syncDisplayBackground(color = display.background) {
   display.background = paletteBackground(color);
   bgRect.fill(display.background);
-  // A feed image with no picture draws its placeholder in colours picked against the
-  // page, so it has to be redrawn when the page changes under it. It is handed the live
-  // descriptor first, as elements.js's rebuildWidget does: a duplicated frame holds a copy.
+  // A feed image with no picture, and a linked label with no reading, draw their
+  // placeholders in colours picked against the page, so they have to be redrawn when the
+  // page changes under them. Each is handed the live descriptor first, as elements.js's
+  // rebuildWidget does: a duplicated element holds a copy. A label redraws with the layer.
   layer.find('.element').forEach((n) => {
-    if (n.getAttr('etype') !== 'feedimage' || n.getAttr('imageObj')) return;
+    const etype = n.getAttr('etype');
+    if (etype === 'label') { n.setAttr('display', display); return; }
+    if (etype !== 'feedimage' || n.getAttr('imageObj')) return;
     n.setAttr('display', display);
     rebuildWidget(Konva, n);
   });
