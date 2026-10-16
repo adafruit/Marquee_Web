@@ -150,9 +150,12 @@ export function syncDisplayBackground(color = display.background) {
   display.background = paletteBackground(color);
   bgRect.fill(display.background);
   // A feed image with no picture draws its placeholder in colours picked against the
-  // page, so it has to be redrawn when the page changes under it.
+  // page, so it has to be redrawn when the page changes under it. It is handed the live
+  // descriptor first, as elements.js's rebuildWidget does: a duplicated frame holds a copy.
   layer.find('.element').forEach((n) => {
-    if (n.getAttr('etype') === 'feedimage' && !n.getAttr('imageObj')) rebuildWidget(Konva, n);
+    if (n.getAttr('etype') !== 'feedimage' || n.getAttr('imageObj')) return;
+    n.setAttr('display', display);
+    rebuildWidget(Konva, n);
   });
   const box = $('bgSwatches');
   if (box) {

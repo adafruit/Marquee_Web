@@ -517,7 +517,7 @@ export function refreshProps() {
          where it becomes the same frame every other picture is. -->
     <p class="hint">This picture is stored inside the layout. Pictures now live on
       Adafruit IO feeds: move it to a new feed, or use one already on a feed instead.</p>
-    <button type="button" class="btn btn-sm btn-block" id="pImgFeed">${linkGlyph} Move to an Adafruit IO feed…</button>`;
+    <button type="button" class="btn btn-sm btn-block" id="pImgMove">${linkGlyph} Move to an Adafruit IO feed…</button>`;
   } else {
     html += `
     <div class="prop-row">
@@ -618,7 +618,7 @@ export function refreshProps() {
 
   // An image from before #36: the picker uploads its picture to a new feed (or binds a
   // feed already holding one) and converts it in place. A cancelled picker leaves it as is.
-  bind('pImgFeed', () => openFeedPicker(n, { mode: 'image' }));
+  bind('pImgMove', () => openFeedPicker(n, { mode: 'image' }));
 
   // The feed image's frame. Width and height are independent on purpose (see select()).
   const fiMin = MIN_WIDGET_H.feedimage;
