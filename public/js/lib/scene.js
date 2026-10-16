@@ -10,13 +10,14 @@
  * editor's (canvas/elements.js).
  */
 
-import { PAPER, PALETTES, isHexColor, logicalDimsOf, paletteBackground } from './palette.js';
+import { PAPER, PALETTES, isHexColor, logicalDimsOf, paletteBackground, hexToRGB } from './palette.js';
 import {
   clamp, toNum, fmtDecimals, fmtFeedText, niceTicks, niceStep, snapToStep, fmtTicks, scaleUnit,
 } from './format.js';
 import { normalizeDatetimeAttrs, placeholderText } from './timefmt.js';
 import { FA_FAMILY, FA_WEIGHT, iconGlyph, DEFAULT_GAUGE_ICON } from './icons.js';
 import { FONT_MONO, normalizeFontFamily } from './fonts.js';
+import { fitRect, FEED_IMAGE_FITS, feedImageRef } from './feedimage.js';
 
 /** The darkest ink of the panel's palette, which every palette has. */
 const inkOf = (display) => (PALETTES[display?.type] || PALETTES.mono)[0];
@@ -28,7 +29,7 @@ const inkOf = (display) => (PALETTES[display?.type] || PALETTES.mono)[0];
  * on fontSize() (a Group has no such method), and through refreshProps into the
  * DIVIDER branch.
  */
-export const WIDGET_TYPES = ['linechart', 'gauge', 'indicator', 'battery'];
+export const WIDGET_TYPES = ['linechart', 'gauge', 'indicator', 'battery', 'feedimage'];
 export function isWidget(n) { return WIDGET_TYPES.includes(n.getAttr('etype')); }
 
 /**
@@ -41,7 +42,9 @@ export function isWidget(n) { return WIDGET_TYPES.includes(n.getAttr('etype')); 
  * read it again, which looked like a binding and behaved like a screenshot.
  *
  * `linechart` is NOT here: it needs a history window rather than a last value,
- * so it has its own path (see refreshChartElements in feeds.js).
+ * so it has its own path (see refreshChartElements in feeds.js). Nor is `feedimage`:
+ * it reads a last value like the others, but applying one means DECODING it, which is
+ * the host's job and asynchronous (see readsImage in bindings.js).
  */
 export const FEED_ETYPES = ['label', 'indicator', 'battery', 'gauge'];
 
@@ -66,16 +69,26 @@ export const isFeedLinked = (n) => !!n.getAttr('feedKey');
 /** Is this a "Date & time" prop, whose text IO renders (see createDatetime)? */
 export const isDatetime = (n) => n.getAttr('etype') === 'datetime';
 
+/** Is there a reading to show? A reading of 0 is one. null, undefined and '' are not. */
+const hasReading = (raw) => raw !== null && raw !== undefined && String(raw) !== '';
+
+/**
+ * A linked label that has no reading to show, because its feed is empty or has not been
+ * read. It draws a "no data" state (see drawTextBox), so an empty feed looks like an
+ * empty feed and not like a label someone forgot to fill in (#24).
+ */
+export const labelHasNoData = (n) => n.getAttr('etype') === 'label' && isFeedLinked(n)
+  && !hasReading(n.getAttr('feedValue'));
+
 /**
  * The text a linked label shows: the sample wrapped in its optional prefix and
- * suffix. An unknown value renders as an em dash rather than an empty label,
+ * suffix. An unknown value renders as a question mark rather than an empty label,
  * because a label that collapses to zero width is indistinguishable from one the
- * user deleted.
+ * user deleted. The prefix and suffix stay, so the label still says what it is for.
  */
 export function linkedLabelText(n) {
   const raw = n.getAttr('feedValue');
-  const body = (raw === null || raw === undefined || String(raw) === '')
-    ? '—' : fmtFeedText(raw, n.getAttr('feedDecimals'));
+  const body = hasReading(raw) ? fmtFeedText(raw, n.getAttr('feedDecimals')) : '?';
   return `${n.getAttr('feedPrefix') || ''}${body}${n.getAttr('feedSuffix') || ''}`;
 }
 
@@ -98,7 +111,22 @@ function drawTextBox(ctx, shape) {
     ctx.setAttr('fillStyle', bg);
     ctx.fillRect(0, 0, shape.width(), shape.height());
   }
-  shape._sceneFunc(ctx);
+  if (!labelHasNoData(shape)) { shape._sceneFunc(ctx); return; }
+  // No data: a dashed outline round the box, in a colour picked against the page, and the
+  // text in the mark's colour, so it shows even where the label's own ink is the page's.
+  // Drawn on the panel too, like the empty feed image.
+  const { outline, mark } = noDataColors(shape.getAttr('display'), bg);
+  ctx.setAttr('strokeStyle', outline);
+  ctx.setAttr('lineWidth', 1);
+  ctx.setLineDash([3, 3]);
+  ctx.strokeRect(0.5, 0.5, Math.max(0, shape.width() - 1), Math.max(0, shape.height() - 1));
+  ctx.setLineDash([]);
+  // Konva.Text takes its colour from fill(), so the mark goes in for this one draw. It is
+  // written to attrs directly because fill(x) fires a change, which autosave hears, and
+  // the saved fill is the user's ink.
+  const ink = shape.attrs.fill;
+  shape.attrs.fill = mark;
+  try { shape._sceneFunc(ctx); } finally { shape.attrs.fill = ink; }
 }
 
 /**
@@ -762,6 +790,84 @@ function buildBattery(Konva, g) {
   }
 }
 
+// ---------- feed image ------------------------------------------------------
+//
+// A picture read from an Adafruit IO feed: a camera project's latest frame, or a
+// picture the editor uploaded to a feed of its own. Every image placed on a marquee
+// canvas is one of these (#36); a document names the feed and never embeds the picture.
+// A widget, not a Konva.Image, because what the user authors is a FRAME on the panel
+// and the picture is a reading that can change shape from one read to the next: the
+// group's `w`x`h` is the frame, and each picture is placed into it by fitRect().
+//
+// The decoded picture rides in the `imageObj` attr and is never serialized. Decoding is
+// the host's job (an <img> in the editor, skia-canvas's loadImage on a server), so this
+// builder only ever draws what it is handed.
+
+/** The palette colour that stands out most against `bg`, by luminance. */
+function contrastInk(type, bg) {
+  const lum = (hex) => { const [r, g, b] = hexToRGB(hex); return 0.299 * r + 0.587 * g + 0.114 * b; };
+  const pal = PALETTES[type] || PALETTES.mono;
+  const l = lum(bg);
+  return pal.reduce((best, c) => (Math.abs(lum(c) - l) > Math.abs(lum(best) - l) ? c : best), pal[0]);
+}
+
+/** The palette's red, when it has one: tricolor and quadcolor panels do. */
+function paletteRed(type) {
+  return (PALETTES[type] || []).find((c) => { const [r, g, b] = hexToRGB(c); return r > 150 && g < 100 && b < 100; });
+}
+
+/**
+ * The colours of a "no data" placeholder on this display's page: the outline and the
+ * mark. The outline is picked against the page, so it never vanishes into it (#24 calls
+ * out black ink on a black page). The mark is red where the panel has red and the
+ * surface under it is not already red. Otherwise it is the ink that stands out most on
+ * that surface. The surface is the page, or `under` when the mark sits on a box of its
+ * own (a label's background).
+ */
+export function noDataColors(display, under) {
+  const type = display?.type || 'mono';
+  const page = paletteBackground(display?.background ?? PAPER, type);
+  const surface = under ? paletteBackground(under, type) : page;
+  const outline = contrastInk(type, page);
+  const red = paletteRed(type);
+  return { outline, mark: red && red !== surface ? red : contrastInk(type, surface) };
+}
+
+/** The empty feed image's colours: its outline and question mark, on the page. */
+export const feedImagePlaceholderColors = (display) => noDataColors(display);
+
+function buildFeedImage(Konva, g) {
+  g.destroyChildren();
+  const w = Math.max(1, Math.round(g.getAttr('w') || 1));
+  const h = Math.max(1, Math.round(g.getAttr('h') || 1));
+  // Hit area spans the whole frame, so an empty one is still grabbable.
+  g.add(new Konva.Rect({ width: w, height: h, fill: '#000', opacity: 0 }));
+  const img = g.getAttr('imageObj');
+  if (img) {
+    const r = fitRect(g.getAttr('natW') || img.width, g.getAttr('natH') || img.height, w, h,
+      g.getAttr('fit') || 'contain');
+    const node = new Konva.Image({ image: img, x: r.x, y: r.y, width: r.w, height: r.h });
+    if (r.crop) node.crop(r.crop);
+    g.add(node);
+    return;
+  }
+  // No picture: the feed is empty, unreadable, or not read yet. This is drawn on the
+  // panel too, on purpose. An empty feed should look like an empty feed on the glass,
+  // not like nothing at all.
+  const { outline, mark } = feedImagePlaceholderColors(g.getAttr('display'));
+  g.add(new Konva.Rect({
+    x: 0.5, y: 0.5, width: Math.max(0, w - 1), height: Math.max(0, h - 1),
+    stroke: outline, strokeWidth: 1, dash: [3, 3],
+  }));
+  const fontSize = Math.round(Math.min(w, h) * 0.75);
+  if (fontSize >= 6) {
+    g.add(new Konva.Text({
+      text: '?', fontSize, fontFamily: FONT_MONO, fontStyle: 'bold', fill: mark,
+      width: w, height: h, align: 'center', verticalAlign: 'middle',
+    }));
+  }
+}
+
 // ---------- widget dispatch -------------------------------------------------
 
 /**
@@ -774,6 +880,7 @@ const WIDGET_BUILDERS = {
   gauge: buildGauge,
   indicator: buildIndicator,
   battery: buildBattery,
+  feedimage: buildFeedImage,
 };
 
 /** Rebuild a widget's children from its attrs. False for an etype with no builder. */
@@ -806,10 +913,14 @@ export function createLabel(Konva, attrs = {}, display, nodeProps = {}) {
   node.setAttr('feedSuffix', attrs.feedSuffix ?? '');
   node.setAttr('feedDecimals', attrs.feedDecimals ?? null);   // null = as sent
   node.setAttr('feedValue', attrs.feedValue ?? null);
+  // Kept on the node (never saved) so the "no data" state can pick its colours against
+  // the page, as the feed image does. The editor passes its live descriptor.
+  node.setAttr('display', display);
   // A linked label's text is DERIVED, so recompute it on load rather than
   // trusting the saved string: the prefix/suffix could have been edited in the
-  // same session that the value last changed.
-  if (isFeedLinked(node) && node.getAttr('feedValue') !== null) node.text(linkedLabelText(node));
+  // same session that the value last changed. With no reading as well: a document with
+  // its samples stripped has no text either, and would otherwise load as 'Label'.
+  if (isFeedLinked(node)) node.text(linkedLabelText(node));
   applyTextBox(node, attrs);
   return node;
 }
@@ -986,9 +1097,40 @@ export function createImage(Konva, imageObj, attrs = {}, display, nodeProps = {}
   return node;
 }
 
+/**
+ * A feed image's frame. `attrs.imageObj` is an already-decoded picture, when the host
+ * has one. Without it the frame shows the placeholder until the host reads the feed.
+ * `display` is kept on the node (never saved) so a rebuild can pick placeholder colours
+ * against the page. The editor passes its live descriptor, so the next rebuild sees a
+ * page colour changed later.
+ */
+export function createFeedImage(Konva, attrs = {}, display, nodeProps = {}) {
+  const g = widgetGroup(Konva, attrs, nodeProps);
+  const { w: cw, h: ch } = logicalDimsOf(display);
+  g.setAttr('etype', 'feedimage');
+  // Unsized: a third of the panel, landscape. Big enough to read a camera frame, small
+  // enough to leave room for the caption that usually goes with one.
+  const w = attrs.w ?? Math.max(8, Math.round(cw / 3));
+  const h = attrs.h ?? Math.max(8, Math.round(w * 0.75));
+  g.setAttr('w', w);
+  g.setAttr('h', h);
+  if (attrs.x === undefined && nodeProps.x === undefined) g.x(Math.round((cw - w) / 2));
+  if (attrs.y === undefined && nodeProps.y === undefined) g.y(Math.round((ch - h) / 2));
+  g.setAttr('fit', FEED_IMAGE_FITS.some((f) => f.id === attrs.fit) ? attrs.fit : 'contain');
+  g.setAttr('feedKey', attrs.feedKey ?? '');
+  g.setAttr('feedName', attrs.feedName ?? '');
+  g.setAttr('display', display);
+  const img = attrs.imageObj || null;
+  g.setAttr('imageObj', img);
+  g.setAttr('natW', img ? img.width : null);
+  g.setAttr('natH', img ? img.height : null);
+  buildFeedImage(Konva, g);
+  return g;
+}
+
 const FACTORIES = {
   label: createLabel, divider: createDivider, datetime: createDatetime, linechart: createLineChart,
-  gauge: createGauge, indicator: createIndicator, battery: createBattery,
+  gauge: createGauge, indicator: createIndicator, battery: createBattery, feedimage: createFeedImage,
 };
 
 /**
@@ -1039,6 +1181,15 @@ export function serializeElement(n) {
     Object.assign(base, {
       src: n.getAttr('src'), w: Math.round(n.width()), h: Math.round(n.height()),
       natW: n.getAttr('natW'), natH: n.getAttr('natH'),
+    });
+  } else if (etype === 'feedimage') {
+    // The frame and the fit are the design. The picture is on the feed, so `src` names
+    // the feed (see feedImageRef) instead of carrying the bytes. Its natural size only
+    // describes the last reading, so that is not saved either.
+    Object.assign(base, {
+      w: n.getAttr('w'), h: n.getAttr('h'), fit: n.getAttr('fit') || 'contain',
+      feedKey: n.getAttr('feedKey') || '', feedName: n.getAttr('feedName') || '',
+      src: feedImageRef(n.getAttr('feedKey')),
     });
   } else if (etype === 'indicator') {
     // Explicit branch: the generic widget shape below is {ink,title,w}+value,
@@ -1121,6 +1272,8 @@ export function serializeElement(n) {
  * A document laid out for rendering: the page, then every element in saved order
  * (array order is stacking order). `images` maps an element's index to its decoded
  * image; an image element without one is left out, as an undecodable one always was.
+ * A feed image without one is drawn as its placeholder. Its frame is the design, and an
+ * empty frame on the panel says the feed had no picture.
  * Returns the group and the canvas size to capture it at.
  */
 export function buildScene(Konva, doc, { display = doc.display || {}, images = {} } = {}) {
@@ -1128,15 +1281,18 @@ export function buildScene(Konva, doc, { display = doc.display || {}, images = {
   const group = new Konva.Group();
   // The page colour is part of the artwork, so it comes from the document — snapped
   // to this panel's palette, and PAPER for a document from before the field.
-  group.add(new Konva.Rect({
-    x: 0, y: 0, width: w, height: h,
-    fill: paletteBackground(doc.display?.background ?? PAPER, display.type),
-  }));
+  const background = paletteBackground(doc.display?.background ?? PAPER, display.type);
+  group.add(new Konva.Rect({ x: 0, y: 0, width: w, height: h, fill: background }));
+  // The elements are handed that page too. A "no data" placeholder picks its colours
+  // against it, and a server's display (the panel) carries no page colour of its own.
+  const page = { ...display, background };
   (doc.elements || []).forEach((el, i) => {
     if (el.etype === 'image') {
-      if (images[i]) group.add(createImage(Konva, images[i], el, display));
+      if (images[i]) group.add(createImage(Konva, images[i], el, page));
+    } else if (el.etype === 'feedimage') {
+      group.add(createFeedImage(Konva, { ...el, imageObj: images[i] || null }, page));
     } else {
-      group.add(createElement(Konva, el, display));
+      group.add(createElement(Konva, el, page));
     }
   });
   return { group, width: w, height: h };
