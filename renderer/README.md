@@ -120,13 +120,13 @@ name, which runs `$LATEST`, and production calls the `PRODUCTION` alias. So a ne
 live on staging as soon as the function's code is updated, and on production only when the
 alias moves. CI builds the image but never pushes it; deploys are deliberate.
 
-Run from the repo root, with `ACCOUNT` and `REGION` filled in (the region io-rails uses):
+Run from the repo root, with `ACCOUNT` filled in. Everything lives in **us-east-1**, the region io-rails uses:
 
 ```sh
-REPO=ACCOUNT.dkr.ecr.REGION.amazonaws.com/io-marquee-renderer
+REPO=ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/io-marquee-renderer
 TAG=$(git rev-parse --short HEAD)
 
-aws ecr get-login-password | podman login --username AWS --password-stdin ACCOUNT.dkr.ecr.REGION.amazonaws.com
+aws ecr get-login-password --region us-east-1 | podman login --username AWS --password-stdin ACCOUNT.dkr.ecr.us-east-1.amazonaws.com
 podman build --platform linux/amd64 -f renderer/Dockerfile -t $REPO:$TAG .
 podman push $REPO:$TAG
 ```
@@ -149,7 +149,7 @@ aws lambda create-alias --function-name io-marquee-renderer --name PRODUCTION --
 - **Memory 1024 MB or more**: Lambda's CPU scales with memory, and a render is CPU-bound.
 - **Timeout 15 s**: a take renders in about a second; the rest is cold-start headroom.
 - **Invoke permission**: the AWS credentials io-rails runs with need `lambda:InvokeFunction` on
-  `arn:aws:lambda:REGION:ACCOUNT:function:io-marquee-renderer` and on the same ARN with
+  `arn:aws:lambda:us-east-1:ACCOUNT:function:io-marquee-renderer` and on the same ARN with
   `:PRODUCTION` appended. The policy that already allows `io-image-formatter` is the place.
 
 ### Every time after
