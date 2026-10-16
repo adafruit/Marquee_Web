@@ -95,13 +95,78 @@ native binary and the fonts travel together. Build from the **repo root** — th
 imports `public/js/lib` and `public/fonts` by relative path and the image keeps that layout:
 
 ```sh
-docker build -f renderer/Dockerfile --platform linux/arm64 -t marquee-renderer .
+docker build -f renderer/Dockerfile --platform linux/amd64 -t marquee-renderer .
 ```
 
 Build for the function's architecture: skia-canvas installs a binary for the platform it is
-installed on. To try it locally, the base image includes the Lambda runtime emulator:
+installed on. Use **x86_64** (`linux/amd64`): that is where the container's output has been
+checked byte-for-byte against a local render. arm64 is cheaper, but Skia's CPU rasterizer is
+not guaranteed to produce the same bytes there, so prove it against the snapshot before
+switching. With Docker rather than Podman, add `--provenance=false`, or the push can carry a
+multi-platform index Lambda rejects.
+
+To try it locally, the base image includes the Lambda runtime emulator:
 
 ```sh
 docker run --rm -p 9000:8080 marquee-renderer
 curl -s localhost:9000/2015-03-31/functions/function/invocations -d '{"op":"plan","doc":{"version":1,"elements":[]}}'
+```
+
+## Deploying
+
+The function is `io-marquee-renderer`. Adafruit IO invokes it the way it invokes
+`io-image-formatter` (`app/services/marquee/renderer.rb` in io-rails): staging calls the bare
+name, which runs `$LATEST`, and production calls the `PRODUCTION` alias. So a new image is
+live on staging as soon as the function's code is updated, and on production only when the
+alias moves. CI builds the image but never pushes it; deploys are deliberate.
+
+Run from the repo root, with `ACCOUNT` and `REGION` filled in (the region io-rails uses):
+
+```sh
+REPO=ACCOUNT.dkr.ecr.REGION.amazonaws.com/io-marquee-renderer
+TAG=$(git rev-parse --short HEAD)
+
+aws ecr get-login-password | podman login --username AWS --password-stdin ACCOUNT.dkr.ecr.REGION.amazonaws.com
+podman build --platform linux/amd64 -f renderer/Dockerfile -t $REPO:$TAG .
+podman push $REPO:$TAG
+```
+
+### The first time
+
+```sh
+aws ecr create-repository --repository-name io-marquee-renderer
+
+# The role needs only AWSLambdaBasicExecutionRole: the renderer makes no AWS calls.
+aws lambda create-function --function-name io-marquee-renderer \
+  --package-type Image --code ImageUri=$REPO:$TAG \
+  --architectures x86_64 --memory-size 1024 --timeout 15 \
+  --role arn:aws:iam::ACCOUNT:role/YOUR_LAMBDA_ROLE
+
+VERSION=$(aws lambda publish-version --function-name io-marquee-renderer --query Version --output text)
+aws lambda create-alias --function-name io-marquee-renderer --name PRODUCTION --function-version $VERSION
+```
+
+- **Memory 1024 MB or more**: Lambda's CPU scales with memory, and a render is CPU-bound.
+- **Timeout 15 s**: a take renders in about a second; the rest is cold-start headroom.
+- **Invoke permission**: the AWS credentials io-rails runs with need `lambda:InvokeFunction` on
+  `arn:aws:lambda:REGION:ACCOUNT:function:io-marquee-renderer` and on the same ARN with
+  `:PRODUCTION` appended. The policy that already allows `io-image-formatter` is the place.
+
+### Every time after
+
+```sh
+aws lambda update-function-code --function-name io-marquee-renderer --image-uri $REPO:$TAG
+# staging runs it now; when it looks right there, move production:
+VERSION=$(aws lambda publish-version --function-name io-marquee-renderer --query Version --output text)
+aws lambda update-alias --function-name io-marquee-renderer --name PRODUCTION --function-version $VERSION
+```
+
+Rolling back is `update-alias` to the previous version number.
+
+### Checking it
+
+```sh
+aws lambda invoke --function-name io-marquee-renderer:PRODUCTION --cli-binary-format raw-in-base64-out \
+  --payload '{"op":"plan","doc":{"version":1,"elements":[{"etype":"gauge","feedKey":"wind"}]}}' out.json && cat out.json
+# {"reads":[{"id":"wind","feed":"wind","kind":"last"}],"datetime":false}
 ```

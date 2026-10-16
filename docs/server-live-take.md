@@ -217,12 +217,13 @@ chart downsampling, dropping unbound series — instead of IO reimplementing it 
 ## Deployment
 
 - The renderer ships as a **Lambda container image**: skia-canvas's Linux binary and the
-  fonts travel together. Built by this repo's CI, pushed to ECR, tagged by commit.
+  fonts travel together. Built by this repo's CI on every change; pushed to ECR and
+  deployed by hand, tagged by commit — the steps are in `renderer/README.md` ("Deploying").
 - IO invokes it through a `:PRODUCTION` alias, exactly as `ImageFormatter`
   (`io-rails/app/services/image_formatter.rb`) does for `io-image-formatter`, with the
   existing `$lambda_client`. Moving the alias is the upgrade — a deliberate step, never
   a side effect of a merge here.
-- Memory ≥ 1 GB (Lambda CPU scales with memory); timeout around 10s; retries belong to
+- x86_64, memory ≥ 1 GB (Lambda CPU scales with memory), timeout 15 s; retries belong to
   Sidekiq.
 
 ## Security
